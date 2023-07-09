@@ -64,27 +64,25 @@ async fn init_client(sock: &mut TcpStream) -> Result<()> {
     Ok(())
 }
 
-async fn gate_keeper(mut incoming_recv: mpsc::Receiver<TcpStream>) {
-    while let Some(mut sock) = incoming_recv.recv().await {
-        match init_client(&mut sock).await {
-            Ok(()) => {
-                tokio::task::spawn(async move {
-                    todo!();
-                });
-            }
-            Err(err) => {
-                eprintln!("[GateKeeper] Failed to initialize client: {:?}", err);
-            }
-        }
+async fn gate_keeper_client(mut client_sock: TcpStream) {
+    if let Err(err) = init_client(&mut client_sock).await {
+        eprintln!("[GateKeeper] Failed to initialize client: {:?}", err);
+        return;
     }
+
+    todo!();
 }
 
 impl GateKeeper {
     pub fn start() -> GateKeeper {
-        let (incoming_send, incoming_recv) = mpsc::channel(5);
+        let (incoming_send, mut incoming_recv) = mpsc::channel(5);
 
         tokio::spawn(async move {
-            gate_keeper(incoming_recv).await;
+            while let Some(sock) = incoming_recv.recv().await {
+                tokio::spawn(async move {
+                    gate_keeper_client(sock).await;
+                });
+            }
         });
         GateKeeper { incoming_send }
     }
