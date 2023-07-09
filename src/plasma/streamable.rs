@@ -52,7 +52,7 @@ impl StreamWrite for Uuid {
         stream.write_u32::<LittleEndian>(data1)?;
         stream.write_u16::<LittleEndian>(data2)?;
         stream.write_u16::<LittleEndian>(data3)?;
-        stream.write(data4)?;
+        stream.write_all(data4)?;
         Ok(())
     }
 }

@@ -16,9 +16,9 @@
 
 use crate::plasma::StreamRead;
 
-use std::io::{Write, Cursor, Result, Error, ErrorKind, BufRead};
+use std::io::{Cursor, Result, Error, ErrorKind, BufRead};
 
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use byteorder::{LittleEndian, ReadBytesExt};
 use tokio::sync::mpsc;
 use tokio::net::TcpStream;
 use uuid::Uuid;
@@ -52,7 +52,7 @@ impl StreamRead for GateKeeperConnHeader {
 }
 
 async fn init_client(sock: &mut TcpStream) -> Result<()> {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::io::AsyncReadExt;
 
     let mut buffer = [0u8; GateKeeperConnHeader::HEADER_SIZE];
     sock.read_exact(&mut buffer).await?;
@@ -65,19 +65,16 @@ async fn init_client(sock: &mut TcpStream) -> Result<()> {
 }
 
 async fn gate_keeper(mut incoming_recv: mpsc::Receiver<TcpStream>) {
-    loop {
-        match incoming_recv.recv().await {
-            Some(mut sock) => match init_client(&mut sock).await {
-                Ok(()) => {
-                    tokio::task::spawn(async move {
-                        todo!();
-                    });
-                }
-                Err(err) => {
-                    eprintln!("[GateKeeper] Failed to initialize client: {:?}", err);
-                }
+    while let Some(mut sock) = incoming_recv.recv().await {
+        match init_client(&mut sock).await {
+            Ok(()) => {
+                tokio::task::spawn(async move {
+                    todo!();
+                });
             }
-            None => break,  /* Receiver closed */
+            Err(err) => {
+                eprintln!("[GateKeeper] Failed to initialize client: {:?}", err);
+            }
         }
     }
 }

@@ -17,7 +17,7 @@
 use crate::plasma::{StreamRead, StreamWrite};
 use crate::file_srv::manifest::Manifest;
 
-use std::io::{BufRead, Write, Result, Error, ErrorKind, Cursor, Seek, SeekFrom};
+use std::io::{BufRead, Write, Result, Error, ErrorKind, Cursor};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 pub enum CliToFile {
@@ -179,7 +179,7 @@ impl StreamWrite for FileToCli {
         let buf_size = buffer.position() as u32;
         buffer.set_position(0);
         buffer.write_u32::<LittleEndian>(buf_size)?;
-        stream.write(buffer.get_ref())?;
+        stream.write_all(buffer.get_ref())?;
         Ok(())
     }
 }
