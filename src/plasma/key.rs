@@ -14,12 +14,12 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use crate::plasma::{self, StreamRead, StreamWrite};
-
 use std::io::{BufRead, Write, Result};
 use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+
+use crate::plasma::{self, StreamRead, StreamWrite};
 
 pub struct Key {
     data: Option<Arc<Uoid>>

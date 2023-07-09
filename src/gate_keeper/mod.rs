@@ -14,14 +14,14 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use crate::plasma::StreamRead;
-
 use std::io::{Cursor, Result, Error, ErrorKind, BufRead};
 
 use byteorder::{LittleEndian, ReadBytesExt};
 use tokio::sync::mpsc;
 use tokio::net::TcpStream;
 use uuid::Uuid;
+
+use crate::plasma::StreamRead;
 
 pub struct GateKeeper {
     incoming_send: mpsc::Sender<TcpStream>,

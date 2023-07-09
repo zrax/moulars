@@ -14,12 +14,12 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use crate::plasma::StreamRead;
-
 use std::io::{BufRead, Cursor, Result, Error, ErrorKind, Write};
 
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use tokio::net::TcpStream;
+
+use crate::plasma::StreamRead;
 
 pub const CLI_TO_SRV_CONNECT: u8 = 0;
 pub const SRV_TO_CLI_ENCRYPT: u8 = 1;

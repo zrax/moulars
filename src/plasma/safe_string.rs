@@ -15,6 +15,7 @@
  */
 
 use std::io::{BufRead, Write, Result, Error, ErrorKind};
+
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 #[derive(Eq, PartialEq)]

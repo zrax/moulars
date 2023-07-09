@@ -14,10 +14,11 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use crate::plasma::{self, StreamRead, StreamWrite};
-
 use std::io::{BufRead, Write, Result};
+
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
+
+use crate::plasma::{self, StreamRead, StreamWrite};
 
 pub struct Message {
     sender: plasma::Key,

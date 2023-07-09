@@ -14,11 +14,12 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use crate::plasma::{StreamRead, StreamWrite};
-use crate::file_srv::manifest::Manifest;
-
 use std::io::{BufRead, Write, Result, Error, ErrorKind, Cursor};
+
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+
+use crate::plasma::{StreamRead, StreamWrite};
+use super::manifest::Manifest;
 
 pub enum CliToFile {
     PingRequest { ping_time: u32 },

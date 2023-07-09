@@ -14,13 +14,14 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+use std::io::{BufRead, Cursor, Result, Error, ErrorKind};
+
+use byteorder::{LittleEndian, ReadBytesExt};
+use tokio::net::{TcpListener, TcpStream};
+use uuid::Uuid;
+
 use crate::plasma::StreamRead;
 use crate::gate_keeper::GateKeeper;
-
-use std::io::{BufRead, Cursor, Result, Error, ErrorKind};
-use tokio::net::{TcpListener, TcpStream};
-use byteorder::{LittleEndian, ReadBytesExt};
-use uuid::Uuid;
 
 struct ConnectionHeader {
     conn_type: u8,
