@@ -15,15 +15,67 @@
  */
 
 use std::io::{BufRead, Cursor, Result, Error, ErrorKind, Write};
+use std::task::{Context, Poll};
+use std::pin::Pin;
 
 use byteorder::{ReadBytesExt, WriteBytesExt};
+use num_bigint::{BigUint, RandBigInt};
 use tokio::net::TcpStream;
+use tokio::io::{AsyncRead, BufReader, ReadBuf};
 
 use crate::plasma::StreamRead;
 
-pub const CLI_TO_SRV_CONNECT: u8 = 0;
-pub const SRV_TO_CLI_ENCRYPT: u8 = 1;
-pub const SRV_TO_CLI_ERROR: u8 = 2;
+type CryptCipher = rc4::Rc4<rc4::consts::U7>;
+
+pub struct CryptStream {
+    stream: TcpStream,
+    cipher_read: CryptCipher,
+    cipher_write: CryptCipher,
+}
+
+impl CryptStream {
+    pub fn new(stream: TcpStream, key_data: &[u8]) -> Self {
+        use rc4::{Key, KeyInit};
+
+        let key = Key::from_slice(key_data);
+        CryptStream {
+            stream,
+            cipher_read: CryptCipher::new(key),
+            cipher_write: CryptCipher::new(key),
+        }
+    }
+
+    // Don't use AsyncWrite, because we'd have to keep track of what bytes
+    // were already encrypted separately from the send buffer...
+    pub async fn write_all(&mut self, buf: &[u8]) -> Result<()> {
+        use rc4::StreamCipher;
+        use tokio::io::AsyncWriteExt;
+
+        let mut crypt_buf = buf.to_vec();
+        self.cipher_write.apply_keystream(&mut crypt_buf);
+        self.stream.write_all(crypt_buf.as_slice()).await
+    }
+}
+
+impl AsyncRead for CryptStream {
+    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>)
+        -> Poll<Result<()>>
+    {
+        use rc4::StreamCipher;
+
+        match Pin::new(&mut self.stream).poll_read(cx, buf) {
+            Poll::Ready(Ok(())) => {
+                self.cipher_read.apply_keystream(buf.filled_mut());
+                Poll::Ready(Ok(()))
+            }
+            result => result
+        }
+    }
+}
+
+const CLI_TO_SRV_CONNECT: u8 = 0;
+const SRV_TO_CLI_ENCRYPT: u8 = 1;
+const SRV_TO_CLI_ERROR: u8 = 2;
 
 struct CryptConnectHeader {
     msg_id: u8,
@@ -70,7 +122,31 @@ fn create_crypt_reply(server_seed: &[u8]) -> Result<Vec<u8>> {
     Ok(stream.into_inner())
 }
 
-pub async fn init_crypt(sock: &mut TcpStream) -> Result<()> {
+const SERVER_KEY_LEN: usize = 7;
+
+// Returns the server seed and the local rc4 key data
+// NOTE: Returned seed and key are little-endian
+fn crypt_key_create(key_n: &BigUint, key_k: &BigUint, key_y: &BigUint)
+    -> (Vec<u8>, Vec<u8>)
+{
+    let mut rng = rand::thread_rng();
+    let server_seed = rng.gen_biguint(7 * 8).to_bytes_le();
+    assert_eq!(server_seed.len(), SERVER_KEY_LEN);
+
+    let client_seed = key_y.modpow(key_k, key_n);
+    assert!(client_seed.bits() >= 7 * 8 && client_seed.bits() <= 64 * 8);
+
+    let key_buffer = client_seed.to_bytes_le();
+    let key: Vec<u8> = key_buffer.iter().take(SERVER_KEY_LEN).enumerate()
+                                 .map(|(i, v)| v ^ server_seed[i]).collect();
+    assert_eq!(key.len(), SERVER_KEY_LEN);
+
+    (server_seed, key)
+}
+
+pub async fn init_crypt(mut sock: TcpStream, key_n: &BigUint, key_k: &BigUint)
+    -> Result<BufReader<CryptStream>>
+{
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     let mut buffer = [0u8; CryptConnectHeader::FIXED_SIZE];
@@ -83,7 +159,6 @@ pub async fn init_crypt(sock: &mut TcpStream) -> Result<()> {
         // Header contains an encrypt client key
         let key_size = (crypt_header.msg_size as usize) - CryptConnectHeader::FIXED_SIZE;
         sock.read_exact(&mut crypt_header.key_seed[0..key_size]).await?;
-        // TODO: Do we need to swap the endianness of the whole buffer?
     } else if crypt_header.msg_size != (CryptConnectHeader::FIXED_SIZE as u8) {
         let reply = create_error_reply()?;
         sock.write_all(&reply).await?;
@@ -98,10 +173,10 @@ pub async fn init_crypt(sock: &mut TcpStream) -> Result<()> {
                    format!("Invalid encrypt message type {}", crypt_header.msg_id)));
     }
 
-    let mut server_seed = [0u8; 7];
-    // TODO: generate server_seed
+    let key_y = BigUint::from_bytes_le(&crypt_header.key_seed);
+    let (server_seed, crypt_key) = crypt_key_create(key_n, key_k, &key_y);
     let reply = create_crypt_reply(&server_seed)?;
     sock.write_all(&reply).await?;
 
-    Ok(())
+    Ok(BufReader::new(CryptStream::new(sock, &crypt_key)))
 }

@@ -15,10 +15,13 @@
  */
 
 use std::io::{BufRead, Write, Result, Error, ErrorKind, Cursor};
+use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use tokio::io::BufReader;
+use tokio::net::TcpStream;
 
-use crate::plasma::{StreamRead, StreamWrite};
+use crate::plasma::StreamRead;
 use super::manifest::Manifest;
 
 pub enum CliToFile {
@@ -48,19 +51,19 @@ pub enum FileToCli {
     PingReply { ping_time: u32 },
     BuildIdReply {
         trans_id: u32,
-        result: u32,
+        result: i32,
         build_id: u32,
     },
     BuildIdUpdate { build_id: u32 },
     ManifestReply {
         trans_id: u32,
-        result: u32,
+        result: i32,
         reader_id: u32,
         manifest: Manifest,
     },
     FileDownloadReply {
         trans_id: u32,
-        result: u32,
+        result: i32,
         reader_id: u32,
         file_size: u32,
         file_data: Vec<u8>,
@@ -88,44 +91,53 @@ macro_rules! read_fixed_utf16 {
     })
 }
 
+impl CliToFile {
+    pub async fn read(stream: &mut BufReader<TcpStream>) -> Result<Self> {
+        use tokio::io::AsyncReadExt;
+
+        let msg_size = stream.read_u32_le().await?;
+        if (msg_size as usize) < size_of::<u32>() {
+            return Err(Error::new(ErrorKind::Other, "Message size too small"));
+        }
+        let mut msg_buf = vec![0u8; (msg_size as usize) - size_of::<u32>()];
+        stream.read_exact(&mut msg_buf).await?;
+        CliToFile::stream_read(&mut Cursor::new(msg_buf))
+    }
+}
+
 impl StreamRead for CliToFile {
     fn stream_read<S>(stream: &mut S) -> Result<Self>
         where S: BufRead
     {
-        let msg_size = stream.read_u32::<LittleEndian>()?;
-        let mut msg_buf = vec![0u8; msg_size as usize];
-        stream.read_exact(&mut msg_buf)?;
-        let mut msg = Cursor::new(msg_buf);
-
-        match msg.read_u32::<LittleEndian>()? {
+        match stream.read_u32::<LittleEndian>()? {
             CLI2FILE_PING_REQUEST => {
-                let ping_time = msg.read_u32::<LittleEndian>()?;
+                let ping_time = stream.read_u32::<LittleEndian>()?;
                 Ok(CliToFile::PingRequest { ping_time })
             }
             CLI2FILE_BUILD_ID_REQUEST => {
-                let trans_id = msg.read_u32::<LittleEndian>()?;
+                let trans_id = stream.read_u32::<LittleEndian>()?;
                 Ok(CliToFile::BuildIdRequest { trans_id })
             }
             CLI2FILE_MANIFEST_REQUEST => {
-                let trans_id = msg.read_u32::<LittleEndian>()?;
-                let manifest_name = read_fixed_utf16!(msg, 260);
-                let build_id = msg.read_u32::<LittleEndian>()?;
+                let trans_id = stream.read_u32::<LittleEndian>()?;
+                let manifest_name = read_fixed_utf16!(stream, 260);
+                let build_id = stream.read_u32::<LittleEndian>()?;
                 Ok(CliToFile::ManifestRequest { trans_id, manifest_name, build_id })
             }
             CLI2FILE_MANIFEST_ENTRY_ACK => {
-                let trans_id = msg.read_u32::<LittleEndian>()?;
-                let reader_id = msg.read_u32::<LittleEndian>()?;
+                let trans_id = stream.read_u32::<LittleEndian>()?;
+                let reader_id = stream.read_u32::<LittleEndian>()?;
                 Ok(CliToFile::ManifestEntryAck { trans_id, reader_id })
             }
             CLI2FILE_DOWNLOAD_REQUEST => {
-                let trans_id = msg.read_u32::<LittleEndian>()?;
-                let filename = read_fixed_utf16!(msg, 260);
-                let build_id = msg.read_u32::<LittleEndian>()?;
+                let trans_id = stream.read_u32::<LittleEndian>()?;
+                let filename = read_fixed_utf16!(stream, 260);
+                let build_id = stream.read_u32::<LittleEndian>()?;
                 Ok(CliToFile::DownloadRequest { trans_id, filename, build_id })
             }
             CLI2FILE_DOWNLOAD_CHUNK_ACK => {
-                let trans_id = msg.read_u32::<LittleEndian>()?;
-                let reader_id = msg.read_u32::<LittleEndian>()?;
+                let trans_id = stream.read_u32::<LittleEndian>()?;
+                let reader_id = stream.read_u32::<LittleEndian>()?;
                 Ok(CliToFile::DownloadChunkAck { trans_id, reader_id })
             }
             msg_id => {
@@ -135,11 +147,17 @@ impl StreamRead for CliToFile {
     }
 }
 
-impl StreamWrite for FileToCli {
-    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write
-    {
+impl FileToCli {
+    // Requires special buffering to write the output size correctly
+    pub async fn write(&self, stream: &mut TcpStream) -> Result<()> {
+        use tokio::io::AsyncWriteExt;
+
         let mut buffer = Cursor::new(Vec::new());
+        self.write_buffer(&mut buffer)?;
+        stream.write_all(buffer.get_ref()).await
+    }
+
+    fn write_buffer(&self, buffer: &mut Cursor<Vec<u8>>) -> Result<()> {
         buffer.write_u32::<LittleEndian>(0)?;
 
         match self {
@@ -150,7 +168,7 @@ impl StreamWrite for FileToCli {
             FileToCli::BuildIdReply { trans_id, result, build_id } => {
                 buffer.write_u32::<LittleEndian>(FILE2CLI_BUILD_ID_REPLY)?;
                 buffer.write_u32::<LittleEndian>(*trans_id)?;
-                buffer.write_u32::<LittleEndian>(*result)?;
+                buffer.write_i32::<LittleEndian>(*result)?;
                 buffer.write_u32::<LittleEndian>(*build_id)?;
             }
             FileToCli::BuildIdUpdate { build_id } => {
@@ -160,7 +178,7 @@ impl StreamWrite for FileToCli {
             FileToCli::ManifestReply { trans_id, result, reader_id, manifest } => {
                 buffer.write_u32::<LittleEndian>(FILE2CLI_MANIFEST_REPLY)?;
                 buffer.write_u32::<LittleEndian>(*trans_id)?;
-                buffer.write_u32::<LittleEndian>(*result)?;
+                buffer.write_i32::<LittleEndian>(*result)?;
                 buffer.write_u32::<LittleEndian>(*reader_id)?;
                 todo!();
             }
@@ -168,7 +186,7 @@ impl StreamWrite for FileToCli {
                                            file_data } => {
                 buffer.write_u32::<LittleEndian>(FILE2CLI_FILE_DOWNLOAD_REPLY)?;
                 buffer.write_u32::<LittleEndian>(*trans_id)?;
-                buffer.write_u32::<LittleEndian>(*result)?;
+                buffer.write_i32::<LittleEndian>(*result)?;
                 buffer.write_u32::<LittleEndian>(*reader_id)?;
                 buffer.write_u32::<LittleEndian>(*file_size)?;
                 buffer.write_u32::<LittleEndian>(file_data.len() as u32)?;
@@ -180,7 +198,7 @@ impl StreamWrite for FileToCli {
         let buf_size = buffer.position() as u32;
         buffer.set_position(0);
         buffer.write_u32::<LittleEndian>(buf_size)?;
-        stream.write_all(buffer.get_ref())?;
+
         Ok(())
     }
 }

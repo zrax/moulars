@@ -14,73 +14,119 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{Cursor, Result, Error, ErrorKind, BufRead};
+mod messages;
+
+use std::io::{BufRead, Cursor, Result, Error, ErrorKind};
+use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt};
+use tokio::io::{AsyncReadExt, BufReader};
 use tokio::sync::mpsc;
 use tokio::net::TcpStream;
 use uuid::Uuid;
 
-use crate::plasma::StreamRead;
+use crate::config::ServerConfig;
+use crate::crypt::CryptStream;
+use crate::plasma::{StreamRead, StreamWrite};
+use self::messages::{CliToGateKeeper, GateKeeperToCli};
 
 pub struct GateKeeper {
     incoming_send: mpsc::Sender<TcpStream>,
 }
 
-struct GateKeeperConnHeader {
-    header_size: u32,
-    uuid: Uuid,
-}
+const CONN_HEADER_SIZE: usize = 20;
 
-impl GateKeeperConnHeader {
-    const HEADER_SIZE: usize = 20;
-}
-
-impl StreamRead for GateKeeperConnHeader {
-    fn stream_read<S>(stream: &mut S) -> Result<Self>
-        where S: BufRead
-    {
-        let header_size = stream.read_u32::<LittleEndian>()?;
-        if header_size != Self::HEADER_SIZE as u32 {
-            return Err(Error::new(ErrorKind::Other,
-                       format!("[GateKeeper] Invalid connection header size {}", header_size)));
-        }
-        // Null UUID
-        let uuid = Uuid::stream_read(stream)?;
-        Ok(Self { header_size, uuid })
+fn read_conn_header<S>(stream: &mut S) -> Result<()>
+    where S: BufRead
+{
+    // Everything here is discarded...
+    let header_size = stream.read_u32::<LittleEndian>()?;
+    if header_size != CONN_HEADER_SIZE as u32 {
+        return Err(Error::new(ErrorKind::Other,
+                   format!("[GateKeeper] Invalid connection header size {}", header_size)));
     }
-}
-
-async fn init_client(sock: &mut TcpStream) -> Result<()> {
-    use tokio::io::AsyncReadExt;
-
-    let mut buffer = [0u8; GateKeeperConnHeader::HEADER_SIZE];
-    sock.read_exact(&mut buffer).await?;
-    let mut stream = Cursor::new(buffer);
-    let _ = GateKeeperConnHeader::stream_read(&mut stream)?;
-
-    crate::crypt::init_crypt(sock).await?;
+    // Null UUID
+    let _ = Uuid::stream_read(stream)?;
 
     Ok(())
 }
 
-async fn gate_keeper_client(mut client_sock: TcpStream) {
-    if let Err(err) = init_client(&mut client_sock).await {
-        eprintln!("[GateKeeper] Failed to initialize client: {:?}", err);
-        return;
-    }
+async fn init_client(mut sock: TcpStream, server_config: &ServerConfig)
+    -> Result<BufReader<CryptStream>>
+{
+    let mut header = [0u8; CONN_HEADER_SIZE];
+    sock.read_exact(&mut header).await?;
+    read_conn_header(&mut Cursor::new(header))?;
 
-    todo!();
+    crate::crypt::init_crypt(sock, &server_config.gate_n_key,
+                             &server_config.gate_k_key).await
+}
+
+macro_rules! send_message {
+    ($stream:expr, $reply:expr) => {
+        let mut reply_buf = Cursor::new(Vec::new());
+        if let Err(err) = $reply.stream_write(&mut reply_buf) {
+            eprintln!("[GateKeeper] Failed to write reply stream: {:?}", err);
+            return;
+        }
+        if let Err(err) = $stream.get_mut().write_all(reply_buf.get_ref()).await {
+            eprintln!("[GateKeeper] Failed to send reply: {:?}", err);
+            return;
+        }
+    }
+}
+
+async fn gate_keeper_client(client_sock: TcpStream, server_config: Arc<ServerConfig>) {
+    let mut stream = match init_client(client_sock, &server_config).await {
+        Ok(cipher) => cipher,
+        Err(err) => {
+            eprintln!("[GateKeeper] Failed to initialize client: {:?}", err);
+            return;
+        }
+    };
+
+    loop {
+        match CliToGateKeeper::read(&mut stream).await {
+            Ok(CliToGateKeeper::PingRequest { trans_id, ping_time, payload }) => {
+                let reply = GateKeeperToCli::PingReply {
+                    trans_id, ping_time, payload
+                };
+                send_message!(stream, reply);
+            }
+            Ok(CliToGateKeeper::FileServIpAddressRequest { trans_id, from_patcher }) => {
+                // Currently unused
+                let _ = from_patcher;
+
+                let reply = GateKeeperToCli::FileServIpAddressReply {
+                    trans_id,
+                    ip_addr: server_config.file_serv_ip.clone(),
+                };
+                send_message!(stream, reply);
+            }
+            Ok(CliToGateKeeper::AuthServIpAddressRequest { trans_id }) => {
+                let reply = GateKeeperToCli::AuthServIpAddressReply {
+                    trans_id,
+                    ip_addr: server_config.auth_serv_ip.clone(),
+                };
+                send_message!(stream, reply);
+            }
+            Err(err) => {
+                eprintln!("[GateKeeper] Error reading message from client: {:?}", err);
+                return;
+            }
+        }
+    }
 }
 
 impl GateKeeper {
-    pub fn start() -> GateKeeper {
+    pub fn start(server_config: Arc<ServerConfig>) -> GateKeeper {
         let (incoming_send, mut incoming_recv) = mpsc::channel(5);
 
         tokio::spawn(async move {
             while let Some(sock) = incoming_recv.recv().await {
+                let server_config = server_config.clone();
                 tokio::spawn(async move {
-                    gate_keeper_client(sock).await;
+                    gate_keeper_client(sock, server_config).await;
                 });
             }
         });

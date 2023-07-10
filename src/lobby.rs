@@ -15,13 +15,16 @@
  */
 
 use std::io::{BufRead, Cursor, Result, Error, ErrorKind};
+use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt};
 use tokio::net::{TcpListener, TcpStream};
 use uuid::Uuid;
 
-use crate::plasma::StreamRead;
+use crate::config::ServerConfig;
 use crate::gate_keeper::GateKeeper;
+use crate::file_srv::FileServer;
+use crate::plasma::StreamRead;
 
 struct ConnectionHeader {
     conn_type: u8,
@@ -85,16 +88,18 @@ fn connection_type_name(conn_type: u8) -> String {
     }
 }
 
-pub async fn lobby_server(listen_addr: &str) {
-    let listener = match TcpListener::bind(listen_addr).await {
+pub async fn lobby_server(server_config: Arc<ServerConfig>) {
+    let listener = match TcpListener::bind(&server_config.listen_address).await {
         Ok(listener) => listener,
         Err(err) => {
-            eprintln!("Failed to bind on address {}: {:?}", listen_addr, err);
+            eprintln!("Failed to bind on address {}: {:?}",
+                      server_config.listen_address, err);
             std::process::exit(1);
         }
     };
 
-    let mut gate_keeper = GateKeeper::start();
+    let mut file_server = FileServer::start(server_config.clone());
+    let mut gate_keeper = GateKeeper::start(server_config.clone());
 
     loop {
         let (mut sock, sock_addr) = match listener.accept().await {
@@ -118,18 +123,10 @@ pub async fn lobby_server(listen_addr: &str) {
                  header.product_id);
 
         match header.conn_type {
-            CONN_CLI_TO_GATE_KEEPER => {
-                gate_keeper.add(sock).await;
-            }
-            CONN_CLI_TO_FILE => {
-                todo!();
-            }
-            CONN_CLI_TO_AUTH => {
-                todo!();
-            }
-            CONN_CLI_TO_GAME => {
-                todo!();
-            }
+            CONN_CLI_TO_GATE_KEEPER => gate_keeper.add(sock).await,
+            CONN_CLI_TO_FILE => file_server.add(sock).await,
+            CONN_CLI_TO_AUTH => todo!(),
+            CONN_CLI_TO_GAME => todo!(),
             CONN_CLI_TO_CSR => {
                 eprintln!("[Lobby] {} - Got CSR client; rejecting", sock_addr);
                 continue;

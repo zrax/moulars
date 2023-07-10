@@ -18,5 +18,7 @@ pub mod file_srv;
 pub mod gate_keeper;
 pub mod plasma;
 
+pub mod config;
 pub mod crypt;
 pub mod lobby;
+pub mod netcli;

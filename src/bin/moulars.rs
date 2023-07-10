@@ -14,10 +14,11 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+use moulars::config::ServerConfig;
 use moulars::lobby::lobby_server;
 
 #[tokio::main]
 async fn main() {
-    // TODO: This listen address (among other things) should be configurable
-    lobby_server("0.0.0.0:14617").await;
+    let config = ServerConfig::dummy_config();
+    lobby_server(config).await;
 }
