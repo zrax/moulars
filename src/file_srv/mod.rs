@@ -115,10 +115,10 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
                     continue;
                 }
 
-                println!("[File] Client {} requested manifest {}",
-                         stream.get_ref().peer_addr().unwrap(), manifest_name);
-
                 let reply = if let Some(manifest) = fetch_manifest(&manifest_name) {
+                    println!("[File] Client {} requested manifest '{}'",
+                             stream.get_ref().peer_addr().unwrap(), manifest_name);
+
                     client_reader_id += 1;
                     FileToCli::ManifestReply {
                         trans_id,
@@ -127,6 +127,9 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
                         manifest
                     }
                 } else {
+                    eprintln!("[File] Client {} requested invalid/unknown manifest '{}'",
+                              stream.get_ref().peer_addr().unwrap(), manifest_name);
+
                     FileToCli::ManifestReply {
                         trans_id,
                         result: NetResultCode::NetFileNotFound as i32,
@@ -134,6 +137,7 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
                         manifest: Manifest::new(),
                     }
                 };
+
                 send_message!(stream, reply);
             }
             Ok(CliToFile::DownloadRequest { trans_id, filename, build_id }) => {
