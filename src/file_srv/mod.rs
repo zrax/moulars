@@ -28,6 +28,7 @@ use tokio::sync::mpsc;
 use crate::config::ServerConfig;
 use crate::netcli::NetResultCode;
 use self::messages::{CliToFile, FileToCli};
+use self::manifest::Manifest;
 
 pub struct FileServer {
     incoming_send: mpsc::Sender<TcpStream>,
@@ -69,6 +70,11 @@ macro_rules! send_message {
     }
 }
 
+fn fetch_manifest(manifest_name: &String) -> Option<Manifest> {
+    // TODO: Send a real manifest
+    None
+}
+
 async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerConfig>) {
     let mut stream = match init_client(client_sock).await {
         Ok(stream) => stream,
@@ -77,6 +83,9 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
             return;
         }
     };
+
+    // This monotonic ID is unique for each client, so we always start at 0
+    let mut client_reader_id = 0;
 
     loop {
         match CliToFile::read(&mut stream).await {
@@ -93,7 +102,39 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
                 send_message!(stream, reply);
             }
             Ok(CliToFile::ManifestRequest { trans_id, manifest_name, build_id }) => {
-                todo!()
+                if build_id != 0 && build_id != server_config.build_id {
+                    eprintln!("[File] Client {} has an unexpected build ID {}",
+                              stream.get_ref().peer_addr().unwrap(), build_id);
+                    let reply = FileToCli::ManifestReply {
+                        trans_id,
+                        result: NetResultCode::NetOldBuildId as i32,
+                        reader_id: 0,
+                        manifest: Manifest::new()
+                    };
+                    send_message!(stream, reply);
+                    continue;
+                }
+
+                println!("[File] Client {} requested manifest {}",
+                         stream.get_ref().peer_addr().unwrap(), manifest_name);
+
+                let reply = if let Some(manifest) = fetch_manifest(&manifest_name) {
+                    client_reader_id += 1;
+                    FileToCli::ManifestReply {
+                        trans_id,
+                        result: NetResultCode::NetSuccess as i32,
+                        reader_id: client_reader_id,
+                        manifest
+                    }
+                } else {
+                    FileToCli::ManifestReply {
+                        trans_id,
+                        result: NetResultCode::NetFileNotFound as i32,
+                        reader_id: 0,
+                        manifest: Manifest::new(),
+                    }
+                };
+                send_message!(stream, reply);
             }
             Ok(CliToFile::DownloadRequest { trans_id, filename, build_id }) => {
                 todo!()

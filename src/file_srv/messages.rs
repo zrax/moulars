@@ -180,7 +180,11 @@ impl FileToCli {
                 buffer.write_u32::<LittleEndian>(*trans_id)?;
                 buffer.write_i32::<LittleEndian>(*result)?;
                 buffer.write_u32::<LittleEndian>(*reader_id)?;
-                todo!();
+                buffer.write_u32::<LittleEndian>(manifest.num_files())?;
+                let manifest_data = manifest.encode_for_stream()?;
+                assert_eq!(manifest_data.len() % size_of::<u16>(), 0);
+                buffer.write_u32::<LittleEndian>((manifest_data.len() / size_of::<u16>()) as u32)?;
+                buffer.write_all(manifest_data.as_slice())?;
             }
             FileToCli::FileDownloadReply { trans_id, result, reader_id, file_size,
                                            file_data } => {
