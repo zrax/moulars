@@ -165,3 +165,32 @@ impl StreamWrite for Location {
         Ok(())
     }
 }
+
+#[test]
+fn test_location() {
+    // Yes, there are multiple ways of encoding the same sequence...
+    assert_eq!(Location::make(0, 0, 0).sequence, 0x00000021);
+    assert_eq!(Location::make(1, 0, 0).sequence, 0x00010021);
+    assert_eq!(Location::make(100, 1, 0).sequence, 0x00640022);
+    assert_eq!(Location::make(65535, 65502, 0).sequence, 0xFFFFFFFF);
+
+    assert_eq!(Location::make(1, -1, 0).sequence, 0x00020020);
+    assert_eq!(Location::make(100, -33, 0).sequence, 0x00650000);
+    assert_eq!(Location::make(65534, -33, 0).sequence, 0xFFFF0000);
+
+    assert_eq!(Location::make(-1, 0, 0).sequence, 0xFF010001);
+    assert_eq!(Location::make(-100, 1, 0).sequence, 0xFF640002);
+    assert_eq!(Location::make(-255, 65534, 0).sequence, 0xFFFFFFFF);
+
+    assert_eq!(Location::make(-1, -1, 0).sequence, 0xFF020000);
+    assert_eq!(Location::make(-254, -1, 0).sequence, 0xFFFF0000);
+
+    // Wrap around -- not actually valid...
+    assert_eq!(Location::make(65537, 0, 0).sequence, 0x00010021);
+    assert_eq!(Location::make(65536, -1, 0).sequence, 0x00010020);
+    assert_eq!(Location::make(65536, -33, 0).sequence, 0x00010000);
+
+    assert_eq!(Location::make(1, 65503, 0).sequence, 0x00020000);
+    assert_eq!(Location::make(1, -34, 0).sequence, 0x0001FFFF);
+    assert_eq!(Location::make(-255, -2, 0).sequence, 0xFFFFFFFF);
+}
