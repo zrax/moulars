@@ -15,10 +15,10 @@
  */
 
 use std::sync::Arc;
+use std::path::PathBuf;
 
 use num_bigint::BigUint;
 
-#[derive(Clone)]
 pub struct ServerConfig {
     /* Listen address for the lobby server */
     pub listen_address: String,
@@ -37,6 +37,9 @@ pub struct ServerConfig {
     /* GateKeeper server addresses */
     pub file_serv_ip: String,
     pub auth_serv_ip: String,
+
+    /* File server data path */
+    pub file_data_root: PathBuf,
 }
 
 impl ServerConfig {
@@ -72,7 +75,16 @@ impl ServerConfig {
         let gate_n: [u8; 64] = [210, 189, 3, 70, 185, 24, 145, 186, 70, 2, 16, 114, 94, 11, 86, 28, 9, 201, 211, 141, 95, 199, 28, 207, 64, 103, 176, 137, 70, 88, 126, 52, 237, 67, 128, 118, 111, 35, 236, 213, 64, 58, 161, 240, 254, 243, 243, 206, 159, 171, 60, 221, 212, 239, 147, 187, 86, 254, 11, 234, 36, 4, 174, 139];
         let gate_k: [u8; 64] = [233, 255, 143, 54, 172, 144, 221, 95, 103, 171, 53, 54, 91, 38, 212, 46, 58, 229, 137, 236, 244, 147, 40, 164, 33, 51, 0, 27, 131, 182, 224, 187, 192, 182, 242, 233, 147, 83, 199, 113, 215, 96, 182, 183, 143, 186, 140, 33, 19, 237, 240, 194, 222, 233, 224, 24, 25, 189, 113, 111, 226, 138, 34, 95];
 
+        let cwd = match std::env::current_dir() {
+            Ok(path) => path,
+            Err(err) => {
+                eprintln!("Failed to determine current working directory: {:?}", err);
+                std::process::exit(1);
+            }
+        };
+
         Arc::new(ServerConfig {
+            // Warning: Never listen on an external IP address with dummy keys
             listen_address: "127.0.0.1:14617".to_string(),
             build_id: 918,
             auth_n_key: BigUint::from_bytes_be(&auth_n),
@@ -83,6 +95,8 @@ impl ServerConfig {
             gate_k_key: BigUint::from_bytes_be(&gate_k),
             file_serv_ip: "127.0.0.1".to_string(),
             auth_serv_ip: "127.0.0.1".to_string(),
+            // Only works if we're running from a directory that contains a data dir...
+            file_data_root: cwd.join("data"),
         })
     }
 }

@@ -18,6 +18,7 @@ mod manifest;
 mod messages;
 
 use std::io::{BufRead, Cursor, Result, Error, ErrorKind};
+use std::path::Path;
 use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -70,9 +71,25 @@ macro_rules! send_message {
     }
 }
 
-fn fetch_manifest(manifest_name: &String) -> Option<Manifest> {
-    // TODO: Send a real manifest
-    None
+fn fetch_manifest(manifest_name: &String, data_path: &Path) -> Option<Manifest> {
+    if manifest_name.contains(|ch| ch == '/' || ch == '\\' || ch == ':' || ch == '.') {
+        // Reject anything that looks like a path
+        return None;
+    }
+
+    let manifest_path = data_path.join(manifest_name.to_owned() + ".mfs_cache");
+    if manifest_path.exists() {
+        match Manifest::from_cache(&manifest_path) {
+            Ok(manifest) => Some(manifest),
+            Err(err) => {
+                eprintln!("[File] Failed to load manifest '{}': {:?}",
+                          manifest_name, err);
+                None
+            }
+        }
+    } else {
+        None
+    }
 }
 
 async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerConfig>) {
@@ -115,7 +132,10 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
                     continue;
                 }
 
-                let reply = if let Some(manifest) = fetch_manifest(&manifest_name) {
+                let reply =
+                    if let Some(manifest) = fetch_manifest(&manifest_name,
+                                                           &server_config.file_data_root)
+                {
                     println!("[File] Client {} requested manifest '{}'",
                              stream.get_ref().peer_addr().unwrap(), manifest_name);
 

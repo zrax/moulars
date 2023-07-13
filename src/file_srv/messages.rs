@@ -21,7 +21,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use tokio::io::BufReader;
 use tokio::net::TcpStream;
 
-use crate::plasma::StreamRead;
+use crate::plasma::{StreamRead, StreamWrite};
 use super::manifest::Manifest;
 
 pub enum CliToFile {
@@ -54,6 +54,7 @@ pub enum FileToCli {
         result: i32,
         build_id: u32,
     },
+    #[allow(unused)]
     BuildIdUpdate { build_id: u32 },
     ManifestReply {
         trans_id: u32,
@@ -152,56 +153,55 @@ impl FileToCli {
     pub async fn write(&self, stream: &mut TcpStream) -> Result<()> {
         use tokio::io::AsyncWriteExt;
 
-        let mut buffer = Cursor::new(Vec::new());
-        self.write_buffer(&mut buffer)?;
-        stream.write_all(buffer.get_ref()).await
+        let buffer = {
+            let mut buffer = Cursor::new(Vec::new());
+            self.stream_write(&mut buffer)?;
+            buffer.into_inner()
+        };
+
+        let msg_size = (size_of::<u32>() + buffer.len()) as u32;
+        stream.write_u32_le(msg_size).await?;
+        stream.write_all(&buffer).await
     }
+}
 
-    fn write_buffer(&self, buffer: &mut Cursor<Vec<u8>>) -> Result<()> {
-        buffer.write_u32::<LittleEndian>(0)?;
-
+impl StreamWrite for FileToCli {
+    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
+        where S: Write
+    {
         match self {
             FileToCli::PingReply { ping_time } => {
-                buffer.write_u32::<LittleEndian>(FILE2CLI_PING_REPLY)?;
-                buffer.write_u32::<LittleEndian>(*ping_time)?;
+                stream.write_u32::<LittleEndian>(FILE2CLI_PING_REPLY)?;
+                stream.write_u32::<LittleEndian>(*ping_time)?;
             }
             FileToCli::BuildIdReply { trans_id, result, build_id } => {
-                buffer.write_u32::<LittleEndian>(FILE2CLI_BUILD_ID_REPLY)?;
-                buffer.write_u32::<LittleEndian>(*trans_id)?;
-                buffer.write_i32::<LittleEndian>(*result)?;
-                buffer.write_u32::<LittleEndian>(*build_id)?;
+                stream.write_u32::<LittleEndian>(FILE2CLI_BUILD_ID_REPLY)?;
+                stream.write_u32::<LittleEndian>(*trans_id)?;
+                stream.write_i32::<LittleEndian>(*result)?;
+                stream.write_u32::<LittleEndian>(*build_id)?;
             }
             FileToCli::BuildIdUpdate { build_id } => {
-                buffer.write_u32::<LittleEndian>(FILE2CLI_BUILD_ID_UPDATE)?;
-                buffer.write_u32::<LittleEndian>(*build_id)?;
+                stream.write_u32::<LittleEndian>(FILE2CLI_BUILD_ID_UPDATE)?;
+                stream.write_u32::<LittleEndian>(*build_id)?;
             }
             FileToCli::ManifestReply { trans_id, result, reader_id, manifest } => {
-                buffer.write_u32::<LittleEndian>(FILE2CLI_MANIFEST_REPLY)?;
-                buffer.write_u32::<LittleEndian>(*trans_id)?;
-                buffer.write_i32::<LittleEndian>(*result)?;
-                buffer.write_u32::<LittleEndian>(*reader_id)?;
-                buffer.write_u32::<LittleEndian>(manifest.num_files())?;
-                let manifest_data = manifest.encode_for_stream()?;
-                assert_eq!(manifest_data.len() % size_of::<u16>(), 0);
-                buffer.write_u32::<LittleEndian>((manifest_data.len() / size_of::<u16>()) as u32)?;
-                buffer.write_all(manifest_data.as_slice())?;
+                stream.write_u32::<LittleEndian>(FILE2CLI_MANIFEST_REPLY)?;
+                stream.write_u32::<LittleEndian>(*trans_id)?;
+                stream.write_i32::<LittleEndian>(*result)?;
+                stream.write_u32::<LittleEndian>(*reader_id)?;
+                manifest.stream_write(stream)?;
             }
             FileToCli::FileDownloadReply { trans_id, result, reader_id, file_size,
                                            file_data } => {
-                buffer.write_u32::<LittleEndian>(FILE2CLI_FILE_DOWNLOAD_REPLY)?;
-                buffer.write_u32::<LittleEndian>(*trans_id)?;
-                buffer.write_i32::<LittleEndian>(*result)?;
-                buffer.write_u32::<LittleEndian>(*reader_id)?;
-                buffer.write_u32::<LittleEndian>(*file_size)?;
-                buffer.write_u32::<LittleEndian>(file_data.len() as u32)?;
-                buffer.write_all(file_data.as_slice())?;
+                stream.write_u32::<LittleEndian>(FILE2CLI_FILE_DOWNLOAD_REPLY)?;
+                stream.write_u32::<LittleEndian>(*trans_id)?;
+                stream.write_i32::<LittleEndian>(*result)?;
+                stream.write_u32::<LittleEndian>(*reader_id)?;
+                stream.write_u32::<LittleEndian>(*file_size)?;
+                stream.write_u32::<LittleEndian>(file_data.len() as u32)?;
+                stream.write_all(file_data.as_slice())?;
             }
         }
-
-        // Update the message size and send it as a single chunk of data
-        let buf_size = buffer.position() as u32;
-        buffer.set_position(0);
-        buffer.write_u32::<LittleEndian>(buf_size)?;
 
         Ok(())
     }
