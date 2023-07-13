@@ -14,13 +14,14 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Cursor, Result, Error, ErrorKind};
+use std::io::{BufRead, Write, Cursor, Result};
 use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt};
 use tokio::net::{TcpListener, TcpStream};
 use uuid::Uuid;
 
+use crate::general_error;
 use crate::config::ServerConfig;
 use crate::gate_keeper::GateKeeper;
 use crate::file_srv::FileServer;
@@ -56,8 +57,7 @@ impl StreamRead for ConnectionHeader {
         let conn_type = stream.read_u8()?;
         let sock_header_size = stream.read_u16::<LittleEndian>()?;
         if sock_header_size != Self::CONN_HEADER_SIZE as u16 {
-            return Err(Error::new(ErrorKind::Other,
-                       format!("Invalid socket header size: {}", sock_header_size)));
+            return Err(general_error!("Invalid socket header size: {}", sock_header_size));
         }
         let build_id = stream.read_u32::<LittleEndian>()?;
         let build_type = stream.read_u32::<LittleEndian>()?;

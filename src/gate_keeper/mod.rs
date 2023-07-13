@@ -16,7 +16,7 @@
 
 mod messages;
 
-use std::io::{BufRead, Cursor, Result, Error, ErrorKind};
+use std::io::{BufRead, Cursor, Result};
 use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -25,6 +25,7 @@ use tokio::sync::mpsc;
 use tokio::net::TcpStream;
 use uuid::Uuid;
 
+use crate::general_error;
 use crate::config::ServerConfig;
 use crate::crypt::CryptStream;
 use crate::plasma::{StreamRead, StreamWrite};
@@ -42,8 +43,7 @@ fn read_conn_header<S>(stream: &mut S) -> Result<()>
     // Everything here is discarded...
     let header_size = stream.read_u32::<LittleEndian>()?;
     if header_size != CONN_HEADER_SIZE as u32 {
-        return Err(Error::new(ErrorKind::Other,
-                   format!("[GateKeeper] Invalid connection header size {}", header_size)));
+        return Err(general_error!("[GateKeeper] Invalid connection header size {}", header_size));
     }
     // Null UUID
     let _ = Uuid::stream_read(stream)?;

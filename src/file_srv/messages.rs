@@ -14,13 +14,14 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Write, Result, Error, ErrorKind, Cursor};
+use std::io::{BufRead, Write, Cursor, Result};
 use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use tokio::io::BufReader;
 use tokio::net::TcpStream;
 
+use crate::general_error;
 use crate::plasma::{StreamRead, StreamWrite};
 use super::manifest::Manifest;
 
@@ -98,7 +99,7 @@ impl CliToFile {
 
         let msg_size = stream.read_u32_le().await?;
         if (msg_size as usize) < size_of::<u32>() {
-            return Err(Error::new(ErrorKind::Other, "Message size too small"));
+            return Err(general_error!("Message size too small"));
         }
         let mut msg_buf = vec![0u8; (msg_size as usize) - size_of::<u32>()];
         stream.read_exact(&mut msg_buf).await?;
@@ -142,7 +143,7 @@ impl StreamRead for CliToFile {
                 Ok(CliToFile::DownloadChunkAck { trans_id, reader_id })
             }
             msg_id => {
-                Err(Error::new(ErrorKind::Other, format!("Bad message ID {}", msg_id)))
+                Err(general_error!("Bad message ID {}", msg_id))
             },
         }
     }

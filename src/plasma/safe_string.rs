@@ -14,9 +14,11 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Write, Result, Error, ErrorKind};
+use std::io::{BufRead, Write, Result};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+
+use crate::general_error;
 
 #[derive(Eq, PartialEq)]
 pub enum StringFormat {
@@ -70,7 +72,7 @@ pub fn write_safe_str<S>(stream: &mut S, value: &str, format: StringFormat) -> R
         let buffer: Vec<u16> = value.encode_utf16().collect();
         let length_key = buffer.len();
         if length_key > 0x0FFF {
-            return Err(Error::new(ErrorKind::Other, "String too large for SafeString encoding"));
+            return Err(general_error!("String too large for SafeString encoding"));
         }
         stream.write_u16::<LittleEndian>(length_key as u16 | 0xF000)?;
         for ch in buffer {
@@ -85,7 +87,7 @@ pub fn write_safe_str<S>(stream: &mut S, value: &str, format: StringFormat) -> R
         };
         let length_key = buffer.len();
         if length_key > 0x0FFF {
-            return Err(Error::new(ErrorKind::Other, "String too large for SafeString encoding"));
+            return Err(general_error!("String too large for SafeString encoding"));
         }
         stream.write_u16::<LittleEndian>(length_key as u16 | 0xF000)?;
         for ch in buffer {

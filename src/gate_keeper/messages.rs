@@ -14,11 +14,12 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{Write, Result, Error, ErrorKind};
+use std::io::{Write, Result};
 
 use byteorder::{LittleEndian, WriteBytesExt};
 use tokio::io::{AsyncReadExt, BufReader};
 
+use crate::general_error;
 use crate::crypt::CryptStream;
 use crate::plasma::StreamWrite;
 
@@ -73,8 +74,8 @@ impl CliToGateKeeper {
                 let ping_time = stream.read_u32_le().await?;
                 let payload_size = stream.read_u32_le().await?;
                 if payload_size > MAX_PING_PAYLOAD {
-                    return Err(Error::new(ErrorKind::Other,
-                               format!("[GateKeeper] Ping payload too large ({} bytes)", payload_size)));
+                    return Err(general_error!("[GateKeeper] Ping payload too large ({} bytes)",
+                               payload_size));
                 }
                 let mut payload = vec![0; payload_size as usize];
                 stream.read_exact(payload.as_mut_slice()).await?;
@@ -90,7 +91,7 @@ impl CliToGateKeeper {
                 Ok(CliToGateKeeper::AuthServIpAddressRequest { trans_id })
             }
             msg_id => {
-                Err(Error::new(ErrorKind::Other, format!("Bad message ID {}", msg_id)))
+                Err(general_error!("Bad message ID {}", msg_id))
             }
         }
     }

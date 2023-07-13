@@ -14,13 +14,14 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, BufReader, Write, BufWriter, Cursor, Result, Error, ErrorKind};
+use std::io::{BufRead, BufReader, Write, BufWriter, Cursor, Result};
 use std::fs::File;
 use std::mem::size_of;
 use std::path::Path;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
+use crate::general_error;
 use crate::plasma::{StreamRead, StreamWrite};
 
 // Flags for FileInfo
@@ -67,8 +68,7 @@ fn to_nybble(ch: u16) -> Result<u8> {
     } else if ch >= b'a' as u16 && ch <= b'f' as u16 {
         Ok((ch as u8) - b'a' + 10)
     } else {
-        Err(Error::new(ErrorKind::Other,
-            format!("Invalid hex digit in hash string: '{}'", ch)))
+        Err(general_error!("Invalid hex digit in hash string: '{}'", ch))
     }
 }
 
@@ -86,7 +86,7 @@ macro_rules! read_utf16z_md5_hash {
             buffer[i] = to_byte(hi, lo)?;
         }
         if $stream.read_u16::<LittleEndian>()? != 0 {
-            return Err(Error::new(ErrorKind::Other, "MD5 hash was not nul-terminated"));
+            return Err(general_error!("MD5 hash was not nul-terminated"));
         }
         buffer
     })
@@ -98,7 +98,7 @@ macro_rules! read_utf16z_u32 {
         let value = ($stream.read_u16::<LittleEndian>()? as u32) << 16
                   | ($stream.read_u16::<LittleEndian>()? as u32);
         if $stream.read_u16::<LittleEndian>()? != 0 {
-            return Err(Error::new(ErrorKind::Other, "uint32 value was not nul-terminated"));
+            return Err(general_error!("uint32 value was not nul-terminated"));
         }
         value
     })
@@ -184,8 +184,7 @@ impl Manifest {
         let mut stream = BufReader::new(mfs_file);
         let cache_magic = stream.read_u32::<LittleEndian>()?;
         if cache_magic != Self::CACHE_MAGIC {
-            return Err(Error::new(ErrorKind::Other,
-                       format!("Unknown/invalid cache file magic '{:08x}'", cache_magic)));
+            return Err(general_error!("Unknown/invalid cache file magic '{:08x}'", cache_magic));
         }
 
         Manifest::stream_read(&mut stream)
@@ -216,8 +215,7 @@ impl StreamRead for Manifest {
             files.push(FileInfo::stream_read(&mut file_stream)?);
         }
         if file_stream.read_u16::<LittleEndian>()? != 0 {
-            return Err(Error::new(ErrorKind::Other,
-                       "FileInfo array was not nul-terminated"));
+            return Err(general_error!("FileInfo array was not nul-terminated"));
         }
 
         Ok(Manifest { files })

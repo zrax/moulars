@@ -14,7 +14,7 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Cursor, Result, Error, ErrorKind, Write};
+use std::io::{BufRead, Write, Cursor, Result};
 use std::task::{Context, Poll};
 use std::pin::Pin;
 
@@ -23,6 +23,7 @@ use num_bigint::{BigUint, RandBigInt};
 use tokio::net::TcpStream;
 use tokio::io::{AsyncRead, BufReader, ReadBuf};
 
+use crate::general_error;
 use crate::plasma::StreamRead;
 
 type CryptCipher = rc4::Rc4<rc4::consts::U7>;
@@ -162,15 +163,13 @@ pub async fn init_crypt(mut sock: TcpStream, key_n: &BigUint, key_k: &BigUint)
     } else if crypt_header.msg_size != (CryptConnectHeader::FIXED_SIZE as u8) {
         let reply = create_error_reply()?;
         sock.write_all(&reply).await?;
-        return Err(Error::new(ErrorKind::Other,
-                   format!("Invalid encryption header size {}", crypt_header.msg_size)));
+        return Err(general_error!("Invalid encryption header size {}", crypt_header.msg_size));
     }
 
     if crypt_header.msg_id != CLI_TO_SRV_CONNECT {
         let reply = create_error_reply()?;
         sock.write_all(&reply).await?;
-        return Err(Error::new(ErrorKind::Other,
-                   format!("Invalid encrypt message type {}", crypt_header.msg_id)));
+        return Err(general_error!("Invalid encrypt message type {}", crypt_header.msg_id));
     }
 
     let key_y = BigUint::from_bytes_le(&crypt_header.key_seed);

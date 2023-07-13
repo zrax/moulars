@@ -17,7 +17,7 @@
 mod manifest;
 mod messages;
 
-use std::io::{BufRead, Cursor, Result, Error, ErrorKind};
+use std::io::{BufRead, Cursor, Result};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -26,6 +26,7 @@ use tokio::io::{AsyncReadExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 
+use crate::general_error;
 use crate::config::ServerConfig;
 use crate::netcli::NetResultCode;
 use self::messages::{CliToFile, FileToCli};
@@ -43,8 +44,7 @@ fn read_conn_header<S>(stream: &mut S) -> Result<()>
     // Everything here is discarded...
     let header_size = stream.read_u32::<LittleEndian>()?;
     if header_size != CONN_HEADER_SIZE as u32 {
-        return Err(Error::new(ErrorKind::Other,
-                   format!("[File] Invalid connection header size {}", header_size)));
+        return Err(general_error!("[File] Invalid connection header size {}", header_size));
     }
     // Build ID
     let _ = stream.read_u32::<LittleEndian>()?;
