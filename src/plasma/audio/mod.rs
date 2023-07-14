@@ -14,5 +14,5 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-mod message;
-pub use message::Message;
+mod sound_buffer;
+pub use sound_buffer::SoundBuffer;

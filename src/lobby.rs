@@ -14,7 +14,7 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Write, Cursor, Result};
+use std::io::{BufRead, Cursor, Result};
 use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt};

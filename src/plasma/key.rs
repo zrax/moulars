@@ -25,6 +25,7 @@ pub struct Key {
     data: Option<Arc<Uoid>>
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct Uoid {
     location: Location,
     load_mask: u8,
@@ -35,6 +36,7 @@ pub struct Uoid {
     clone_player_id: u32,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct Location {
     sequence: u32,
     flags: u16,
@@ -69,6 +71,8 @@ impl StreamWrite for Key {
 impl Uoid {
     const HAS_CLONE_IDS: u8 = 1 << 0;
     const HAS_LOAD_MASK: u8 = 1 << 1;
+
+    pub fn obj_type(&self) -> u16 { self.obj_type }
 }
 
 impl StreamRead for Uoid {

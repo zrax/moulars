@@ -14,11 +14,14 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-mod creatable;
+pub mod creatable;
 pub use creatable::Creatable;
 
 mod key;
 pub use key::{Key, Uoid};
+
+mod page_file;
+pub use page_file::PageFile;
 
 mod streamable;
 pub use streamable::{StreamRead, StreamWrite};
@@ -26,4 +29,5 @@ pub use streamable::{StreamRead, StreamWrite};
 mod safe_string;
 pub use safe_string::{read_safe_str, write_safe_str, StringFormat};
 
-mod messages;
+pub mod audio;
+pub mod messages;
