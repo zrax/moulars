@@ -18,11 +18,11 @@ use std::io::{BufRead, Write, Result};
 
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 
-use crate::plasma::{self, StreamRead, StreamWrite};
+use crate::plasma::{Key, StreamRead, StreamWrite};
 
 pub struct Message {
-    sender: plasma::Key,
-    receivers: Vec<plasma::Key>,
+    sender: Key,
+    receivers: Vec<Key>,
     timestamp: f64,
     bcast_flags: u32,
 }
@@ -51,25 +51,27 @@ impl Message {
     */
 }
 
-impl plasma::Creatable for Message {
-    fn read<S>(&mut self, stream: &mut S) -> Result<()>
+impl StreamRead for Message {
+    fn stream_read<S>(stream: &mut S) -> Result<Self>
         where S: BufRead
     {
-        self.sender = plasma::Key::stream_read(stream)?;
+        let sender = Key::stream_read(stream)?;
 
         let num_receivers = stream.read_u32::<LittleEndian>()?;
-        self.receivers.clear();
-        self.receivers.reserve(num_receivers as usize);
+        let mut receivers = Vec::with_capacity(num_receivers as usize);
         for _ in 0..num_receivers {
-            self.receivers.push(plasma::Key::stream_read(stream)?);
+            receivers.push(Key::stream_read(stream)?);
         }
 
-        self.timestamp = stream.read_f64::<LittleEndian>()?;
-        self.bcast_flags = stream.read_u32::<LittleEndian>()?;
-        Ok(())
-    }
+        let timestamp = stream.read_f64::<LittleEndian>()?;
+        let bcast_flags = stream.read_u32::<LittleEndian>()?;
 
-    fn write<S>(&self, stream: &mut S) -> Result<()>
+        Ok(Self { sender, receivers, timestamp, bcast_flags })
+    }
+}
+
+impl StreamWrite for Message {
+    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
         where S: Write
     {
         self.sender.stream_write(stream)?;

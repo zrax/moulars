@@ -14,13 +14,10 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Write, Result};
+use crate::plasma::{StreamRead, StreamWrite};
 
-pub trait Creatable {
-    fn read<S>(&mut self, stream: &mut S) -> Result<()>
-        where S: BufRead;
-    fn write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write;
+pub trait Creatable : StreamRead + StreamWrite {
+    fn class_id() -> u16;
 }
 
 #[repr(u16)]

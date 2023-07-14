@@ -107,16 +107,14 @@ impl StreamRead for CryptConnectHeader {
 }
 
 fn create_error_reply() -> Result<Vec<u8>> {
-    let mut stream = Cursor::new(Vec::new());
-    stream.get_mut().reserve(CryptConnectHeader::FIXED_SIZE);
+    let mut stream = Cursor::new(Vec::with_capacity(CryptConnectHeader::FIXED_SIZE));
     stream.write_u8(SRV_TO_CLI_ERROR)?;
     stream.write_u8(CryptConnectHeader::FIXED_SIZE as u8)?;
     Ok(stream.into_inner())
 }
 
 fn create_crypt_reply(server_seed: &[u8]) -> Result<Vec<u8>> {
-    let mut stream = Cursor::new(Vec::new());
-    stream.get_mut().reserve(CryptConnectHeader::ENCRYPT_REPLY_SIZE);
+    let mut stream = Cursor::new(Vec::with_capacity(CryptConnectHeader::ENCRYPT_REPLY_SIZE));
     stream.write_u8(SRV_TO_CLI_ENCRYPT)?;
     stream.write_u8(CryptConnectHeader::ENCRYPT_REPLY_SIZE as u8)?;
     stream.write_all(server_seed)?;

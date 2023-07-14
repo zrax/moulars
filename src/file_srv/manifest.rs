@@ -203,8 +203,7 @@ impl StreamRead for Manifest {
         where S: BufRead
     {
         let num_files = stream.read_u32::<LittleEndian>()?;
-        let mut files = Vec::new();
-        files.reserve(num_files as usize);
+        let mut files = Vec::with_capacity(num_files as usize);
 
         let char_count = stream.read_u32::<LittleEndian>()? as usize;
         let mut file_buffer = vec![0; char_count * size_of::<u16>()];
