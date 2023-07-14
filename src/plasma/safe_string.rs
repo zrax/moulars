@@ -29,7 +29,7 @@ pub fn read_safe_str<S>(stream: &mut S, format: StringFormat) -> Result<String>
     where S: BufRead
 {
     let length = stream.read_u16::<LittleEndian>()?;
-    if (length & 0xF000) != 0 {
+    if (length & 0xF000) == 0 {
         // Discarded -- old format
         let _ = stream.read_u16::<LittleEndian>()?;
     }
