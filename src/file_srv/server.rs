@@ -62,7 +62,7 @@ async fn init_client(mut sock: TcpStream) -> Result<BufReader<TcpStream>> {
 macro_rules! send_message {
     ($stream:expr, $reply:expr) => {
         if let Err(err) = $reply.write($stream.get_mut()).await {
-            eprintln!("[File] Failed to send reply message: {:?}", err);
+            eprintln!("[File] Failed to send reply message: {}", err);
             return;
         }
     }
@@ -79,7 +79,7 @@ fn fetch_manifest(manifest_name: &String, data_path: &Path) -> Option<Manifest> 
         match Manifest::from_cache(&manifest_path) {
             Ok(manifest) => Some(manifest),
             Err(err) => {
-                eprintln!("[File] Failed to load manifest '{}': {:?}",
+                eprintln!("[File] Failed to load manifest '{}': {}",
                           manifest_name, err);
                 None
             }
@@ -93,7 +93,7 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
     let mut stream = match init_client(client_sock).await {
         Ok(stream) => stream,
         Err(err) => {
-            eprintln!("[File] Failed to initialize client: {:?}", err);
+            eprintln!("[File] Failed to initialize client: {}", err);
             return;
         }
     };
@@ -169,7 +169,7 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
                 continue;
             }
             Err(err) => {
-                eprintln!("[File] Error reading message from client: {:?}", err);
+                eprintln!("[File] Error reading message from client: {}", err);
                 return;
             }
         }
@@ -193,7 +193,7 @@ impl FileServer {
 
     pub async fn add(&mut self, sock: TcpStream) {
         if let Err(err) = self.incoming_send.send(sock).await {
-            eprintln!("[File] Failed to add client: {:?}", err);
+            eprintln!("[File] Failed to add client: {}", err);
             std::process::exit(1);
         }
     }

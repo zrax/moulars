@@ -92,7 +92,7 @@ pub async fn lobby_server(server_config: Arc<ServerConfig>) {
     let listener = match TcpListener::bind(&server_config.listen_address).await {
         Ok(listener) => listener,
         Err(err) => {
-            eprintln!("Failed to bind on address {}: {:?}",
+            eprintln!("Failed to bind on address {}: {}",
                       server_config.listen_address, err);
             std::process::exit(1);
         }
@@ -105,14 +105,14 @@ pub async fn lobby_server(server_config: Arc<ServerConfig>) {
         let (mut sock, sock_addr) = match listener.accept().await {
             Ok((sock, sock_addr)) => (sock, sock_addr),
             Err(err) => {
-                eprintln!("Failed to accept from socket: {:?}", err);
+                eprintln!("Failed to accept from socket: {}", err);
                 continue;
             }
         };
         let header = match ConnectionHeader::read(&mut sock).await {
             Ok(header) => header,
             Err(err) => {
-                eprintln!("Failed to read connection header: {:?}", err);
+                eprintln!("Failed to read connection header: {}", err);
                 continue;
             }
         };

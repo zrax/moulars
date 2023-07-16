@@ -64,11 +64,11 @@ macro_rules! send_message {
     ($stream:expr, $reply:expr) => {
         let mut reply_buf = Cursor::new(Vec::new());
         if let Err(err) = $reply.stream_write(&mut reply_buf) {
-            eprintln!("[GateKeeper] Failed to write reply stream: {:?}", err);
+            eprintln!("[GateKeeper] Failed to write reply stream: {}", err);
             return;
         }
         if let Err(err) = $stream.get_mut().write_all(reply_buf.get_ref()).await {
-            eprintln!("[GateKeeper] Failed to send reply: {:?}", err);
+            eprintln!("[GateKeeper] Failed to send reply: {}", err);
             return;
         }
     }
@@ -78,7 +78,7 @@ async fn gate_keeper_client(client_sock: TcpStream, server_config: Arc<ServerCon
     let mut stream = match init_client(client_sock, &server_config).await {
         Ok(cipher) => cipher,
         Err(err) => {
-            eprintln!("[GateKeeper] Failed to initialize client: {:?}", err);
+            eprintln!("[GateKeeper] Failed to initialize client: {}", err);
             return;
         }
     };
@@ -109,7 +109,7 @@ async fn gate_keeper_client(client_sock: TcpStream, server_config: Arc<ServerCon
                 send_message!(stream, reply);
             }
             Err(err) => {
-                eprintln!("[GateKeeper] Error reading message from client: {:?}", err);
+                eprintln!("[GateKeeper] Error reading message from client: {}", err);
                 return;
             }
         }
@@ -133,7 +133,7 @@ impl GateKeeper {
 
     pub async fn add(&mut self, sock: TcpStream) {
         if let Err(err) = self.incoming_send.send(sock).await {
-            eprintln!("[GateKeeper] Failed to add client: {:?}", err);
+            eprintln!("[GateKeeper] Failed to add client: {}", err);
             std::process::exit(1);
         }
     }

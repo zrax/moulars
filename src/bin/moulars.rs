@@ -16,9 +16,17 @@
 
 use moulars::config::ServerConfig;
 use moulars::lobby::lobby_server;
+use moulars::file_srv::cache_clients;
 
 #[tokio::main]
 async fn main() {
     let config = ServerConfig::dummy_config();
+
+    if let Err(err) = cache_clients(config.as_ref()) {
+        eprintln!("Warning: Failed to update file server cache: {}", err);
+        // Try to continue anyway...  The file server may be useless in this
+        // case though.
+    }
+
     lobby_server(config).await;
 }

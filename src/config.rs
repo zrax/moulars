@@ -78,7 +78,7 @@ impl ServerConfig {
         let cwd = match std::env::current_dir() {
             Ok(path) => path,
             Err(err) => {
-                eprintln!("Failed to determine current working directory: {:?}", err);
+                eprintln!("Failed to determine current working directory: {}", err);
                 std::process::exit(1);
             }
         };

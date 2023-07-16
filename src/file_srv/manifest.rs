@@ -15,26 +15,23 @@
  */
 
 use std::io::{BufRead, BufReader, Write, BufWriter, Cursor, Result};
+use std::ffi::OsStr;
 use std::fs::File;
 use std::mem::size_of;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use flate2::write::GzEncoder;
+use md5::{Md5, Digest};
 
 use crate::general_error;
+use crate::config::ServerConfig;
 use crate::plasma::{StreamRead, StreamWrite};
 
-// Flags for FileInfo
-pub const OGG_SPLIT_CHANNELS: u32 = 1 << 0;
-pub const OGG_STREAM: u32 = 1 << 1;
-pub const OGG_STEREO: u32 = 1 << 2;
-pub const COMPRESSED_GZ: u32 = 1 << 3;
-pub const REDIST_UPDATE: u32 = 1 << 4;
-pub const DELETED: u32 = 1 << 5;
-
+#[derive(Debug)]
 pub struct FileInfo {
-    filename: String,
-    download_name: String,
+    client_path: String,
+    download_path: String,
     file_hash: [u8; 16],
     download_hash: [u8; 16],
     file_size: u32,
@@ -44,6 +41,159 @@ pub struct FileInfo {
 
 pub struct Manifest {
     files: Vec<FileInfo>,
+}
+
+fn md5_hash_file(path: &Path) -> Result<[u8; 16]> {
+    let mut file = File::open(path)?;
+    let mut hash = Md5::new();
+    std::io::copy(&mut file, &mut hash)?;
+    Ok(hash.finalize().into())
+}
+
+// Rust makes this surprisingly difficult...
+fn append_extension(path: impl AsRef<Path>, ext: impl AsRef<OsStr>) -> PathBuf {
+    let path = path.as_ref();
+    let ext = ext.as_ref();
+
+    if ext.is_empty() {
+        return path.to_owned();
+    }
+
+    match path.extension() {
+        Some(cur_ext) => {
+            let mut new_ext = cur_ext.to_os_string();
+            new_ext.push(".");
+            new_ext.push(ext);
+            path.with_extension(new_ext)
+        }
+        None => path.with_extension(ext)
+    }
+}
+
+#[test]
+fn test_append_extension() {
+    assert_eq!(append_extension(Path::new("/foo/bar"), "gz"), Path::new("/foo/bar.gz"));
+    assert_eq!(append_extension(Path::new("/foo/bar.exe"), "gz"), Path::new("/foo/bar.exe.gz"));
+    assert_eq!(append_extension(Path::new("bar"), "gz"), Path::new("bar.gz"));
+    assert_eq!(append_extension(Path::new("bar.exe"), "gz"), Path::new("bar.exe.gz"));
+    assert_eq!(append_extension(Path::new("/foo/bar"), ""), Path::new("/foo/bar"));
+    assert_eq!(append_extension(Path::new("/foo/bar.exe"), ""), Path::new("/foo/bar.exe"));
+}
+
+impl FileInfo {
+    // Flags for FileInfo
+    pub const OGG_SPLIT_CHANNELS: u32 = 1 << 0;
+    pub const OGG_STREAM: u32 = 1 << 1;
+    pub const OGG_STEREO: u32 = 1 << 2;
+    pub const COMPRESSED_GZ: u32 = 1 << 3;
+    pub const REDIST_UPDATE: u32 = 1 << 4;
+    pub const DELETED: u32 = 1 << 5;
+
+    // Creates a new entry with invalid hash/size data.
+    // It will need to be populated with real data via update() before
+    // it can be send to a client.
+    pub fn new(client_path: String, download_path: String) -> Self {
+        let download_path = download_path.replace(std::path::MAIN_SEPARATOR, "\\");
+
+        // If the filename matches a pattern that looks like a redist installer,
+        // mark it as such...
+        let flags = if client_path.to_ascii_lowercase().contains("vcredist") {
+            Self::REDIST_UPDATE
+        } else {
+            0
+        };
+
+        Self {
+            client_path,
+            download_path,
+            file_hash: [0; 16],
+            download_hash: [0; 16],
+            file_size: 0,
+            download_size: 0,
+            flags
+        }
+    }
+
+    pub fn client_path(&self) -> &String { &self.client_path }
+    pub fn download_path(&self) -> &String { &self.download_path }
+
+    // Returns the path to the source file on the server
+    pub fn source_path(&self, server_config: &ServerConfig) -> PathBuf {
+        let native_path = self.download_path.replace('\\', std::path::MAIN_SEPARATOR_STR);
+        let src_path = server_config.file_data_root.join(native_path);
+        if self.is_compressed() && src_path.extension() == Some(OsStr::new("gz")) {
+            // The original source file is uncompressed at the same path.
+            src_path.with_extension("")
+        } else {
+            src_path
+        }
+    }
+
+    pub fn is_compressed(&self) -> bool { (self.flags & Self::COMPRESSED_GZ) != 0}
+
+    pub fn update(&mut self, server_config: &ServerConfig) -> Result<()> {
+        let src_path = self.source_path(server_config);
+
+        let updated_file_hash = md5_hash_file(&src_path)?;
+        let src_metadata = src_path.metadata()?;
+        if src_metadata.len() != (self.file_size as u64)
+            || updated_file_hash != self.file_hash
+        {
+            // The source file has changed (or this is the first time we're
+            // updating it), so we need to update the other properties as well.
+            self.file_hash = updated_file_hash;
+            if src_metadata.len() > u32::MAX as u64 {
+                return Err(general_error!("Source file is too large"));
+            } else {
+                self.file_size = src_metadata.len() as u32;
+            }
+
+            // Try compressing the file.  If we don't get at least 10% savings,
+            // it's not worth compressing and we should send it uncompressed.
+            // This will generally be the case for encrypted files and ogg
+            // files (which are already compressed in their own way)
+            let gz_path = append_extension(&src_path, "gz");
+            let mut gz_stream = GzEncoder::new(File::create(&gz_path)?,
+                                               flate2::Compression::default());
+            let mut src_file = File::open(&src_path)?;
+            std::io::copy(&mut src_file, &mut gz_stream)?;
+            drop(gz_stream);
+            let gz_metadata = gz_path.metadata()?;
+            if gz_metadata.len() < ((self.file_size as f64) * 0.9) as u64 {
+                // Compressed stream is small enough -- keep it and update
+                // the manifest cache to reference it.
+                self.download_path = gz_path.strip_prefix(&server_config.file_data_root)
+                        .map_err(|_| general_error!("Path '{}' is not in the data root", gz_path.display()))?
+                        .to_string_lossy().into();
+                self.download_hash = md5_hash_file(&gz_path)?;
+                // Already verified to be less than the (checked) size of the
+                // source file.
+                self.download_size = gz_metadata.len() as u32;
+                self.flags |= Self::COMPRESSED_GZ;
+            } else {
+                // Keep the file uncompressed.  The download hash and size will
+                // match the hash and size of the destination file.
+                self.download_path = src_path.strip_prefix(&server_config.file_data_root)
+                        .map_err(|_| general_error!("Path '{}' is not in the data root", src_path.display()))?
+                        .to_string_lossy().into();
+                self.download_hash = self.file_hash;
+                self.download_size = self.file_size;
+                self.flags &= !Self::COMPRESSED_GZ;
+                std::fs::remove_file(gz_path)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    // Use this to indicate to the client that the file should be deleted
+    pub fn mark_deleted(&mut self) {
+        self.file_hash = [0; 16];
+        self.download_hash = [0; 16];
+        self.file_size = 0;
+        self.download_size = 0;
+        self.flags = Self::DELETED;
+    }
 }
 
 macro_rules! read_utf16z_text {
@@ -108,15 +258,15 @@ impl StreamRead for FileInfo {
     fn stream_read<S>(stream: &mut S) -> Result<Self>
         where S: BufRead
     {
-        let filename = read_utf16z_text!(stream);
-        let download_name = read_utf16z_text!(stream);
+        let client_path = read_utf16z_text!(stream);
+        let download_path = read_utf16z_text!(stream);
         let file_hash = read_utf16z_md5_hash!(stream);
         let download_hash = read_utf16z_md5_hash!(stream);
         let file_size = read_utf16z_u32!(stream);
         let download_size = read_utf16z_u32!(stream);
         let flags = read_utf16z_u32!(stream);
 
-        Ok(Self { filename, download_name, file_hash, download_hash,
+        Ok(Self { client_path, download_path, file_hash, download_hash,
                   file_size, download_size, flags })
     }
 }
@@ -160,8 +310,8 @@ impl StreamWrite for FileInfo {
     fn stream_write<S>(&self, stream: &mut S) -> Result<()>
         where S: Write
     {
-        write_utf16z_text!(stream, self.filename.encode_utf16());
-        write_utf16z_text!(stream, self.download_name.encode_utf16());
+        write_utf16z_text!(stream, self.client_path.encode_utf16());
+        write_utf16z_text!(stream, self.download_path.encode_utf16());
         write_utf16z_md5_hash!(stream, self.file_hash);
         write_utf16z_md5_hash!(stream, self.download_hash);
         write_utf16z_u32!(stream, self.file_size);
@@ -196,6 +346,10 @@ impl Manifest {
         stream.write_u32::<LittleEndian>(Self::CACHE_MAGIC)?;
         self.stream_write(&mut stream)
     }
+
+    pub fn files(&self) -> &Vec<FileInfo> { &self.files }
+    pub fn files_mut(&mut self) -> &mut Vec<FileInfo> { &mut self.files }
+    pub fn add(&mut self, file: FileInfo) { self.files.push(file); }
 }
 
 impl StreamRead for Manifest {
