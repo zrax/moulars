@@ -164,7 +164,7 @@ impl FileInfo {
                 // the manifest cache to reference it.
                 self.download_path = gz_path.strip_prefix(&server_config.file_data_root)
                         .map_err(|_| general_error!("Path '{}' is not in the data root", gz_path.display()))?
-                        .to_string_lossy().into();
+                        .to_string_lossy().replace(std::path::MAIN_SEPARATOR, "\\");
                 self.download_hash = md5_hash_file(&gz_path)?;
                 // Already verified to be less than the (checked) size of the
                 // source file.
@@ -175,7 +175,7 @@ impl FileInfo {
                 // match the hash and size of the destination file.
                 self.download_path = src_path.strip_prefix(&server_config.file_data_root)
                         .map_err(|_| general_error!("Path '{}' is not in the data root", src_path.display()))?
-                        .to_string_lossy().into();
+                        .to_string_lossy().replace(std::path::MAIN_SEPARATOR, "\\");
                 self.download_hash = self.file_hash;
                 self.download_size = self.file_size;
                 self.flags &= !Self::COMPRESSED_GZ;
