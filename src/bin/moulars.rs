@@ -14,12 +14,13 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+use std::sync::Arc;
+
 use moulars::config::ServerConfig;
 use moulars::lobby::lobby_server;
 use moulars::file_srv::cache_clients;
 
-#[tokio::main]
-async fn main() {
+fn main() {
     let config = ServerConfig::dummy_config();
 
     if let Err(err) = cache_clients(config.as_ref()) {
@@ -28,5 +29,10 @@ async fn main() {
         // case though.
     }
 
-    lobby_server(config).await;
+    server_main(config);
+}
+
+#[tokio::main]
+async fn server_main(server_config: Arc<ServerConfig>) {
+    lobby_server(server_config).await;
 }

@@ -28,7 +28,7 @@ use crate::general_error;
 use crate::config::ServerConfig;
 use crate::plasma::{StreamRead, StreamWrite};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FileInfo {
     client_path: String,
     download_path: String,
@@ -37,6 +37,7 @@ pub struct FileInfo {
     file_size: u32,
     download_size: u32,
     flags: u32,
+    updated: bool,
 }
 
 pub struct Manifest {
@@ -82,26 +83,18 @@ fn test_append_extension() {
 
 impl FileInfo {
     // Flags for FileInfo
-    pub const OGG_SPLIT_CHANNELS: u32 = 1 << 0;
-    pub const OGG_STREAM: u32 = 1 << 1;
-    pub const OGG_STEREO: u32 = 1 << 2;
-    pub const COMPRESSED_GZ: u32 = 1 << 3;
-    pub const REDIST_UPDATE: u32 = 1 << 4;
-    pub const DELETED: u32 = 1 << 5;
+    const OGG_SPLIT_CHANNELS: u32 = 1 << 0;
+    const OGG_STREAM: u32 = 1 << 1;
+    const OGG_STEREO: u32 = 1 << 2;
+    const COMPRESSED_GZ: u32 = 1 << 3;
+    const REDIST_UPDATE: u32 = 1 << 4;
+    const DELETED: u32 = 1 << 5;
 
     // Creates a new entry with invalid hash/size data.
     // It will need to be populated with real data via update() before
     // it can be send to a client.
     pub fn new(client_path: String, download_path: String) -> Self {
         let download_path = download_path.replace(std::path::MAIN_SEPARATOR, "\\");
-
-        // If the filename matches a pattern that looks like a redist installer,
-        // mark it as such...
-        let flags = if client_path.to_ascii_lowercase().contains("vcredist") {
-            Self::REDIST_UPDATE
-        } else {
-            0
-        };
 
         Self {
             client_path,
@@ -110,7 +103,8 @@ impl FileInfo {
             download_hash: [0; 16],
             file_size: 0,
             download_size: 0,
-            flags
+            flags: 0,
+            updated: true,
         }
     }
 
@@ -129,7 +123,9 @@ impl FileInfo {
         }
     }
 
-    pub fn is_compressed(&self) -> bool { (self.flags & Self::COMPRESSED_GZ) != 0}
+    pub fn is_compressed(&self) -> bool { (self.flags & Self::COMPRESSED_GZ) != 0 }
+
+    pub fn set_redist_update(&mut self) { self.flags |= Self::REDIST_UPDATE }
 
     pub fn update(&mut self, server_config: &ServerConfig) -> Result<()> {
         let src_path = self.source_path(server_config);
@@ -181,6 +177,7 @@ impl FileInfo {
                 self.flags &= !Self::COMPRESSED_GZ;
                 std::fs::remove_file(gz_path)?;
             }
+            self.updated = true;
         }
 
         Ok(())
@@ -267,7 +264,7 @@ impl StreamRead for FileInfo {
         let flags = read_utf16z_u32!(stream);
 
         Ok(Self { client_path, download_path, file_hash, download_hash,
-                  file_size, download_size, flags })
+                  file_size, download_size, flags, updated: false })
     }
 }
 
@@ -350,6 +347,10 @@ impl Manifest {
     pub fn files(&self) -> &Vec<FileInfo> { &self.files }
     pub fn files_mut(&mut self) -> &mut Vec<FileInfo> { &mut self.files }
     pub fn add(&mut self, file: FileInfo) { self.files.push(file); }
+
+    pub fn any_updated(&self) -> bool {
+        self.files.iter().any(|f| f.updated)
+    }
 }
 
 impl StreamRead for Manifest {

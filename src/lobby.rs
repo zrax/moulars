@@ -89,6 +89,7 @@ fn connection_type_name(conn_type: u8) -> String {
 }
 
 pub async fn lobby_server(server_config: Arc<ServerConfig>) {
+    println!("Starting lobby server on {}", server_config.listen_address);
     let listener = match TcpListener::bind(&server_config.listen_address).await {
         Ok(listener) => listener,
         Err(err) => {
