@@ -14,13 +14,25 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-mod data_cache;
-pub use data_cache::cache_clients;
+// This program converts a moulars .mfs_cache file into a DirtSand .mfs on
+// stdout.  It can be useful for debugging, as well as porting data back to
+// DirtSand for compatibility/comparison.
 
-mod manifest;
-pub use manifest::{FileInfo, Manifest};
+use std::io::Result;
+use std::path::Path;
 
-mod messages;
+use moulars::file_srv::Manifest;
 
-mod server;
-pub use server::FileServer;
+fn main() -> Result<()> {
+    let mut args = std::env::args();
+    let _ = args.next();
+
+    for arg in args {
+        let manifest = Manifest::from_cache(Path::new(&arg))?;
+        for file in manifest.files() {
+            println!("{}", file.as_ds_mfs());
+        }
+    }
+
+    Ok(())
+}

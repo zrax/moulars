@@ -137,6 +137,7 @@ impl FileInfo {
         {
             // The source file has changed (or this is the first time we're
             // updating it), so we need to update the other properties as well.
+            println!("Updating {}", src_path.display());
             self.file_hash = updated_file_hash;
             if src_metadata.len() > u32::MAX as u64 {
                 return Err(general_error!("Source file is too large"));
@@ -191,6 +192,12 @@ impl FileInfo {
         self.download_size = 0;
         self.flags = Self::DELETED;
     }
+
+    pub fn as_ds_mfs(&self) -> String {
+        format!("{},{},{},{},{},{},{}", self.client_path, self.download_path,
+                hex::encode(self.file_hash), hex::encode(self.download_hash),
+                self.file_size, self.download_size, self.flags)
+    }
 }
 
 macro_rules! read_utf16z_text {
@@ -207,35 +214,20 @@ macro_rules! read_utf16z_text {
     })
 }
 
-fn to_nybble(ch: u16) -> Result<u8> {
-    if ch >= b'0' as u16 && ch <= b'9' as u16 {
-        Ok((ch as u8) - b'0')
-    } else if ch >= b'A' as u16 && ch <= b'F' as u16 {
-        Ok((ch as u8) - b'A' + 10)
-    } else if ch >= b'a' as u16 && ch <= b'f' as u16 {
-        Ok((ch as u8) - b'a' + 10)
-    } else {
-        Err(general_error!("Invalid hex digit in hash string: '{}'", ch))
-    }
-}
-
-fn to_byte(hi: u16, lo: u16) -> Result<u8> {
-    Ok(to_nybble(hi)? << 4 | to_nybble(lo)?)
-}
-
 macro_rules! read_utf16z_md5_hash {
     ($stream:ident) => ({
         // Convert UTF-16 hex to a binary hash
-        let mut buffer = [0u8; 16];
-        for i in 0..16 {
-            let hi = $stream.read_u16::<LittleEndian>()?;
-            let lo = $stream.read_u16::<LittleEndian>()?;
-            buffer[i] = to_byte(hi, lo)?;
+        let mut buffer = [0u16; 32];
+        for ch in buffer.iter_mut() {
+            *ch = $stream.read_u16::<LittleEndian>()?;
         }
         if $stream.read_u16::<LittleEndian>()? != 0 {
             return Err(general_error!("MD5 hash was not nul-terminated"));
         }
-        buffer
+        let mut result = [0u8; 16];
+        hex::decode_to_slice(String::from_utf16_lossy(&buffer), &mut result)
+                .map_err(|err| general_error!("Invalid hex literal: {}", err))?;
+        result
     })
 }
 
@@ -277,18 +269,11 @@ macro_rules! write_utf16z_text {
     }
 }
 
-fn hex_digits(byte: u8) -> (u8, u8) {
-    const DIGITS: &[u8] = b"0123456789abcdef";
-    (DIGITS[(byte >> 4) as usize], DIGITS[(byte & 0x0F) as usize])
-}
-
 macro_rules! write_utf16z_md5_hash {
     ($stream:ident, $value:expr) => {
         // Convert binary hash to a UTF-16 hex representation
-        for ch in $value {
-            let (hi, lo) = hex_digits(ch);
-            $stream.write_u16::<LittleEndian>(hi as u16)?;
-            $stream.write_u16::<LittleEndian>(lo as u16)?;
+        for ch in hex::encode($value).encode_utf16() {
+            $stream.write_u16::<LittleEndian>(ch)?;
         }
         $stream.write_u16::<LittleEndian>(0)?;
     }
