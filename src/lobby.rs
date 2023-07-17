@@ -15,10 +15,12 @@
  */
 
 use std::io::{BufRead, Cursor, Result};
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::general_error;
@@ -88,33 +90,64 @@ fn connection_type_name(conn_type: u8) -> String {
     }
 }
 
-pub async fn lobby_server(server_config: Arc<ServerConfig>) {
-    println!("Starting lobby server on {}", server_config.listen_address);
-    let listener = match TcpListener::bind(&server_config.listen_address).await {
-        Ok(listener) => listener,
-        Err(err) => {
-            eprintln!("Failed to bind on address {}: {}",
-                      server_config.listen_address, err);
-            std::process::exit(1);
-        }
-    };
+pub struct LobbyServer {
+    file_server: FileServer,
+    gate_keeper: GateKeeper,
+}
 
-    let mut file_server = FileServer::start(server_config.clone());
-    let mut gate_keeper = GateKeeper::start(server_config.clone());
+impl LobbyServer {
+    pub async fn start(server_config: Arc<ServerConfig>) {
+        println!("Starting lobby server on {}", server_config.listen_address);
 
-    loop {
-        let (mut sock, sock_addr) = match listener.accept().await {
-            Ok((sock, sock_addr)) => (sock, sock_addr),
+        let (shutdown_send, mut shutdown_recv) = mpsc::channel(1);
+        tokio::spawn(async move {
+            match tokio::signal::ctrl_c().await {
+                Ok(()) => {},
+                Err(err) => {
+                    eprintln!("Failed to wait for Ctrl+C signal: {}", err);
+                    std::process::exit(1);
+                }
+            }
+            let _ = shutdown_send.send(true).await;
+        });
+
+        let listener = match TcpListener::bind(&server_config.listen_address).await {
+            Ok(listener) => listener,
             Err(err) => {
-                eprintln!("Failed to accept from socket: {}", err);
-                continue;
+                eprintln!("Failed to bind on address {}: {}",
+                          server_config.listen_address, err);
+                std::process::exit(1);
             }
         };
+
+        let file_server = FileServer::start(server_config.clone());
+        let gate_keeper = GateKeeper::start(server_config.clone());
+        let mut lobby = Self { file_server, gate_keeper };
+
+        loop {
+            tokio::select! {
+                _ = async {
+                    match listener.accept().await {
+                        Ok((sock, sock_addr)) => lobby.accept_client(sock, sock_addr).await,
+                        Err(err) => {
+                            eprintln!("Failed to accept from socket: {}", err);
+                        }
+                    };
+                } => {}
+                _ = shutdown_recv.recv() => break,
+            }
+        }
+
+        println!("Shutting down...");
+    }
+
+    pub async fn accept_client(&mut self, mut sock: TcpStream, sock_addr: SocketAddr)
+    {
         let header = match ConnectionHeader::read(&mut sock).await {
             Ok(header) => header,
             Err(err) => {
                 eprintln!("Failed to read connection header: {}", err);
-                continue;
+                return;
             }
         };
 
@@ -124,18 +157,18 @@ pub async fn lobby_server(server_config: Arc<ServerConfig>) {
                  header.product_id);
 
         match header.conn_type {
-            CONN_CLI_TO_GATE_KEEPER => gate_keeper.add(sock).await,
-            CONN_CLI_TO_FILE => file_server.add(sock).await,
+            CONN_CLI_TO_GATE_KEEPER => self.gate_keeper.add(sock).await,
+            CONN_CLI_TO_FILE => self.file_server.add(sock).await,
             CONN_CLI_TO_AUTH => todo!(),
             CONN_CLI_TO_GAME => todo!(),
             CONN_CLI_TO_CSR => {
                 eprintln!("[Lobby] {} - Got CSR client; rejecting", sock_addr);
-                continue;
+                return;
             }
             _ => {
                 eprintln!("[Lobby] {} - Unknown connection type {}; rejecting",
                           sock_addr, header.conn_type);
-                continue;
+                return;
             }
         }
     }

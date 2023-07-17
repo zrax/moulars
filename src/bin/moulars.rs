@@ -17,7 +17,7 @@
 use std::sync::Arc;
 
 use moulars::config::ServerConfig;
-use moulars::lobby::lobby_server;
+use moulars::lobby::LobbyServer;
 use moulars::file_srv::cache_clients;
 
 fn main() {
@@ -34,5 +34,5 @@ fn main() {
 
 #[tokio::main]
 async fn server_main(server_config: Arc<ServerConfig>) {
-    lobby_server(server_config).await;
+    LobbyServer::start(server_config).await;
 }
