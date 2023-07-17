@@ -19,16 +19,25 @@
 // DirtSand for compatibility/comparison.
 
 use std::io::Result;
-use std::path::Path;
+use std::path::PathBuf;
+
+use clap::{Command, Arg};
+use clap::builder::PathBufValueParser;
 
 use moulars::file_srv::Manifest;
 
 fn main() -> Result<()> {
-    let mut args = std::env::args();
-    let _ = args.next();
+    let args = Command::new("mfs_tool")
+        .version("1.0")
+        .about("Tool for updating and debugging manifests for MOULArs")
+        .arg(Arg::new("dump_file").value_name("mfs_cache")
+                .value_parser(PathBufValueParser::new())
+                .short('d').long("dump").exclusive(true))
+        .arg_required_else_help(true)
+        .get_matches();
 
-    for arg in args {
-        let manifest = Manifest::from_cache(Path::new(&arg))?;
+    if let Some(dump_file) = args.get_one::<PathBuf>("dump_file") {
+        let manifest = Manifest::from_cache(dump_file)?;
         for file in manifest.files() {
             println!("{}", file.as_ds_mfs());
         }
