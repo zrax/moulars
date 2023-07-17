@@ -338,6 +338,12 @@ impl Manifest {
     }
 }
 
+impl Default for Manifest {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StreamRead for Manifest {
     fn stream_read<S>(stream: &mut S) -> Result<Self>
         where S: BufRead
