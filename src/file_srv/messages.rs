@@ -22,6 +22,7 @@ use tokio::io::BufReader;
 use tokio::net::TcpStream;
 
 use crate::general_error;
+use crate::netcli::NetResultCode;
 use crate::plasma::{StreamRead, StreamWrite};
 use super::manifest::Manifest;
 
@@ -163,6 +164,25 @@ impl FileToCli {
         let msg_size = (size_of::<u32>() + buffer.len()) as u32;
         stream.write_u32_le(msg_size).await?;
         stream.write_all(&buffer).await
+    }
+
+    pub fn manifest_error(trans_id: u32, result: NetResultCode) -> Self {
+        Self::ManifestReply {
+            trans_id,
+            result: result as i32,
+            reader_id: 0,
+            manifest: Manifest::new(),
+        }
+    }
+
+    pub fn download_error(trans_id: u32, result: NetResultCode) -> Self {
+        Self::FileDownloadReply {
+            trans_id,
+            result: result as i32,
+            reader_id: 0,
+            file_size: 0,
+            file_data: Vec::new(),
+        }
     }
 }
 

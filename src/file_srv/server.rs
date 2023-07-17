@@ -34,6 +34,7 @@ pub struct FileServer {
 }
 
 const CONN_HEADER_SIZE: usize = 12;
+const FILE_CHUNK_SIZE: usize = 64 * 1024;
 
 fn read_conn_header<S>(stream: &mut S) -> Result<()>
     where S: BufRead
@@ -119,12 +120,7 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
                 if build_id != 0 && build_id != server_config.build_id {
                     eprintln!("[File] Client {} has an unexpected build ID {}",
                               stream.get_ref().peer_addr().unwrap(), build_id);
-                    let reply = FileToCli::ManifestReply {
-                        trans_id,
-                        result: NetResultCode::NetOldBuildId as i32,
-                        reader_id: 0,
-                        manifest: Manifest::new()
-                    };
+                    let reply = FileToCli::manifest_error(trans_id, NetResultCode::NetOldBuildId);
                     send_message!(stream, reply);
                     continue;
                 }
@@ -146,19 +142,85 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
                 } else {
                     eprintln!("[File] Client {} requested invalid/unknown manifest '{}'",
                               stream.get_ref().peer_addr().unwrap(), manifest_name);
-
-                    FileToCli::ManifestReply {
-                        trans_id,
-                        result: NetResultCode::NetFileNotFound as i32,
-                        reader_id: 0,
-                        manifest: Manifest::new(),
-                    }
+                    FileToCli::manifest_error(trans_id, NetResultCode::NetFileNotFound)
                 };
 
                 send_message!(stream, reply);
             }
             Ok(CliToFile::DownloadRequest { trans_id, filename, build_id }) => {
-                todo!()
+                if build_id != 0 && build_id != server_config.build_id {
+                    eprintln!("[File] Client {} has an unexpected build ID {}",
+                              stream.get_ref().peer_addr().unwrap(), build_id);
+                    let reply = FileToCli::download_error(trans_id, NetResultCode::NetOldBuildId);
+                    send_message!(stream, reply);
+                    continue;
+                }
+
+                let native_path = filename.replace('\\', std::path::MAIN_SEPARATOR_STR);
+                let download_path = server_config.file_data_root.join(native_path);
+
+                // Reject path traversal attempts, and check if the file exists.
+                if filename.contains("..")
+                    || !download_path.starts_with(&server_config.file_data_root)
+                    || !download_path.exists()
+                {
+                    eprintln!("[File] Client {} requested invalid path '{}'",
+                              stream.get_ref().peer_addr().unwrap(), filename);
+                    let reply = FileToCli::download_error(trans_id, NetResultCode::NetFileNotFound);
+                    send_message!(stream, reply);
+                    continue;
+                }
+
+                let mut file = match tokio::fs::File::open(&download_path).await {
+                    Ok(file) => file,
+                    Err(err) => {
+                        eprintln!("[File] Could not open {} for reading: {}",
+                                  download_path.display(), err);
+                        let reply = FileToCli::download_error(trans_id, NetResultCode::NetFileNotFound);
+                        send_message!(stream, reply);
+                        continue;
+                    }
+                };
+
+                let metadata = match file.metadata().await {
+                    Ok(metadata) => metadata,
+                    Err(err) => {
+                        eprintln!("[File] Could not read file metadata for {}: {}",
+                                  download_path.display(), err);
+                        let reply = FileToCli::download_error(trans_id, NetResultCode::NetFileNotFound);
+                        send_message!(stream, reply);
+                        continue;
+                    }
+                };
+
+                let mut buffer = [0u8; FILE_CHUNK_SIZE];
+                client_reader_id += 1;
+                loop {
+                    match file.read(&mut buffer).await {
+                        Ok(count) => {
+                            if count == 0 {
+                                // End of file reached
+                                break;
+                            }
+                            let reply = FileToCli::FileDownloadReply {
+                                trans_id,
+                                result: NetResultCode::NetSuccess as i32,
+                                reader_id: client_reader_id,
+                                file_size: metadata.len() as u32,
+                                file_data: Vec::from(&buffer[..count]),
+                            };
+                            send_message!(stream, reply);
+                        }
+                        Err(err) => {
+                            eprintln!("[File] Could not read from {}: {}",
+                                      download_path.display(), err);
+                            let reply = FileToCli::download_error(trans_id,
+                                            NetResultCode::NetInternalError);
+                            send_message!(stream, reply);
+                            break;
+                        }
+                    }
+                }
             }
             Ok(CliToFile::ManifestEntryAck { trans_id: _, reader_id: _ }) => {
                 // Ignored
