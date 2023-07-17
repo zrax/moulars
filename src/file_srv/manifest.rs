@@ -27,6 +27,7 @@ use md5::{Md5, Digest};
 
 use crate::general_error;
 use crate::plasma::{StreamRead, StreamWrite};
+use crate::plasma::audio::SoundBuffer;
 
 #[derive(Debug, Clone)]
 pub struct FileInfo {
@@ -126,6 +127,18 @@ impl FileInfo {
     pub fn is_compressed(&self) -> bool { (self.flags & Self::COMPRESSED_GZ) != 0 }
 
     pub fn set_redist_update(&mut self) { self.flags |= Self::REDIST_UPDATE }
+
+    pub fn set_ogg_flags(&mut self, sound_buffer: &SoundBuffer) {
+        self.flags &= !(Self::OGG_SPLIT_CHANNELS | Self::OGG_STREAM | Self::OGG_STEREO);
+        if sound_buffer.split_channel() {
+            self.flags |= FileInfo::OGG_SPLIT_CHANNELS;
+        } else {
+            self.flags |= FileInfo::OGG_STEREO;
+        }
+        if sound_buffer.stream_compressed() {
+            self.flags |= FileInfo::OGG_STREAM;
+        }
+    }
 
     pub fn update(&mut self, data_root: &Path) -> Result<()> {
         let src_path = self.source_path(data_root);
