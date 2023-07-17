@@ -92,12 +92,10 @@ fn fetch_manifest(manifest_name: &String, data_path: &Path) -> Option<Manifest> 
 
 async fn do_manifest(stream: &mut BufReader<TcpStream>, trans_id: u32,
                      manifest_name: String, client_reader_id: &mut u32,
-                     server_config: &ServerConfig)
+                     data_root: &Path)
 {
     let reply =
-        if let Some(manifest) = fetch_manifest(&manifest_name,
-                                               &server_config.file_data_root)
-        {
+        if let Some(manifest) = fetch_manifest(&manifest_name, data_root) {
             debug!("Client {} requested manifest '{}'",
                    stream.get_ref().peer_addr().unwrap(), manifest_name);
 
@@ -117,15 +115,15 @@ async fn do_manifest(stream: &mut BufReader<TcpStream>, trans_id: u32,
     send_message!(stream, reply);
 }
 
-async fn open_server_file(filename: &str, server_config: &ServerConfig)
+async fn open_server_file(filename: &str, data_root: &Path)
     -> Option<(tokio::fs::File, std::fs::Metadata, PathBuf)>
 {
     let native_path = filename.replace('\\', std::path::MAIN_SEPARATOR_STR);
-    let download_path = server_config.file_data_root.join(native_path);
+    let download_path = data_root.join(native_path);
 
     // Reject path traversal attempts, and check if the file exists.
     if filename.contains("..")
-        || !download_path.starts_with(&server_config.file_data_root)
+        || !download_path.starts_with(data_root)
         || !download_path.exists()
     {
         return None;
@@ -153,10 +151,10 @@ async fn open_server_file(filename: &str, server_config: &ServerConfig)
 
 async fn do_download(stream: &mut BufReader<TcpStream>, trans_id: u32,
                      filename: String, client_reader_id: &mut u32,
-                     server_config: &ServerConfig)
+                     data_root: &Path)
 {
     if let Some((mut file, metadata, download_path))
-                = open_server_file(&filename, server_config).await
+                = open_server_file(&filename, data_root).await
     {
         debug!("Client {} requested file '{}'",
                stream.get_ref().peer_addr().unwrap(), filename);
@@ -230,7 +228,7 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
                     continue;
                 }
                 do_manifest(&mut stream, trans_id, manifest_name, &mut client_reader_id,
-                            &server_config).await;
+                            &server_config.file_data_root).await;
             }
             Ok(CliToFile::DownloadRequest { trans_id, filename, build_id }) => {
                 if build_id != 0 && build_id != server_config.build_id {
@@ -241,7 +239,7 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
                     continue;
                 }
                 do_download(&mut stream, trans_id, filename, &mut client_reader_id,
-                            &server_config).await;
+                            &server_config.file_data_root).await;
             }
             Ok(CliToFile::ManifestEntryAck { trans_id: _, reader_id: _ }) => {
                 // Ignored

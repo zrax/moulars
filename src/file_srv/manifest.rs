@@ -26,7 +26,6 @@ use log::debug;
 use md5::{Md5, Digest};
 
 use crate::general_error;
-use crate::config::ServerConfig;
 use crate::plasma::{StreamRead, StreamWrite};
 
 #[derive(Debug, Clone)]
@@ -113,9 +112,9 @@ impl FileInfo {
     pub fn download_path(&self) -> &String { &self.download_path }
 
     // Returns the path to the source file on the server
-    pub fn source_path(&self, server_config: &ServerConfig) -> PathBuf {
+    pub fn source_path(&self, data_root: &Path) -> PathBuf {
         let native_path = self.download_path.replace('\\', std::path::MAIN_SEPARATOR_STR);
-        let src_path = server_config.file_data_root.join(native_path);
+        let src_path = data_root.join(native_path);
         if self.is_compressed() && src_path.extension() == Some(OsStr::new("gz")) {
             // The original source file is uncompressed at the same path.
             src_path.with_extension("")
@@ -128,8 +127,8 @@ impl FileInfo {
 
     pub fn set_redist_update(&mut self) { self.flags |= Self::REDIST_UPDATE }
 
-    pub fn update(&mut self, server_config: &ServerConfig) -> Result<()> {
-        let src_path = self.source_path(server_config);
+    pub fn update(&mut self, data_root: &Path) -> Result<()> {
+        let src_path = self.source_path(data_root);
 
         let updated_file_hash = md5_hash_file(&src_path)?;
         let src_metadata = src_path.metadata()?;
@@ -160,7 +159,7 @@ impl FileInfo {
             if gz_metadata.len() < ((self.file_size as f64) * 0.9) as u64 {
                 // Compressed stream is small enough -- keep it and update
                 // the manifest cache to reference it.
-                self.download_path = gz_path.strip_prefix(&server_config.file_data_root)
+                self.download_path = gz_path.strip_prefix(data_root)
                         .map_err(|_| general_error!("Path '{}' is not in the data root", gz_path.display()))?
                         .to_string_lossy().replace(std::path::MAIN_SEPARATOR, "\\");
                 self.download_hash = md5_hash_file(&gz_path)?;
@@ -171,7 +170,7 @@ impl FileInfo {
             } else {
                 // Keep the file uncompressed.  The download hash and size will
                 // match the hash and size of the destination file.
-                self.download_path = src_path.strip_prefix(&server_config.file_data_root)
+                self.download_path = src_path.strip_prefix(data_root)
                         .map_err(|_| general_error!("Path '{}' is not in the data root", src_path.display()))?
                         .to_string_lossy().replace(std::path::MAIN_SEPARATOR, "\\");
                 self.download_hash = self.file_hash;

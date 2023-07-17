@@ -20,12 +20,11 @@ use std::io::Result;
 use std::path::{Path, PathBuf};
 
 use lazy_static::lazy_static;
-use log::{warn, debug};
+use log::{warn, info};
 
-use crate::config::ServerConfig;
 use super::manifest::{Manifest, FileInfo};
 
-pub fn cache_clients(server_config: &ServerConfig) -> Result<()> {
+pub fn cache_clients(data_root: &Path) -> Result<()> {
     lazy_static! {
         static ref CLIENT_TYPES: Vec<(&'static str, &'static str, PathBuf)> = vec![
             ("Internal", "", ["client", "windows_ia32", "internal"].iter().collect()),
@@ -36,7 +35,7 @@ pub fn cache_clients(server_config: &ServerConfig) -> Result<()> {
     }
 
     for (build, suffix, data_dir) in CLIENT_TYPES.iter() {
-        let src_dir = server_config.file_data_root.join(data_dir);
+        let src_dir = data_root.join(data_dir);
         if !src_dir.exists() {
             warn!("{} does not exist.  Skipping manifest for {}{}",
                   data_dir.display(), build, suffix);
@@ -60,11 +59,11 @@ pub fn cache_clients(server_config: &ServerConfig) -> Result<()> {
             }
         }
 
-        let patcher_mfs_path = server_config.file_data_root.join(
+        let patcher_mfs_path = data_root.join(
                 format!("{}Patcher{}.mfs_cache", build, suffix));
-        let thin_mfs_path = server_config.file_data_root.join(
+        let thin_mfs_path = data_root.join(
                 format!("Thin{}{}.mfs_cache", build, suffix));
-        let full_mfs_path = server_config.file_data_root.join(
+        let full_mfs_path = data_root.join(
                 format!("{}{}.mfs_cache", build, suffix));
 
         let mut patcher_mfs = load_or_create_manifest(&patcher_mfs_path)?;
@@ -80,12 +79,12 @@ pub fn cache_clients(server_config: &ServerConfig) -> Result<()> {
         }
 
         for file in all_client_files.values_mut() {
-            if let Err(err) = file.update(server_config) {
+            if let Err(err) = file.update(data_root) {
                 // TODO: If the error is NotFound, should we mark the file as deleted?
                 warn!("Failed to update cache for file {}: {}",
                       file.client_path(), err);
             }
-            discovered_files.remove(&file.source_path(server_config));
+            discovered_files.remove(&file.source_path(data_root));
         }
 
         for file in patcher_mfs.files_mut().iter_mut()
@@ -96,10 +95,11 @@ pub fn cache_clients(server_config: &ServerConfig) -> Result<()> {
         }
 
         for path in discovered_files {
-            debug!("Adding {}", path.display());
+            info!("Adding {}", path.display());
             let client_path = path.file_name().unwrap().to_string_lossy().to_string();
-            let mut file = FileInfo::new(client_path, path.to_string_lossy().to_string());
-            if let Err(err) = file.update(server_config) {
+            let src_path = path.strip_prefix(data_root).unwrap().to_string_lossy().to_string();
+            let mut file = FileInfo::new(client_path, src_path);
+            if let Err(err) = file.update(data_root) {
                 warn!("Failed to add {} to the cache: {}", path.display(), err);
                 continue;
             }
@@ -136,10 +136,10 @@ pub fn cache_clients(server_config: &ServerConfig) -> Result<()> {
 
 fn load_or_create_manifest(path: &Path) -> Result<Manifest> {
     if path.exists() {
-        debug!("Updating manifest {}", path.display());
+        info!("Updating manifest {}", path.display());
         Manifest::from_cache(path)
     } else {
-        debug!("Creating manifest {}", path.display());
+        info!("Creating manifest {}", path.display());
         Ok(Manifest::new())
     }
 }

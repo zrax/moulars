@@ -16,11 +16,8 @@
 
 use std::sync::Arc;
 
-use log::warn;
-
 use moulars::config::ServerConfig;
 use moulars::lobby::LobbyServer;
-use moulars::file_srv::cache_clients;
 
 #[cfg(debug_assertions)]
 const DEFAULT_LOG_LEVEL: &str = "debug";
@@ -36,13 +33,6 @@ fn main() {
     ).init();
 
     let config = ServerConfig::dummy_config();
-
-    if let Err(err) = cache_clients(config.as_ref()) {
-        warn!("Failed to update file server cache: {}", err);
-        // Try to continue anyway...  The file server may be useless in this
-        // case though.
-    }
-
     server_main(config);
 }
 

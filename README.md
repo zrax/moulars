@@ -27,11 +27,13 @@ instead with `cargo build --release`.
 *... Database TBD ...*
 
 ### File Server
-Unlike DirtSand, MOULArs only requires that you provide files in an expected
-directory structure, and it will automatically generate manifests and compress
-the files as appropriate.  Each time MOULArs is started, the cached manifests
-will be checked against the source files on the server and updated if
-necessary.
+Unlike DirtSand, MOULArs includes a manifest generation tool that only
+requires you to provide files in an expected directory structure, and it
+will automatically generate manifests and compress the files as appropriate.
+To use it, run `mfs_tool --update <path to data root>`. This will update
+existing manifests with any changes and new files, as well as producing new
+manifests (both for the initial server setup and for newly added client
+flavors, ages, etc.).
 
 To ensure all required manifests are properly generated, you should provide
 the files in the following structure:
