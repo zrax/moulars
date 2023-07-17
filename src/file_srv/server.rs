@@ -14,7 +14,7 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Cursor, Result};
+use std::io::{BufRead, Cursor, ErrorKind, Result};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -252,7 +252,9 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
                 continue;
             }
             Err(err) => {
-                warn!("Error reading message from client: {}", err);
+                if !matches!(err.kind(), ErrorKind::ConnectionReset | ErrorKind::UnexpectedEof) {
+                    warn!("Error reading message from client: {}", err);
+                }
                 return;
             }
         }

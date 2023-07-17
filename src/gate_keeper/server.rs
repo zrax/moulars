@@ -14,7 +14,7 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Cursor, Result};
+use std::io::{BufRead, Cursor, Result, ErrorKind};
 use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -110,7 +110,9 @@ async fn gate_keeper_client(client_sock: TcpStream, server_config: Arc<ServerCon
                 send_message!(stream, reply);
             }
             Err(err) => {
-                warn!("Error reading message from client: {}", err);
+                if !matches!(err.kind(), ErrorKind::ConnectionReset | ErrorKind::UnexpectedEof) {
+                    warn!("Error reading message from client: {}", err);
+                }
                 return;
             }
         }
