@@ -22,6 +22,7 @@ use std::path::{Path, PathBuf};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use flate2::write::GzEncoder;
+use log::debug;
 use md5::{Md5, Digest};
 
 use crate::general_error;
@@ -137,7 +138,7 @@ impl FileInfo {
         {
             // The source file has changed (or this is the first time we're
             // updating it), so we need to update the other properties as well.
-            println!("Updating {}", src_path.display());
+            debug!("Updating {}", src_path.display());
             self.file_hash = updated_file_hash;
             if src_metadata.len() > u32::MAX as u64 {
                 return Err(general_error!("Source file is too large"));

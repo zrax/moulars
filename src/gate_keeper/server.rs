@@ -18,6 +18,7 @@ use std::io::{BufRead, Cursor, Result};
 use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt};
+use log::{error, warn};
 use tokio::io::{AsyncReadExt, BufReader};
 use tokio::sync::mpsc;
 use tokio::net::TcpStream;
@@ -41,7 +42,7 @@ fn read_conn_header<S>(stream: &mut S) -> Result<()>
     // Everything here is discarded...
     let header_size = stream.read_u32::<LittleEndian>()?;
     if header_size != CONN_HEADER_SIZE as u32 {
-        return Err(general_error!("[GateKeeper] Invalid connection header size {}", header_size));
+        return Err(general_error!("Invalid connection header size {}", header_size));
     }
     // Null UUID
     let _ = Uuid::stream_read(stream)?;
@@ -64,11 +65,11 @@ macro_rules! send_message {
     ($stream:expr, $reply:expr) => {
         let mut reply_buf = Cursor::new(Vec::new());
         if let Err(err) = $reply.stream_write(&mut reply_buf) {
-            eprintln!("[GateKeeper] Failed to write reply stream: {}", err);
+            warn!("Failed to write reply stream: {}", err);
             return;
         }
         if let Err(err) = $stream.get_mut().write_all(reply_buf.get_ref()).await {
-            eprintln!("[GateKeeper] Failed to send reply: {}", err);
+            warn!("Failed to send reply: {}", err);
             return;
         }
     }
@@ -78,7 +79,7 @@ async fn gate_keeper_client(client_sock: TcpStream, server_config: Arc<ServerCon
     let mut stream = match init_client(client_sock, &server_config).await {
         Ok(cipher) => cipher,
         Err(err) => {
-            eprintln!("[GateKeeper] Failed to initialize client: {}", err);
+            warn!("Failed to initialize client: {}", err);
             return;
         }
     };
@@ -109,7 +110,7 @@ async fn gate_keeper_client(client_sock: TcpStream, server_config: Arc<ServerCon
                 send_message!(stream, reply);
             }
             Err(err) => {
-                eprintln!("[GateKeeper] Error reading message from client: {}", err);
+                warn!("Error reading message from client: {}", err);
                 return;
             }
         }
@@ -133,7 +134,7 @@ impl GateKeeper {
 
     pub async fn add(&mut self, sock: TcpStream) {
         if let Err(err) = self.incoming_send.send(sock).await {
-            eprintln!("[GateKeeper] Failed to add client: {}", err);
+            error!("Failed to add client: {}", err);
             std::process::exit(1);
         }
     }

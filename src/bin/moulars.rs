@@ -16,15 +16,29 @@
 
 use std::sync::Arc;
 
+use log::warn;
+
 use moulars::config::ServerConfig;
 use moulars::lobby::LobbyServer;
 use moulars::file_srv::cache_clients;
 
+#[cfg(debug_assertions)]
+const DEFAULT_LOG_LEVEL: &str = "debug";
+
+#[cfg(not(debug_assertions))]
+const DEFAULT_LOG_LEVEL: &str = "warn";
+
 fn main() {
+    // See https://docs.rs/env_logger/latest/env_logger/index.html for
+    // details on fine-tuning logging behavior beyond the defaults.
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or(DEFAULT_LOG_LEVEL)
+    ).init();
+
     let config = ServerConfig::dummy_config();
 
     if let Err(err) = cache_clients(config.as_ref()) {
-        eprintln!("Warning: Failed to update file server cache: {}", err);
+        warn!("Failed to update file server cache: {}", err);
         // Try to continue anyway...  The file server may be useless in this
         // case though.
     }

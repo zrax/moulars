@@ -17,6 +17,7 @@
 use std::sync::Arc;
 use std::path::PathBuf;
 
+use log::error;
 use num_bigint::BigUint;
 
 pub struct ServerConfig {
@@ -78,7 +79,7 @@ impl ServerConfig {
         let cwd = match std::env::current_dir() {
             Ok(path) => path,
             Err(err) => {
-                eprintln!("Failed to determine current working directory: {}", err);
+                error!("Failed to determine current working directory: {}", err);
                 std::process::exit(1);
             }
         };

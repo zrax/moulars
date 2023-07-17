@@ -20,6 +20,7 @@ use std::io::Result;
 use std::path::{Path, PathBuf};
 
 use lazy_static::lazy_static;
+use log::{warn, debug};
 
 use crate::config::ServerConfig;
 use super::manifest::{Manifest, FileInfo};
@@ -37,8 +38,8 @@ pub fn cache_clients(server_config: &ServerConfig) -> Result<()> {
     for (build, suffix, data_dir) in CLIENT_TYPES.iter() {
         let src_dir = server_config.file_data_root.join(data_dir);
         if !src_dir.exists() {
-            eprintln!("Warning: {} does not exist.  Skipping manifest for {}{}",
-                      data_dir.display(), build, suffix);
+            warn!("{} does not exist.  Skipping manifest for {}{}",
+                  data_dir.display(), build, suffix);
             continue;
         }
 
@@ -55,8 +56,7 @@ pub fn cache_clients(server_config: &ServerConfig) -> Result<()> {
             if metadata.is_file() {
                 discovered_files.insert(entry.path());
             } else {
-                eprintln!("Skipping '{}' -- not a regular file",
-                          entry.path().display());
+                warn!("Skipping '{}' -- not a regular file", entry.path().display());
             }
         }
 
@@ -82,8 +82,8 @@ pub fn cache_clients(server_config: &ServerConfig) -> Result<()> {
         for file in all_client_files.values_mut() {
             if let Err(err) = file.update(server_config) {
                 // TODO: If the error is NotFound, should we mark the file as deleted?
-                eprintln!("Warning: Failed to update cache for file {}: {}",
-                          file.client_path(), err);
+                warn!("Failed to update cache for file {}: {}",
+                      file.client_path(), err);
             }
             discovered_files.remove(&file.source_path(server_config));
         }
@@ -96,12 +96,11 @@ pub fn cache_clients(server_config: &ServerConfig) -> Result<()> {
         }
 
         for path in discovered_files {
-            println!("Adding {}", path.display());
+            debug!("Adding {}", path.display());
             let client_path = path.file_name().unwrap().to_string_lossy().to_string();
             let mut file = FileInfo::new(client_path, path.to_string_lossy().to_string());
             if let Err(err) = file.update(server_config) {
-                eprintln!("Warning: Failed to add {} to the cache: {}",
-                          path.display(), err);
+                warn!("Failed to add {} to the cache: {}", path.display(), err);
                 continue;
             }
 
@@ -137,10 +136,10 @@ pub fn cache_clients(server_config: &ServerConfig) -> Result<()> {
 
 fn load_or_create_manifest(path: &Path) -> Result<Manifest> {
     if path.exists() {
-        println!("Updating manifest {}", path.display());
+        debug!("Updating manifest {}", path.display());
         Manifest::from_cache(path)
     } else {
-        println!("Creating manifest {}", path.display());
+        debug!("Creating manifest {}", path.display());
         Ok(Manifest::new())
     }
 }

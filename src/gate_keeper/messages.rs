@@ -74,7 +74,7 @@ impl CliToGateKeeper {
                 let ping_time = stream.read_u32_le().await?;
                 let payload_size = stream.read_u32_le().await?;
                 if payload_size > MAX_PING_PAYLOAD {
-                    return Err(general_error!("[GateKeeper] Ping payload too large ({} bytes)",
+                    return Err(general_error!("Ping payload too large ({} bytes)",
                                payload_size));
                 }
                 let mut payload = vec![0; payload_size as usize];

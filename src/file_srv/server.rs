@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt};
+use log::{error, warn, debug};
 use tokio::io::{AsyncReadExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
@@ -42,7 +43,7 @@ fn read_conn_header<S>(stream: &mut S) -> Result<()>
     // Everything here is discarded...
     let header_size = stream.read_u32::<LittleEndian>()?;
     if header_size != CONN_HEADER_SIZE as u32 {
-        return Err(general_error!("[File] Invalid connection header size {}", header_size));
+        return Err(general_error!("Invalid connection header size {}", header_size));
     }
     // Build ID
     let _ = stream.read_u32::<LittleEndian>()?;
@@ -63,7 +64,7 @@ async fn init_client(mut sock: TcpStream) -> Result<BufReader<TcpStream>> {
 macro_rules! send_message {
     ($stream:expr, $reply:expr) => {
         if let Err(err) = $reply.write($stream.get_mut()).await {
-            eprintln!("[File] Failed to send reply message: {}", err);
+            warn!("Failed to send reply message: {}", err);
             return;
         }
     }
@@ -80,8 +81,7 @@ fn fetch_manifest(manifest_name: &String, data_path: &Path) -> Option<Manifest> 
         match Manifest::from_cache(&manifest_path) {
             Ok(manifest) => Some(manifest),
             Err(err) => {
-                eprintln!("[File] Failed to load manifest '{}': {}",
-                          manifest_name, err);
+                warn!("Failed to load manifest '{}': {}", manifest_name, err);
                 None
             }
         }
@@ -98,8 +98,8 @@ async fn do_manifest(stream: &mut BufReader<TcpStream>, trans_id: u32,
         if let Some(manifest) = fetch_manifest(&manifest_name,
                                                &server_config.file_data_root)
         {
-            println!("[File] Client {} requested manifest '{}'",
-                     stream.get_ref().peer_addr().unwrap(), manifest_name);
+            debug!("Client {} requested manifest '{}'",
+                   stream.get_ref().peer_addr().unwrap(), manifest_name);
 
             *client_reader_id += 1;
             FileToCli::ManifestReply {
@@ -109,15 +109,15 @@ async fn do_manifest(stream: &mut BufReader<TcpStream>, trans_id: u32,
                 manifest
             }
         } else {
-            eprintln!("[File] Client {} requested invalid/unknown manifest '{}'",
-                      stream.get_ref().peer_addr().unwrap(), manifest_name);
+            warn!("Client {} requested invalid/unknown manifest '{}'",
+                  stream.get_ref().peer_addr().unwrap(), manifest_name);
             FileToCli::manifest_error(trans_id, NetResultCode::NetFileNotFound)
         };
 
     send_message!(stream, reply);
 }
 
-async fn open_server_file(filename: &String, server_config: &ServerConfig)
+async fn open_server_file(filename: &str, server_config: &ServerConfig)
     -> Option<(tokio::fs::File, std::fs::Metadata, PathBuf)>
 {
     let native_path = filename.replace('\\', std::path::MAIN_SEPARATOR_STR);
@@ -128,15 +128,13 @@ async fn open_server_file(filename: &String, server_config: &ServerConfig)
         || !download_path.starts_with(&server_config.file_data_root)
         || !download_path.exists()
     {
-        eprintln!("[File] Client requested invalid path '{}'", filename);
         return None;
     }
 
     let file = match tokio::fs::File::open(&download_path).await {
         Ok(file) => file,
         Err(err) => {
-            eprintln!("[File] Could not open {} for reading: {}",
-                      download_path.display(), err);
+            warn!("Could not open {} for reading: {}", download_path.display(), err);
             return None;
         }
     };
@@ -144,8 +142,8 @@ async fn open_server_file(filename: &String, server_config: &ServerConfig)
     let metadata = match file.metadata().await {
         Ok(metadata) => metadata,
         Err(err) => {
-            eprintln!("[File] Could not read file metadata for {}: {}",
-                      download_path.display(), err);
+            warn!("Could not read file metadata for {}: {}",
+                  download_path.display(), err);
             return None;
         }
     };
@@ -160,6 +158,9 @@ async fn do_download(stream: &mut BufReader<TcpStream>, trans_id: u32,
     if let Some((mut file, metadata, download_path))
                 = open_server_file(&filename, server_config).await
     {
+        debug!("Client {} requested file '{}'",
+               stream.get_ref().peer_addr().unwrap(), filename);
+
         *client_reader_id += 1;
         let mut buffer = [0u8; FILE_CHUNK_SIZE];
         loop {
@@ -179,8 +180,7 @@ async fn do_download(stream: &mut BufReader<TcpStream>, trans_id: u32,
                     send_message!(stream, reply);
                 }
                 Err(err) => {
-                    eprintln!("[File] Could not read from {}: {}",
-                              download_path.display(), err);
+                    warn!("Could not read from {}: {}", download_path.display(), err);
                     let reply = FileToCli::download_error(trans_id, NetResultCode::NetInternalError);
                     send_message!(stream, reply);
                     break;
@@ -188,6 +188,8 @@ async fn do_download(stream: &mut BufReader<TcpStream>, trans_id: u32,
             }
         }
     } else {
+        warn!("Client {} requested invalid path '{}'",
+              stream.get_ref().peer_addr().unwrap(), filename);
         let reply = FileToCli::download_error(trans_id, NetResultCode::NetFileNotFound);
         send_message!(stream, reply);
     }
@@ -197,7 +199,7 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
     let mut stream = match init_client(client_sock).await {
         Ok(stream) => stream,
         Err(err) => {
-            eprintln!("[File] Failed to initialize client: {}", err);
+            warn!("Failed to initialize client: {}", err);
             return;
         }
     };
@@ -221,8 +223,8 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
             }
             Ok(CliToFile::ManifestRequest { trans_id, manifest_name, build_id }) => {
                 if build_id != 0 && build_id != server_config.build_id {
-                    eprintln!("[File] Client {} has an unexpected build ID {}",
-                              stream.get_ref().peer_addr().unwrap(), build_id);
+                    warn!("Client {} has an unexpected build ID {}",
+                          stream.get_ref().peer_addr().unwrap(), build_id);
                     let reply = FileToCli::manifest_error(trans_id, NetResultCode::NetOldBuildId);
                     send_message!(stream, reply);
                     continue;
@@ -232,8 +234,8 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
             }
             Ok(CliToFile::DownloadRequest { trans_id, filename, build_id }) => {
                 if build_id != 0 && build_id != server_config.build_id {
-                    eprintln!("[File] Client {} has an unexpected build ID {}",
-                              stream.get_ref().peer_addr().unwrap(), build_id);
+                    warn!("Client {} has an unexpected build ID {}",
+                          stream.get_ref().peer_addr().unwrap(), build_id);
                     let reply = FileToCli::download_error(trans_id, NetResultCode::NetOldBuildId);
                     send_message!(stream, reply);
                     continue;
@@ -250,7 +252,7 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
                 continue;
             }
             Err(err) => {
-                eprintln!("[File] Error reading message from client: {}", err);
+                warn!("Error reading message from client: {}", err);
                 return;
             }
         }
@@ -274,7 +276,7 @@ impl FileServer {
 
     pub async fn add(&mut self, sock: TcpStream) {
         if let Err(err) = self.incoming_send.send(sock).await {
-            eprintln!("[File] Failed to add client: {}", err);
+            error!("Failed to add client: {}", err);
             std::process::exit(1);
         }
     }

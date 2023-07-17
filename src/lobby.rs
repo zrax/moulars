@@ -19,6 +19,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt};
+use log::{error, warn, info};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -97,14 +98,14 @@ pub struct LobbyServer {
 
 impl LobbyServer {
     pub async fn start(server_config: Arc<ServerConfig>) {
-        println!("Starting lobby server on {}", server_config.listen_address);
+        info!("Starting lobby server on {}", server_config.listen_address);
 
         let (shutdown_send, mut shutdown_recv) = mpsc::channel(1);
         tokio::spawn(async move {
             match tokio::signal::ctrl_c().await {
                 Ok(()) => {},
                 Err(err) => {
-                    eprintln!("Failed to wait for Ctrl+C signal: {}", err);
+                    error!("Failed to wait for Ctrl+C signal: {}", err);
                     std::process::exit(1);
                 }
             }
@@ -114,8 +115,8 @@ impl LobbyServer {
         let listener = match TcpListener::bind(&server_config.listen_address).await {
             Ok(listener) => listener,
             Err(err) => {
-                eprintln!("Failed to bind on address {}: {}",
-                          server_config.listen_address, err);
+                error!("Failed to bind on address {}: {}",
+                       server_config.listen_address, err);
                 std::process::exit(1);
             }
         };
@@ -130,7 +131,7 @@ impl LobbyServer {
                     match listener.accept().await {
                         Ok((sock, sock_addr)) => lobby.accept_client(sock, sock_addr).await,
                         Err(err) => {
-                            eprintln!("Failed to accept from socket: {}", err);
+                            warn!("Failed to accept from socket: {}", err);
                         }
                     };
                 } => {}
@@ -138,7 +139,7 @@ impl LobbyServer {
             }
         }
 
-        println!("Shutting down...");
+        info!("Shutting down...");
     }
 
     pub async fn accept_client(&mut self, mut sock: TcpStream, sock_addr: SocketAddr)
@@ -146,15 +147,15 @@ impl LobbyServer {
         let header = match ConnectionHeader::read(&mut sock).await {
             Ok(header) => header,
             Err(err) => {
-                eprintln!("Failed to read connection header: {}", err);
+                warn!("Failed to read connection header: {}", err);
                 return;
             }
         };
 
-        println!("[Lobby] {} connection from {}: Build {} ({}), Branch {}, Product {}",
-                 connection_type_name(header.conn_type), sock_addr,
-                 header.build_id, header.build_type, header.branch_id,
-                 header.product_id);
+        info!("{} connection from {}: Build {} ({}), Branch {}, Product {}",
+              connection_type_name(header.conn_type), sock_addr,
+              header.build_id, header.build_type, header.branch_id,
+              header.product_id);
 
         match header.conn_type {
             CONN_CLI_TO_GATE_KEEPER => self.gate_keeper.add(sock).await,
@@ -162,13 +163,11 @@ impl LobbyServer {
             CONN_CLI_TO_AUTH => todo!(),
             CONN_CLI_TO_GAME => todo!(),
             CONN_CLI_TO_CSR => {
-                eprintln!("[Lobby] {} - Got CSR client; rejecting", sock_addr);
-                return;
+                warn!("{} - Got CSR client; rejecting", sock_addr);
             }
             _ => {
-                eprintln!("[Lobby] {} - Unknown connection type {}; rejecting",
-                          sock_addr, header.conn_type);
-                return;
+                warn!("{} - Unknown connection type {}; rejecting",
+                      sock_addr, header.conn_type);
             }
         }
     }
