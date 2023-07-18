@@ -14,11 +14,15 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+use std::io::Result;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::path::PathBuf;
 
 use log::error;
 use num_bigint::BigUint;
+use serde_derive::Deserialize;
+
+use crate::general_error;
 
 pub struct ServerConfig {
     /* Listen address for the lobby server */
@@ -40,22 +44,84 @@ pub struct ServerConfig {
     pub auth_serv_ip: String,
 
     /* File server data path */
-    pub file_data_root: PathBuf,
+    pub data_root: PathBuf,
+}
+
+fn decode_crypt_key(value: &str) -> Result<BigUint> {
+    let bytes = base64::decode(value)
+            .map_err(|err| general_error!("Could not parse Base64 key '{}': {}",
+                                          value, err))?;
+    if bytes.len() == 64 {
+        Ok(BigUint::from_bytes_be(&bytes))
+    } else {
+        Err(general_error!("Invalid key length for key '{}'", value))
+    }
 }
 
 impl ServerConfig {
+    pub fn from_file(path: &Path) -> Result<Arc<ServerConfig>> {
+        let config_file = std::fs::read_to_string(path)?;
+        let config: StructuredConfig = toml::from_str(&config_file)
+                .map_err(|err| general_error!("Failed to parse config file: {}", err))?;
+
+        let server_section = config.server.unwrap_or_default();
+
+        // The default is to listen on 127.0.0.1, which means that ONLY
+        // connections from localhost are allowed.  To listen on any IPv4
+        // address, you should set listen_address = "0.0.0.0"
+        let listen_address = format!("{}:{}",
+                server_section.listen_address.unwrap_or("127.0.0.1".to_string()),
+                server_section.listen_port.unwrap_or(14617));
+        let build_id = config.build_id.unwrap_or(918);
+        let data_root =
+            if let Some(data_root) = config.data_root {
+                PathBuf::from(data_root)
+            } else {
+                std::env::current_dir()
+                    .map_err(|err| general_error!("Failed to determine current working directory: {}", err))?
+            };
+
+        let auth_n_key = decode_crypt_key(&config.crypt_keys.auth.n)?;
+        let auth_k_key = decode_crypt_key(&config.crypt_keys.auth.k)?;
+        let game_n_key = decode_crypt_key(&config.crypt_keys.game.n)?;
+        let game_k_key = decode_crypt_key(&config.crypt_keys.game.k)?;
+        let gate_n_key = decode_crypt_key(&config.crypt_keys.gate.n)?;
+        let gate_k_key = decode_crypt_key(&config.crypt_keys.gate.k)?;
+
+        // Again, the defaults are only useful when connecting from localhost.
+        // These should be configured to an EXTERNAL IP address, since they
+        // are the addresses sent to the client for establishing additional
+        // connections to this (or another) server.
+        let file_serv_ip = server_section.file_server_ip.unwrap_or("127.0.0.1".to_string());
+        let auth_serv_ip = server_section.auth_server_ip.unwrap_or("127.0.0.1".to_string());
+
+        Ok(Arc::new(ServerConfig {
+            listen_address,
+            build_id,
+            auth_n_key,
+            auth_k_key,
+            game_n_key,
+            game_k_key,
+            gate_n_key,
+            gate_k_key,
+            file_serv_ip,
+            auth_serv_ip,
+            data_root,
+        }))
+    }
+
     pub fn dummy_config() -> Arc<ServerConfig> {
         // A configuration used for testing.  Please don't use these values
         // (especially the keys) in production, as they are not secure.
 
         /* Generated keys from dirtsand (Big Endian):
         [Server Keys - unpacked into bytes below]
-        Key.Auth.N = 1EQWzco8zsVBOqS8nXraPmq3g7CcJXnj/dQJI/n9wh5LEBjsO0yRAfzZGUgwhcChs9JY0Y7Cq7EGhurqpGFlBw==
-        Key.Auth.K = 12VYlr12lSeWQiKRlBoKmg//K+7Yinfi2LnKDtpDgXoMxtdG1VIAbJqC+daPcBrumR5f1pekUXY1/R5TyBVyFw==
-        Key.Game.N = yv0uMQNU49083++/v8Z2H9/7XM+LnoO1cvYgyfGObKvuXXURrdcA9vqsa3P+XyGw9UoyUMjiNvJS+LYI4z5Msw==
-        Key.Game.K = zbFlBUeE9/gTkIM46RWLKkOP8uCEZiJhgmTb0eruFetcBGnLKeeJMWrkbfuKcSPBpAgqLgsdHumoAakxdBp22w==
-        Key.Gate.N = 0r0DRrkYkbpGAhByXgtWHAnJ041fxxzPQGewiUZYfjTtQ4B2byPs1UA6ofD+8/POn6s83dTvk7tW/gvqJASuiw==
-        Key.Gate.K = 6f+PNqyQ3V9nqzU2WybULjrliez0kyikITMAG4O24LvAtvLpk1PHcddgtrePuowhE+3wwt7p4BgZvXFv4ooiXw==
+        auth.n = 1EQWzco8zsVBOqS8nXraPmq3g7CcJXnj/dQJI/n9wh5LEBjsO0yRAfzZGUgwhcChs9JY0Y7Cq7EGhurqpGFlBw==
+        auth.k = 12VYlr12lSeWQiKRlBoKmg//K+7Yinfi2LnKDtpDgXoMxtdG1VIAbJqC+daPcBrumR5f1pekUXY1/R5TyBVyFw==
+        game.n = yv0uMQNU49083++/v8Z2H9/7XM+LnoO1cvYgyfGObKvuXXURrdcA9vqsa3P+XyGw9UoyUMjiNvJS+LYI4z5Msw==
+        game.k = zbFlBUeE9/gTkIM46RWLKkOP8uCEZiJhgmTb0eruFetcBGnLKeeJMWrkbfuKcSPBpAgqLgsdHumoAakxdBp22w==
+        gate.n = 0r0DRrkYkbpGAhByXgtWHAnJ041fxxzPQGewiUZYfjTtQ4B2byPs1UA6ofD+8/POn6s83dTvk7tW/gvqJASuiw==
+        gate.k = 6f+PNqyQ3V9nqzU2WybULjrliez0kyikITMAG4O24LvAtvLpk1PHcddgtrePuowhE+3wwt7p4BgZvXFv4ooiXw==
 
         [Client Config - for use in plClient's server.ini]
         Server.Auth.N "1EQWzco8zsVBOqS8nXraPmq3g7CcJXnj/dQJI/n9wh5LEBjsO0yRAfzZGUgwhcChs9JY0Y7Cq7EGhurqpGFlBw=="
@@ -97,7 +163,36 @@ impl ServerConfig {
             file_serv_ip: "127.0.0.1".to_string(),
             auth_serv_ip: "127.0.0.1".to_string(),
             // Only works if we're running from a directory that contains a data dir...
-            file_data_root: cwd.join("data"),
+            data_root: cwd.join("data"),
         })
     }
+}
+
+#[derive(Deserialize)]
+struct StructuredConfig {
+    server: Option<ServerAddrConfig>,
+    build_id: Option<u32>,
+    data_root: Option<String>,
+    crypt_keys: ConfigKeys,
+}
+
+#[derive(Deserialize, Default)]
+struct ServerAddrConfig {
+    listen_address: Option<String>,
+    listen_port: Option<u16>,
+    file_server_ip: Option<String>,
+    auth_server_ip: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ConfigKeys {
+    auth: ConfigKeyPair,
+    game: ConfigKeyPair,
+    gate: ConfigKeyPair,
+}
+
+#[derive(Deserialize)]
+struct ConfigKeyPair {
+    n: String,
+    k: String,
 }

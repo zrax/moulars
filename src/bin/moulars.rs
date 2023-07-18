@@ -14,10 +14,13 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+use std::ffi::OsStr;
 use std::io::{Write, stdout};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use clap::{Command, Arg};
+use log::{error, warn};
 use num_bigint::{BigUint, ToBigUint};
 use num_prime::RandPrime;
 
@@ -65,26 +68,36 @@ fn main() {
         for (stype, key_g) in [
             ("Auth", CRYPT_BASE_AUTH),
             ("Game", CRYPT_BASE_GAME),
-            ("GateKeeper", CRYPT_BASE_GATE_KEEPER)]
+            ("Gate", CRYPT_BASE_GATE_KEEPER)]
         {
-            let key_n: BigUint = rng.gen_safe_prime_exact(512);
-            write_progress_pip();
-            let key_k: BigUint = rng.gen_safe_prime_exact(512);
-            write_progress_pip();
-            let key_x = key_g.to_biguint().unwrap().modpow(&key_k, &key_n);
-            write_progress_pip();
+            loop {
+                let key_n: BigUint = rng.gen_safe_prime_exact(512);
+                write_progress_pip();
+                let key_k: BigUint = rng.gen_safe_prime_exact(512);
+                write_progress_pip();
+                let key_x = key_g.to_biguint().unwrap().modpow(&key_k, &key_n);
+                write_progress_pip();
 
-            // For best compatibility with H-uru/Plasma and DirtSand, the keys
-            // are stored in Big Endian byte order
-            let bytes_n = key_n.to_bytes_be();
-            let bytes_k = key_k.to_bytes_be();
-            let bytes_x = key_x.to_bytes_be();
+                // For best compatibility with H-uru/Plasma and DirtSand, the keys
+                // are stored in Big Endian byte order
+                let bytes_n = key_n.to_bytes_be();
+                let bytes_k = key_k.to_bytes_be();
+                let bytes_x = key_x.to_bytes_be();
 
-            let stype_lower = stype.to_ascii_lowercase();
-            server_lines.push(format!("{}.n = \"{}\"", stype_lower, base64::encode(bytes_n.clone())));
-            server_lines.push(format!("{}.k = \"{}\"", stype_lower, base64::encode(bytes_k)));
-            client_lines.push(format!("Server.{}.N \"{}\"", stype, base64::encode(bytes_n)));
-            client_lines.push(format!("Server.{}.X \"{}\"", stype, base64::encode(bytes_x)));
+                if bytes_n.len() != 64 || bytes_k.len() != 64 || bytes_x.len() != 64 {
+                    // We generated a bad length key.  Somehow, this can happen
+                    // despite the "exactly 512 bits" requested above.  So now
+                    // we need to start over :(
+                    continue;
+                }
+
+                let stype_lower = stype.to_ascii_lowercase();
+                server_lines.push(format!("{}.n = \"{}\"", stype_lower, base64::encode(bytes_n.clone())));
+                server_lines.push(format!("{}.k = \"{}\"", stype_lower, base64::encode(bytes_k)));
+                client_lines.push(format!("Server.{}.N \"{}\"", stype, base64::encode(bytes_n)));
+                client_lines.push(format!("Server.{}.X \"{}\"", stype, base64::encode(bytes_x)));
+                break;
+            }
         }
         println!("\n----------------------------");
         println!("Server keys: (moulars.toml)");
@@ -103,8 +116,55 @@ fn main() {
         std::process::exit(0);
     }
 
-    let config = ServerConfig::dummy_config();
+    let config = load_config();
     server_main(config);
+}
+
+fn load_config() -> Arc<ServerConfig> {
+    // Look for a moulars.toml config file with the following precedence:
+    //  1) In the same directory as the executable
+    //  2) If the executable is in a bin/ directory, in ../etc/
+    //  3) In the current working dir (debug builds only)
+    //  4) In the root /etc/ dir
+
+    let mut try_paths: Vec<PathBuf> = Vec::new();
+    let config_file = Path::new("moulars.toml");
+
+    let exe_path = match std::env::current_exe() {
+        Ok(path) => path.parent().unwrap().to_owned(),
+        Err(err) => {
+            error!("Failed to get executable path: {}", err);
+            std::process::exit(1);
+        }
+    };
+    try_paths.push([exe_path.as_path(), config_file].iter().collect());
+
+    if exe_path.file_name() == Some(OsStr::new("bin")) {
+        let exe_parent = exe_path.parent().unwrap();
+        try_paths.push([exe_parent, Path::new("etc"), config_file].iter().collect());
+    }
+
+    #[cfg(debug_assertions)]
+    try_paths.push(config_file.to_owned());
+
+    #[cfg(not(windows))]
+    try_paths.push(Path::new("/etc/moulars.toml").to_owned());
+
+    for path in try_paths {
+        if !path.exists() {
+            continue;
+        }
+        match ServerConfig::from_file(&path) {
+            Ok(config) => return config,
+            Err(err) => {
+                error!("Failed to load config file {}: {}", path.display(), err);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    warn!("Could not find a moulars.toml config file.  Using dummy defaults.");
+    ServerConfig::dummy_config()
 }
 
 #[tokio::main]

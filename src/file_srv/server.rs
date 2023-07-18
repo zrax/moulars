@@ -228,7 +228,7 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
                     continue;
                 }
                 do_manifest(&mut stream, trans_id, manifest_name, &mut client_reader_id,
-                            &server_config.file_data_root).await;
+                            &server_config.data_root).await;
             }
             Ok(CliToFile::DownloadRequest { trans_id, filename, build_id }) => {
                 if build_id != 0 && build_id != server_config.build_id {
@@ -239,7 +239,7 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
                     continue;
                 }
                 do_download(&mut stream, trans_id, filename, &mut client_reader_id,
-                            &server_config.file_data_root).await;
+                            &server_config.data_root).await;
             }
             Ok(CliToFile::ManifestEntryAck { trans_id: _, reader_id: _ }) => {
                 // Ignored
