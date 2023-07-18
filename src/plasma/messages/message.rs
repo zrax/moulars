@@ -84,3 +84,10 @@ impl StreamWrite for Message {
         Ok(())
     }
 }
+
+pub trait MakeNetSafe {
+    // Call this to make a Message safe for transmission to other clients
+    // over the network.  If it cannot be made safe, or should not be
+    // transmitted, this should return `false` so the server will reject it.
+    fn make_net_safe(&mut self) -> bool;
+}

@@ -14,5 +14,5 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-mod message;
-pub use message::{Message, MakeNetSafe};
+mod net_message;
+pub use net_message::NetMessage;
