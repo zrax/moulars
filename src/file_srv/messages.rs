@@ -18,6 +18,8 @@ use std::io::{BufRead, Write, Cursor, Result};
 use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
 use tokio::io::BufReader;
 use tokio::net::TcpStream;
 
@@ -73,18 +75,25 @@ pub enum FileToCli {
     },
 }
 
-const CLI2FILE_PING_REQUEST: u32 = 0;
-const CLI2FILE_BUILD_ID_REQUEST: u32 = 10;
-const CLI2FILE_MANIFEST_REQUEST: u32 = 20;
-const CLI2FILE_DOWNLOAD_REQUEST: u32 = 21;
-const CLI2FILE_MANIFEST_ENTRY_ACK: u32 = 22;
-const CLI2FILE_DOWNLOAD_CHUNK_ACK: u32 = 23;
+#[repr(u32)]
+#[derive(FromPrimitive)]
+enum ClientMsgId {
+    PingRequest = 0,
+    BuildIdRequest = 10,
+    ManifestRequest = 20,
+    DownloadRequest = 21,
+    ManifestEntryAck = 22,
+    DownloadChunkAck = 23,
+}
 
-const FILE2CLI_PING_REPLY: u32 = 0;
-const FILE2CLI_BUILD_ID_REPLY: u32 = 10;
-const FILE2CLI_BUILD_ID_UPDATE: u32 = 11;
-const FILE2CLI_MANIFEST_REPLY: u32 = 20;
-const FILE2CLI_FILE_DOWNLOAD_REPLY: u32 = 21;
+#[repr(u32)]
+enum ServerMsgId {
+    PingReply = 0,
+    BuildIdReply = 10,
+    BuildIdUpdate = 11,
+    ManifestReply = 20,
+    FileDownloadReply = 21,
+}
 
 macro_rules! read_fixed_utf16 {
     ($stream:ident, $len:expr) => ({
@@ -112,40 +121,39 @@ impl StreamRead for CliToFile {
     fn stream_read<S>(stream: &mut S) -> Result<Self>
         where S: BufRead
     {
-        match stream.read_u32::<LittleEndian>()? {
-            CLI2FILE_PING_REQUEST => {
+        let msg_id = stream.read_u32::<LittleEndian>()?;
+        match ClientMsgId::from_u32(msg_id) {
+            Some(ClientMsgId::PingRequest) => {
                 let ping_time = stream.read_u32::<LittleEndian>()?;
                 Ok(CliToFile::PingRequest { ping_time })
             }
-            CLI2FILE_BUILD_ID_REQUEST => {
+            Some(ClientMsgId::BuildIdRequest) => {
                 let trans_id = stream.read_u32::<LittleEndian>()?;
                 Ok(CliToFile::BuildIdRequest { trans_id })
             }
-            CLI2FILE_MANIFEST_REQUEST => {
+            Some(ClientMsgId::ManifestRequest) => {
                 let trans_id = stream.read_u32::<LittleEndian>()?;
                 let manifest_name = read_fixed_utf16!(stream, 260);
                 let build_id = stream.read_u32::<LittleEndian>()?;
                 Ok(CliToFile::ManifestRequest { trans_id, manifest_name, build_id })
             }
-            CLI2FILE_MANIFEST_ENTRY_ACK => {
+            Some(ClientMsgId::ManifestEntryAck) => {
                 let trans_id = stream.read_u32::<LittleEndian>()?;
                 let reader_id = stream.read_u32::<LittleEndian>()?;
                 Ok(CliToFile::ManifestEntryAck { trans_id, reader_id })
             }
-            CLI2FILE_DOWNLOAD_REQUEST => {
+            Some(ClientMsgId::DownloadRequest) => {
                 let trans_id = stream.read_u32::<LittleEndian>()?;
                 let filename = read_fixed_utf16!(stream, 260);
                 let build_id = stream.read_u32::<LittleEndian>()?;
                 Ok(CliToFile::DownloadRequest { trans_id, filename, build_id })
             }
-            CLI2FILE_DOWNLOAD_CHUNK_ACK => {
+            Some(ClientMsgId::DownloadChunkAck) => {
                 let trans_id = stream.read_u32::<LittleEndian>()?;
                 let reader_id = stream.read_u32::<LittleEndian>()?;
                 Ok(CliToFile::DownloadChunkAck { trans_id, reader_id })
             }
-            msg_id => {
-                Err(general_error!("Bad message ID {}", msg_id))
-            },
+            None => Err(general_error!("Bad message ID {}", msg_id))
         }
     }
 }
@@ -192,21 +200,21 @@ impl StreamWrite for FileToCli {
     {
         match self {
             FileToCli::PingReply { ping_time } => {
-                stream.write_u32::<LittleEndian>(FILE2CLI_PING_REPLY)?;
+                stream.write_u32::<LittleEndian>(ServerMsgId::PingReply as u32)?;
                 stream.write_u32::<LittleEndian>(*ping_time)?;
             }
             FileToCli::BuildIdReply { trans_id, result, build_id } => {
-                stream.write_u32::<LittleEndian>(FILE2CLI_BUILD_ID_REPLY)?;
+                stream.write_u32::<LittleEndian>(ServerMsgId::BuildIdReply as u32)?;
                 stream.write_u32::<LittleEndian>(*trans_id)?;
                 stream.write_i32::<LittleEndian>(*result)?;
                 stream.write_u32::<LittleEndian>(*build_id)?;
             }
             FileToCli::BuildIdUpdate { build_id } => {
-                stream.write_u32::<LittleEndian>(FILE2CLI_BUILD_ID_UPDATE)?;
+                stream.write_u32::<LittleEndian>(ServerMsgId::BuildIdUpdate as u32)?;
                 stream.write_u32::<LittleEndian>(*build_id)?;
             }
             FileToCli::ManifestReply { trans_id, result, reader_id, manifest } => {
-                stream.write_u32::<LittleEndian>(FILE2CLI_MANIFEST_REPLY)?;
+                stream.write_u32::<LittleEndian>(ServerMsgId::ManifestReply as u32)?;
                 stream.write_u32::<LittleEndian>(*trans_id)?;
                 stream.write_i32::<LittleEndian>(*result)?;
                 stream.write_u32::<LittleEndian>(*reader_id)?;
@@ -214,7 +222,7 @@ impl StreamWrite for FileToCli {
             }
             FileToCli::FileDownloadReply { trans_id, result, reader_id, file_size,
                                            file_data } => {
-                stream.write_u32::<LittleEndian>(FILE2CLI_FILE_DOWNLOAD_REPLY)?;
+                stream.write_u32::<LittleEndian>(ServerMsgId::FileDownloadReply as u32)?;
                 stream.write_u32::<LittleEndian>(*trans_id)?;
                 stream.write_i32::<LittleEndian>(*result)?;
                 stream.write_u32::<LittleEndian>(*reader_id)?;

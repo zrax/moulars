@@ -17,6 +17,8 @@
 use std::io::{Write, Result};
 
 use byteorder::{LittleEndian, WriteBytesExt};
+use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
 use tokio::io::{AsyncReadExt, BufReader};
 
 use crate::general_error;
@@ -56,20 +58,30 @@ pub enum GateKeeperToCli {
     },
 }
 
-const CLI2GATEKEEPER_PING_REQUEST: u16 = 0;
-const CLI2GATEKEEPER_FILE_SERV_IP_ADDRESS_REQUEST: u16 = 1;
-const CLI2GATEKEEPER_AUTH_SERV_IP_ADDRESS_REQUEST: u16 = 2;
+#[repr(u16)]
+#[derive(FromPrimitive)]
+#[allow(clippy::enum_variant_names)]
+enum ClientMsgId {
+    PingRequest = 0,
+    FileServIPAddressRequest,
+    AuthServIPAddressRequest,
+}
 
-const GATEKEEPER2CLI_PING_REPLY: u16 = 0;
-const GATEKEEPER2CLI_FILE_SERV_IP_ADDRESS_REPLY: u16 = 1;
-const GATEKEEPER2CLI_AUTH_SERV_IP_ADDRESS_REPLY: u16 = 2;
+#[repr(u16)]
+#[allow(clippy::enum_variant_names)]
+enum ServerMsgId {
+    PingReply = 0,
+    FileServIpAddressReply,
+    AuthServIpAddressReply,
+}
 
 const MAX_PING_PAYLOAD: u32 = 64 * 1024;
 
 impl CliToGateKeeper {
     pub async fn read(stream: &mut BufReader<CryptStream>) -> Result<Self> {
-        match stream.read_u16_le().await? {
-            CLI2GATEKEEPER_PING_REQUEST => {
+        let msg_id = stream.read_u16_le().await?;
+        match ClientMsgId::from_u16(msg_id) {
+            Some(ClientMsgId::PingRequest) => {
                 let trans_id = stream.read_u32_le().await?;
                 let ping_time = stream.read_u32_le().await?;
                 let payload_size = stream.read_u32_le().await?;
@@ -81,18 +93,16 @@ impl CliToGateKeeper {
                 stream.read_exact(payload.as_mut_slice()).await?;
                 Ok(CliToGateKeeper::PingRequest { trans_id, ping_time, payload })
             }
-            CLI2GATEKEEPER_FILE_SERV_IP_ADDRESS_REQUEST => {
+            Some(ClientMsgId::FileServIPAddressRequest) => {
                 let trans_id = stream.read_u32_le().await?;
                 let from_patcher = stream.read_u8().await? != 0;
                 Ok(CliToGateKeeper::FileServIpAddressRequest { trans_id, from_patcher })
             }
-            CLI2GATEKEEPER_AUTH_SERV_IP_ADDRESS_REQUEST => {
+            Some(ClientMsgId::AuthServIPAddressRequest) => {
                 let trans_id = stream.read_u32_le().await?;
                 Ok(CliToGateKeeper::AuthServIpAddressRequest { trans_id })
             }
-            msg_id => {
-                Err(general_error!("Bad message ID {}", msg_id))
-            }
+            None => Err(general_error!("Bad message ID {}", msg_id))
         }
     }
 }
@@ -103,14 +113,14 @@ impl StreamWrite for GateKeeperToCli {
     {
         match self {
             GateKeeperToCli::PingReply { trans_id, ping_time, payload } => {
-                stream.write_u16::<LittleEndian>(GATEKEEPER2CLI_PING_REPLY)?;
+                stream.write_u16::<LittleEndian>(ServerMsgId::PingReply as u16)?;
                 stream.write_u32::<LittleEndian>(*trans_id)?;
                 stream.write_u32::<LittleEndian>(*ping_time)?;
                 stream.write_u32::<LittleEndian>(payload.len() as u32)?;
                 stream.write_all(payload.as_slice())?;
             }
             GateKeeperToCli::FileServIpAddressReply { trans_id, ip_addr } => {
-                stream.write_u16::<LittleEndian>(GATEKEEPER2CLI_FILE_SERV_IP_ADDRESS_REPLY)?;
+                stream.write_u16::<LittleEndian>(ServerMsgId::FileServIpAddressReply as u16)?;
                 stream.write_u32::<LittleEndian>(*trans_id)?;
                 let ip_addr_utf16: Vec<u16> = ip_addr.encode_utf16().collect();
                 stream.write_u16::<LittleEndian>(ip_addr_utf16.len() as u16)?;
@@ -119,7 +129,7 @@ impl StreamWrite for GateKeeperToCli {
                 }
             }
             GateKeeperToCli::AuthServIpAddressReply { trans_id, ip_addr } => {
-                stream.write_u16::<LittleEndian>(GATEKEEPER2CLI_AUTH_SERV_IP_ADDRESS_REPLY)?;
+                stream.write_u16::<LittleEndian>(ServerMsgId::AuthServIpAddressReply as u16)?;
                 stream.write_u32::<LittleEndian>(*trans_id)?;
                 let ip_addr_utf16: Vec<u16> = ip_addr.encode_utf16().collect();
                 stream.write_u16::<LittleEndian>(ip_addr_utf16.len() as u16)?;
