@@ -84,15 +84,13 @@ struct CryptConnectHeader {
     key_seed: [u8; 64],
 }
 
+const SERVER_SEED_SIZE: usize = 7;
+const CLIENT_KEY_SIZE: usize = 64;
+
 impl CryptConnectHeader {
     const FIXED_SIZE: usize = 2;
-    const CLIENT_KEY_SIZE: usize = 64;
-    const MAX_SIZE: usize = CryptConnectHeader::FIXED_SIZE
-                            + CryptConnectHeader::CLIENT_KEY_SIZE;
-
-    const SERVER_SEED_SIZE: usize = 7;
-    const ENCRYPT_REPLY_SIZE: usize = CryptConnectHeader::FIXED_SIZE
-                                      + CryptConnectHeader::SERVER_SEED_SIZE;
+    const MAX_SIZE: usize = CryptConnectHeader::FIXED_SIZE + CLIENT_KEY_SIZE;
+    const ENCRYPT_REPLY_SIZE: usize = CryptConnectHeader::FIXED_SIZE + SERVER_SEED_SIZE;
 }
 
 impl StreamRead for CryptConnectHeader {
@@ -121,7 +119,8 @@ fn create_crypt_reply(server_seed: &[u8]) -> Result<Vec<u8>> {
     Ok(stream.into_inner())
 }
 
-const SERVER_KEY_LEN: usize = 7;
+const SERVER_SEED_BIT_SIZE: u64 = (SERVER_SEED_SIZE as u64) * 8;
+const CLIENT_KEY_BIT_SIZE: u64 = (CLIENT_KEY_SIZE as u64) * 8;
 
 // Returns the server seed and the local rc4 key data
 // NOTE: Returned seed and key are little-endian
@@ -129,16 +128,21 @@ fn crypt_key_create(key_n: &BigUint, key_k: &BigUint, key_y: &BigUint)
     -> (Vec<u8>, Vec<u8>)
 {
     let mut rng = rand::thread_rng();
-    let server_seed = rng.gen_biguint(7 * 8).to_bytes_le();
-    assert_eq!(server_seed.len(), SERVER_KEY_LEN);
+    let server_seed = loop {
+        let server_seed = rng.gen_biguint(SERVER_SEED_BIT_SIZE).to_bytes_le();
+        if server_seed.len() == SERVER_SEED_SIZE {
+            break server_seed;
+        }
+    };
 
     let client_seed = key_y.modpow(key_k, key_n);
-    assert!(client_seed.bits() >= 7 * 8 && client_seed.bits() <= 64 * 8);
+    assert!(client_seed.bits() >= SERVER_SEED_BIT_SIZE
+            && client_seed.bits() <= CLIENT_KEY_BIT_SIZE);
 
     let key_buffer = client_seed.to_bytes_le();
-    let key: Vec<u8> = key_buffer.iter().take(SERVER_KEY_LEN).enumerate()
+    let key: Vec<u8> = key_buffer.iter().take(SERVER_SEED_SIZE).enumerate()
                                  .map(|(i, v)| v ^ server_seed[i]).collect();
-    assert_eq!(key.len(), SERVER_KEY_LEN);
+    assert_eq!(key.len(), SERVER_SEED_SIZE);
 
     (server_seed, key)
 }
