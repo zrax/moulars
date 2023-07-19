@@ -25,7 +25,7 @@ use tokio::net::TcpStream;
 
 use crate::general_error;
 use crate::netcli::NetResultCode;
-use crate::plasma::{StreamRead, StreamWrite};
+use crate::plasma::{StreamRead, StreamWrite, net_io};
 use super::manifest::Manifest;
 
 pub enum CliToFile {
@@ -70,7 +70,7 @@ pub enum FileToCli {
         trans_id: u32,
         result: i32,
         reader_id: u32,
-        file_size: u32,
+        total_size: u32,
         file_data: Vec<u8>,
     },
 }
@@ -188,7 +188,7 @@ impl FileToCli {
             trans_id,
             result: result as i32,
             reader_id: 0,
-            file_size: 0,
+            total_size: 0,
             file_data: Vec::new(),
         }
     }
@@ -220,15 +220,14 @@ impl StreamWrite for FileToCli {
                 stream.write_u32::<LittleEndian>(*reader_id)?;
                 manifest.stream_write(stream)?;
             }
-            FileToCli::FileDownloadReply { trans_id, result, reader_id, file_size,
-                                           file_data } => {
+            FileToCli::FileDownloadReply { trans_id, result, reader_id,
+                                           total_size, file_data } => {
                 stream.write_u32::<LittleEndian>(ServerMsgId::FileDownloadReply as u32)?;
                 stream.write_u32::<LittleEndian>(*trans_id)?;
                 stream.write_i32::<LittleEndian>(*result)?;
                 stream.write_u32::<LittleEndian>(*reader_id)?;
-                stream.write_u32::<LittleEndian>(*file_size)?;
-                stream.write_u32::<LittleEndian>(file_data.len() as u32)?;
-                stream.write_all(file_data.as_slice())?;
+                stream.write_u32::<LittleEndian>(*total_size)?;
+                net_io::write_sized_buffer(stream, file_data)?;
             }
         }
 

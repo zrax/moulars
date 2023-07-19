@@ -157,6 +157,12 @@ async fn do_download(stream: &mut TcpStream, trans_id: u32, filename: String,
         debug!("Client {} requested file '{}'", stream.peer_addr().unwrap(),
                filename);
 
+        if metadata.len() > u32::MAX as u64 {
+            debug!("File {} too large for 32-bit stream", filename);
+            let reply = FileToCli::download_error(trans_id, NetResultCode::NetInternalError);
+            return send_message(stream, reply).await;
+        }
+
         *client_reader_id += 1;
         let mut buffer = [0u8; FILE_CHUNK_SIZE];
         loop {
@@ -170,7 +176,7 @@ async fn do_download(stream: &mut TcpStream, trans_id: u32, filename: String,
                         trans_id,
                         result: NetResultCode::NetSuccess as i32,
                         reader_id: *client_reader_id,
-                        file_size: metadata.len() as u32,
+                        total_size: metadata.len() as u32,
                         file_data: Vec::from(&buffer[..count]),
                     };
                     if !send_message(stream, reply).await {
@@ -254,11 +260,11 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
                     return;
                 }
             }
-            Ok(CliToFile::ManifestEntryAck { trans_id: _, reader_id: _ }) => {
+            Ok(CliToFile::ManifestEntryAck { .. }) => {
                 // Ignored
                 continue;
             }
-            Ok(CliToFile::DownloadChunkAck { trans_id: _, reader_id: _ }) => {
+            Ok(CliToFile::DownloadChunkAck { .. }) => {
                 // Ignored
                 continue;
             }

@@ -14,24 +14,12 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-pub mod auth_srv;
-pub mod file_srv;
-pub mod gate_keeper;
-pub mod plasma;
-pub mod vault;
+#[derive(Debug, Clone)]
+pub struct FileInfo {
+    path: String,
+    file_size: u32,
+}
 
-pub mod config;
-pub mod crypt;
-pub mod lobby;
-pub mod netcli;
-
-// Shortcut for generating (optionally formatted) general errors as std::io::Error
-#[macro_export]
-macro_rules! general_error {
-    ($message:literal) => (
-        ::std::io::Error::new(::std::io::ErrorKind::Other, $message)
-    );
-    ($message:literal, $($arg:expr),+) => (
-        ::std::io::Error::new(::std::io::ErrorKind::Other, format!($message, $($arg),+))
-    );
+pub struct Manifest {
+    files: Vec<FileInfo>,
 }

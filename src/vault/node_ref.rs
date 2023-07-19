@@ -14,24 +14,26 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-pub mod auth_srv;
-pub mod file_srv;
-pub mod gate_keeper;
-pub mod plasma;
-pub mod vault;
+use std::io::{Write, Result};
 
-pub mod config;
-pub mod crypt;
-pub mod lobby;
-pub mod netcli;
+use byteorder::{LittleEndian, WriteBytesExt};
 
-// Shortcut for generating (optionally formatted) general errors as std::io::Error
-#[macro_export]
-macro_rules! general_error {
-    ($message:literal) => (
-        ::std::io::Error::new(::std::io::ErrorKind::Other, $message)
-    );
-    ($message:literal, $($arg:expr),+) => (
-        ::std::io::Error::new(::std::io::ErrorKind::Other, format!($message, $($arg),+))
-    );
+use crate::plasma::StreamWrite;
+
+pub struct NodeRef {
+    parent_id: u32,
+    child_id: u32,
+    owner_id: u32,
+}
+
+impl StreamWrite for NodeRef {
+    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
+        where S: Write
+    {
+        stream.write_u32::<LittleEndian>(self.parent_id)?;
+        stream.write_u32::<LittleEndian>(self.child_id)?;
+        stream.write_u32::<LittleEndian>(self.owner_id)?;
+        stream.write_u8(0)?;    // Seen -- never used
+        Ok(())
+    }
 }
