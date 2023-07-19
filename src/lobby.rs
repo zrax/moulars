@@ -26,6 +26,7 @@ use uuid::Uuid;
 
 use crate::general_error;
 use crate::config::ServerConfig;
+use crate::auth_srv::AuthServer;
 use crate::gate_keeper::GateKeeper;
 use crate::file_srv::FileServer;
 use crate::plasma::StreamRead;
@@ -92,6 +93,7 @@ fn connection_type_name(conn_type: u8) -> String {
 }
 
 pub struct LobbyServer {
+    auth_server: AuthServer,
     file_server: FileServer,
     gate_keeper: GateKeeper,
 }
@@ -121,9 +123,10 @@ impl LobbyServer {
             }
         };
 
+        let auth_server = AuthServer::start(server_config.clone());
         let file_server = FileServer::start(server_config.clone());
         let gate_keeper = GateKeeper::start(server_config.clone());
-        let mut lobby = Self { file_server, gate_keeper };
+        let mut lobby = Self { auth_server, file_server, gate_keeper };
 
         loop {
             tokio::select! {
@@ -160,7 +163,7 @@ impl LobbyServer {
         match header.conn_type {
             CONN_CLI_TO_GATE_KEEPER => self.gate_keeper.add(sock).await,
             CONN_CLI_TO_FILE => self.file_server.add(sock).await,
-            CONN_CLI_TO_AUTH => todo!(),
+            CONN_CLI_TO_AUTH => self.auth_server.add(sock).await,
             CONN_CLI_TO_GAME => todo!(),
             CONN_CLI_TO_CSR => {
                 warn!("{} - Got CSR client; rejecting", sock_addr);
