@@ -61,17 +61,17 @@ async fn init_client(mut sock: TcpStream, server_config: &ServerConfig)
                              &server_config.gate_k_key).await
 }
 
-macro_rules! send_message {
-    ($stream:expr, $reply:expr) => {
-        let mut reply_buf = Cursor::new(Vec::new());
-        if let Err(err) = $reply.stream_write(&mut reply_buf) {
-            warn!("Failed to write reply stream: {}", err);
-            return;
-        }
-        if let Err(err) = $stream.get_mut().write_all(reply_buf.get_ref()).await {
-            warn!("Failed to send reply: {}", err);
-            return;
-        }
+async fn send_message(stream: &mut CryptStream, reply: GateKeeperToCli) -> bool {
+    let mut reply_buf = Cursor::new(Vec::new());
+    if let Err(err) = reply.stream_write(&mut reply_buf) {
+        warn!("Failed to write reply stream: {}", err);
+        return false;
+    }
+    if let Err(err) = stream.write_all(reply_buf.get_ref()).await {
+        warn!("Failed to send reply: {}", err);
+        false
+    } else {
+        true
     }
 }
 
@@ -90,7 +90,9 @@ async fn gate_keeper_client(client_sock: TcpStream, server_config: Arc<ServerCon
                 let reply = GateKeeperToCli::PingReply {
                     trans_id, ping_time, payload
                 };
-                send_message!(stream, reply);
+                if !send_message(stream.get_mut(), reply).await {
+                    return;
+                }
             }
             Ok(CliToGateKeeper::FileServIpAddressRequest { trans_id, from_patcher }) => {
                 // Currently unused
@@ -100,14 +102,18 @@ async fn gate_keeper_client(client_sock: TcpStream, server_config: Arc<ServerCon
                     trans_id,
                     ip_addr: server_config.file_serv_ip.clone(),
                 };
-                send_message!(stream, reply);
+                if !send_message(stream.get_mut(), reply).await {
+                    return;
+                }
             }
             Ok(CliToGateKeeper::AuthServIpAddressRequest { trans_id }) => {
                 let reply = GateKeeperToCli::AuthServIpAddressReply {
                     trans_id,
                     ip_addr: server_config.auth_serv_ip.clone(),
                 };
-                send_message!(stream, reply);
+                if !send_message(stream.get_mut(), reply).await {
+                    return;
+                }
             }
             Err(err) => {
                 if !matches!(err.kind(), ErrorKind::ConnectionReset | ErrorKind::UnexpectedEof) {
