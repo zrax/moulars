@@ -17,7 +17,7 @@
 mod data_cache;
 pub use data_cache::cache_clients;
 
-mod manifest;
+pub mod manifest;
 pub use manifest::{FileInfo, Manifest};
 
 mod messages;

@@ -1200,7 +1200,7 @@ impl StreamWrite for AuthToCli {
                 stream.write_u16::<LittleEndian>(ServerMsgId::FileListReply as u16)?;
                 stream.write_u32::<LittleEndian>(*trans_id)?;
                 stream.write_i32::<LittleEndian>(*result)?;
-                todo!(); //manifest.stream_write(stream)?;
+                manifest.stream_write(stream)?;
             }
             AuthToCli::FileDownloadChunk { trans_id, result, total_size,
                                            offset, file_data } => {
@@ -1225,10 +1225,9 @@ impl StreamWrite for AuthToCli {
                 stream.write_u32::<LittleEndian>(*trans_id)?;
                 stream.write_i32::<LittleEndian>(*result)?;
                 stream.write_u32::<LittleEndian>(ages.len() as u32)?;
-                todo!();
-                //for age in ages {
-                //    age.stream_write(stream)?;
-                //}
+                for age in ages {
+                    age.stream_write(stream)?;
+                }
             }
             AuthToCli::ScoreCreateReply { trans_id, result, score_id, created_time } => {
                 stream.write_u16::<LittleEndian>(ServerMsgId::ScoreCreateReply as u16)?;

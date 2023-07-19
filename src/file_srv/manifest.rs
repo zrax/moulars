@@ -213,105 +213,103 @@ impl FileInfo {
     }
 }
 
-macro_rules! read_utf16z_text {
-    ($stream:ident) => ({
-        let mut buffer = Vec::new();
-        loop {
-            let ch = $stream.read_u16::<LittleEndian>()?;
-            if ch == 0 {
-                break;
-            }
-            buffer.push(ch);
+pub fn read_utf16z_text<S>(stream: &mut S) -> Result<String>
+    where S: BufRead
+{
+    let mut buffer = Vec::new();
+    loop {
+        let ch = stream.read_u16::<LittleEndian>()?;
+        if ch == 0 {
+            break;
         }
-        String::from_utf16_lossy(buffer.as_slice())
-    })
+        buffer.push(ch);
+    }
+    Ok(String::from_utf16_lossy(buffer.as_slice()))
 }
 
-macro_rules! read_utf16z_md5_hash {
-    ($stream:ident) => ({
-        // Convert UTF-16 hex to a binary hash
-        let mut buffer = [0u16; 32];
-        for ch in buffer.iter_mut() {
-            *ch = $stream.read_u16::<LittleEndian>()?;
-        }
-        if $stream.read_u16::<LittleEndian>()? != 0 {
-            return Err(general_error!("MD5 hash was not nul-terminated"));
-        }
-        let mut result = [0u8; 16];
-        hex::decode_to_slice(String::from_utf16_lossy(&buffer), &mut result)
-                .map_err(|err| general_error!("Invalid hex literal: {}", err))?;
-        result
-    })
+pub fn read_utf16z_md5_hash<S>(stream: &mut S) -> Result<[u8; 16]>
+    where S: BufRead
+{
+    // Convert UTF-16 hex to a binary hash
+    let mut buffer = [0; 32];
+    stream.read_u16_into::<LittleEndian>(&mut buffer)?;
+    if stream.read_u16::<LittleEndian>()? != 0 {
+        return Err(general_error!("MD5 hash was not nul-terminated"));
+    }
+    let mut result = [0; 16];
+    hex::decode_to_slice(String::from_utf16_lossy(&buffer), &mut result)
+            .map_err(|err| general_error!("Invalid hex literal: {}", err))?;
+    Ok(result)
 }
 
 // Yes, it's as dumb as it sounds...
-macro_rules! read_utf16z_u32 {
-    ($stream:ident) => ({
-        let value = ($stream.read_u16::<LittleEndian>()? as u32) << 16
-                  | ($stream.read_u16::<LittleEndian>()? as u32);
-        if $stream.read_u16::<LittleEndian>()? != 0 {
-            return Err(general_error!("uint32 value was not nul-terminated"));
-        }
-        value
-    })
+pub fn read_utf16z_u32<S>(stream: &mut S) -> Result<u32>
+    where S: BufRead
+{
+    let value = (stream.read_u16::<LittleEndian>()? as u32) << 16
+              | (stream.read_u16::<LittleEndian>()? as u32);
+    if stream.read_u16::<LittleEndian>()? != 0 {
+        return Err(general_error!("uint32 value was not nul-terminated"));
+    }
+    Ok(value)
 }
 
 impl StreamRead for FileInfo {
     fn stream_read<S>(stream: &mut S) -> Result<Self>
         where S: BufRead
     {
-        let client_path = read_utf16z_text!(stream);
-        let download_path = read_utf16z_text!(stream);
-        let file_hash = read_utf16z_md5_hash!(stream);
-        let download_hash = read_utf16z_md5_hash!(stream);
-        let file_size = read_utf16z_u32!(stream);
-        let download_size = read_utf16z_u32!(stream);
-        let flags = read_utf16z_u32!(stream);
+        let client_path = read_utf16z_text(stream)?;
+        let download_path = read_utf16z_text(stream)?;
+        let file_hash = read_utf16z_md5_hash(stream)?;
+        let download_hash = read_utf16z_md5_hash(stream)?;
+        let file_size = read_utf16z_u32(stream)?;
+        let download_size = read_utf16z_u32(stream)?;
+        let flags = read_utf16z_u32(stream)?;
 
         Ok(Self { client_path, download_path, file_hash, download_hash,
                   file_size, download_size, flags, updated: false })
     }
 }
 
-macro_rules! write_utf16z_text {
-    ($stream:ident, $value:expr) => {
-        for ch in $value {
-            $stream.write_u16::<LittleEndian>(ch)?;
-        }
-        $stream.write_u16::<LittleEndian>(0)?;
+pub fn write_utf16z_text<S>(stream: &mut S, value: &str) -> Result<()>
+    where S: Write
+{
+    for ch in value.encode_utf16() {
+        stream.write_u16::<LittleEndian>(ch)?;
     }
+    stream.write_u16::<LittleEndian>(0)
 }
 
-macro_rules! write_utf16z_md5_hash {
-    ($stream:ident, $value:expr) => {
-        // Convert binary hash to a UTF-16 hex representation
-        for ch in hex::encode($value).encode_utf16() {
-            $stream.write_u16::<LittleEndian>(ch)?;
-        }
-        $stream.write_u16::<LittleEndian>(0)?;
+pub fn write_utf16z_md5_hash<S>(stream: &mut S, value: &[u8; 16]) -> Result<()>
+    where S: Write
+{
+    // Convert binary hash to a UTF-16 hex representation
+    for ch in hex::encode(value).encode_utf16() {
+        stream.write_u16::<LittleEndian>(ch)?;
     }
+    stream.write_u16::<LittleEndian>(0)
 }
 
 // Yes, it's as dumb as it sounds...
-macro_rules! write_utf16z_u32 {
-    ($stream:ident, $value:expr) => {
-        $stream.write_u16::<LittleEndian>(($value >> 16) as u16)?;
-        $stream.write_u16::<LittleEndian>(($value & 0xFFFF) as u16)?;
-        $stream.write_u16::<LittleEndian>(0)?;
-    }
+pub fn write_utf16z_u32<S>(stream: &mut S, value: u32) -> Result<()>
+    where S: Write
+{
+    stream.write_u16::<LittleEndian>((value >> 16) as u16)?;
+    stream.write_u16::<LittleEndian>((value & 0xFFFF) as u16)?;
+    stream.write_u16::<LittleEndian>(0)
 }
 
 impl StreamWrite for FileInfo {
     fn stream_write<S>(&self, stream: &mut S) -> Result<()>
         where S: Write
     {
-        write_utf16z_text!(stream, self.client_path.encode_utf16());
-        write_utf16z_text!(stream, self.download_path.encode_utf16());
-        write_utf16z_md5_hash!(stream, self.file_hash);
-        write_utf16z_md5_hash!(stream, self.download_hash);
-        write_utf16z_u32!(stream, self.file_size);
-        write_utf16z_u32!(stream, self.download_size);
-        write_utf16z_u32!(stream, self.flags);
+        write_utf16z_text(stream, &self.client_path)?;
+        write_utf16z_text(stream, &self.download_path)?;
+        write_utf16z_md5_hash(stream, &self.file_hash)?;
+        write_utf16z_md5_hash(stream, &self.download_hash)?;
+        write_utf16z_u32(stream, self.file_size)?;
+        write_utf16z_u32(stream, self.download_size)?;
+        write_utf16z_u32(stream, self.flags)?;
 
         Ok(())
     }
