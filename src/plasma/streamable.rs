@@ -16,7 +16,6 @@
 
 use std::io::{BufRead, Write, Result};
 
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use uuid::Uuid;
 
 pub trait StreamRead {
@@ -33,15 +32,9 @@ impl StreamRead for Uuid {
     fn stream_read<S>(stream: &mut S) -> Result<Uuid>
         where S: BufRead
     {
-        let data1 = stream.read_u32::<LittleEndian>()?;
-        let data2 = stream.read_u16::<LittleEndian>()?;
-        let data3 = stream.read_u16::<LittleEndian>()?;
-        let data4 = {
-            let mut buffer = [0u8; 8];
-            stream.read_exact(&mut buffer)?;
-            buffer
-        };
-        Ok(Uuid::from_fields(data1, data2, data3, &data4))
+        let mut buffer = [0u8; 16];
+        stream.read_exact(&mut buffer)?;
+        Ok(Uuid::from_bytes_le(buffer))
     }
 }
 
@@ -49,11 +42,6 @@ impl StreamWrite for Uuid {
     fn stream_write<S>(&self, stream: &mut S) -> Result<()>
         where S: Write
     {
-        let (data1, data2, data3, data4) = self.as_fields();
-        stream.write_u32::<LittleEndian>(data1)?;
-        stream.write_u16::<LittleEndian>(data2)?;
-        stream.write_u16::<LittleEndian>(data3)?;
-        stream.write_all(data4)?;
-        Ok(())
+        stream.write_all(self.to_bytes_le().as_slice())
     }
 }
