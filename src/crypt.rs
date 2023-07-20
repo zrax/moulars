@@ -15,6 +15,7 @@
  */
 
 use std::io::{BufRead, Write, Cursor, Result};
+use std::net::SocketAddr;
 use std::task::{Context, Poll};
 use std::pin::Pin;
 
@@ -55,6 +56,10 @@ impl CryptStream {
         let mut crypt_buf = buf.to_vec();
         self.cipher_write.apply_keystream(&mut crypt_buf);
         self.stream.write_all(crypt_buf.as_slice()).await
+    }
+
+    pub fn peer_addr(&self) -> Result<SocketAddr> {
+        self.stream.peer_addr()
     }
 }
 

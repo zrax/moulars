@@ -27,6 +27,7 @@ use uuid::Uuid;
 use crate::general_error;
 use crate::config::ServerConfig;
 use crate::crypt::CryptStream;
+use crate::netcli::NetResultCode;
 use crate::plasma::{StreamRead, StreamWrite, BitVector};
 use super::messages::{CliToAuth, AuthToCli};
 
@@ -110,13 +111,195 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>) {
                     return;
                 }
             }
+            Ok(CliToAuth::ClientRegisterRequest { build_id }) => {
+                todo!()
+            }
+            Ok(CliToAuth::ClientSetCCRLevel { .. }) => {
+                warn!("Ignoring CCR level set request from {}",
+                      stream.get_ref().peer_addr().unwrap());
+            }
+            Ok(CliToAuth::AcctLoginRequest { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::AcctSetPlayerRequest { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::AcctCreateRequest { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::AcctChangePasswordRequest { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::AcctSetRolesRequest { trans_id, .. }) => {
+                let reply = AuthToCli::AcctSetRolesReply {
+                    trans_id,
+                    result: NetResultCode::NetNotSupported as i32,
+                };
+                if !send_message(stream.get_mut(), reply).await {
+                    return;
+                }
+            }
+            Ok(CliToAuth::AcctSetBillingTypeRequest { trans_id, .. }) => {
+                let reply = AuthToCli::AcctSetRolesReply {
+                    trans_id,
+                    result: NetResultCode::NetNotSupported as i32,
+                };
+                if !send_message(stream.get_mut(), reply).await {
+                    return;
+                }
+            }
+            Ok(CliToAuth::AcctActivateRequest { trans_id, .. }) => {
+                let reply = AuthToCli::AcctActivateReply {
+                    trans_id,
+                    result: NetResultCode::NetNotSupported as i32,
+                };
+                if !send_message(stream.get_mut(), reply).await {
+                    return;
+                }
+            }
+            Ok(CliToAuth::AcctCreateFromKeyRequest { trans_id, .. }) => {
+                let reply = AuthToCli::AcctCreateFromKeyReply {
+                    trans_id,
+                    result: NetResultCode::NetNotSupported as i32,
+                    account_id: Uuid::nil(),
+                    activation_key: Uuid::nil(),
+                };
+                if !send_message(stream.get_mut(), reply).await {
+                    return;
+                }
+            }
+            Ok(CliToAuth::PlayerDeleteRequest { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::PlayerCreateRequest { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::UpgradeVisitorRequest { trans_id, .. }) => {
+                let reply = AuthToCli::UpgradeVisitorReply {
+                    trans_id,
+                    result: NetResultCode::NetNotSupported as i32,
+                };
+                if !send_message(stream.get_mut(), reply).await {
+                    return;
+                }
+            }
+            Ok(CliToAuth::SetPlayerBanStatusRequest { trans_id, .. }) => {
+                warn!("Rejecting ban request from {}",
+                      stream.get_ref().peer_addr().unwrap());
+                let reply = AuthToCli::SetPlayerBanStatusReply {
+                    trans_id,
+                    result: NetResultCode::NetServiceForbidden as i32,
+                };
+                if !send_message(stream.get_mut(), reply).await {
+                    return;
+                }
+            }
+            Ok(CliToAuth::KickPlayer { .. }) => {
+                warn!("Ignoring kick player request from {}",
+                      stream.get_ref().peer_addr().unwrap());
+            }
+            Ok(CliToAuth::ChangePlayerNameRequest { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::SendFriendInviteRequest { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::VaultNodeCreate { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::VaultNodeFetch { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::VaultNodeSave { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::VaultNodeDelete { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::VaultNodeAdd { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::VaultNodeRemove { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::VaultFetchNodeRefs { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::VaultInitAgeRequest { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::VaultNodeFind { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::VaultSetSeen { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::VaultSendNode { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::AgeRequest { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::FileListRequest { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::FileDownloadRequest { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::FileDownloadChunkAck { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::PropagateBuffer { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::GetPublicAgeList { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::SetAgePublic { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::LogPythonTraceback { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::LogStackDump { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::LogClientDebuggerConnect { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::ScoreCreate { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::ScoreDelete { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::ScoreGetScores { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::ScoreAddPoints { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::ScoreTransferPoints { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::ScoreSetPoints { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::ScoreGetRanks { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::AccountExistsRequest { .. }) => {
+                todo!()
+            }
+            Ok(CliToAuth::ScoreGetHighScores { .. }) => {
+                todo!()
+            }
             Err(err) => {
                 if !matches!(err.kind(), ErrorKind::ConnectionReset | ErrorKind::UnexpectedEof) {
                     warn!("Error reading message from client: {}", err);
                 }
                 return;
             }
-            _ => todo!(),
         }
     }
 }
