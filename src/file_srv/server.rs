@@ -260,16 +260,12 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
                     return;
                 }
             }
-            Ok(CliToFile::ManifestEntryAck { .. }) => {
-                // Ignored
-                continue;
-            }
-            Ok(CliToFile::DownloadChunkAck { .. }) => {
-                // Ignored
-                continue;
-            }
+            Ok(CliToFile::ManifestEntryAck { .. }) => (),   // Ignored
+            Ok(CliToFile::DownloadChunkAck { .. }) => (),   // Ignored
             Err(err) => {
-                if !matches!(err.kind(), ErrorKind::ConnectionReset | ErrorKind::UnexpectedEof) {
+                if matches!(err.kind(), ErrorKind::ConnectionReset | ErrorKind::UnexpectedEof) {
+                    debug!("Client {} disconnected", stream.get_ref().peer_addr().unwrap());
+                } else {
                     warn!("Error reading message from client: {}", err);
                 }
                 return;

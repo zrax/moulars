@@ -18,7 +18,8 @@ use std::io::{BufRead, Cursor, Result, ErrorKind};
 use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt};
-use log::{error, warn};
+use log::{error, warn, debug};
+use rand::Rng;
 use tokio::io::{AsyncReadExt, BufReader};
 use tokio::sync::mpsc;
 use tokio::net::TcpStream;
@@ -112,7 +113,19 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>) {
                 }
             }
             Ok(CliToAuth::ClientRegisterRequest { build_id }) => {
-                todo!()
+                if build_id != 0 && build_id != server_config.build_id {
+                    warn!("Client {} has an unexpected build ID {}",
+                          stream.get_ref().peer_addr().unwrap(), build_id);
+                    // The client isn't listening for anything other than a
+                    // ClientRegisterReply, which doesn't have a result field,
+                    // so we can't notify them that their build is invalid...
+                    return;
+                }
+                let server_challenge = rand::thread_rng().gen::<u32>();
+                let reply = AuthToCli::ClientRegisterReply { server_challenge };
+                if !send_message(stream.get_mut(), reply).await {
+                    return;
+                }
             }
             Ok(CliToAuth::ClientSetCCRLevel { .. }) => {
                 warn!("Ignoring CCR level set request from {}",
@@ -124,11 +137,24 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>) {
             Ok(CliToAuth::AcctSetPlayerRequest { .. }) => {
                 todo!()
             }
-            Ok(CliToAuth::AcctCreateRequest { .. }) => {
-                todo!()
+            Ok(CliToAuth::AcctCreateRequest { trans_id, .. }) => {
+                let reply = AuthToCli::AcctCreateReply {
+                    trans_id,
+                    result: NetResultCode::NetNotSupported as i32,
+                    account_id: Uuid::nil(),
+                };
+                if !send_message(stream.get_mut(), reply).await {
+                    return;
+                }
             }
-            Ok(CliToAuth::AcctChangePasswordRequest { .. }) => {
-                todo!()
+            Ok(CliToAuth::AcctChangePasswordRequest { trans_id, .. }) => {
+                let reply = AuthToCli::AcctChangePasswordReply {
+                    trans_id,
+                    result: NetResultCode::NetNotSupported as i32,
+                };
+                if !send_message(stream.get_mut(), reply).await {
+                    return;
+                }
             }
             Ok(CliToAuth::AcctSetRolesRequest { trans_id, .. }) => {
                 let reply = AuthToCli::AcctSetRolesReply {
@@ -246,11 +272,10 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>) {
             Ok(CliToAuth::FileDownloadRequest { .. }) => {
                 todo!()
             }
-            Ok(CliToAuth::FileDownloadChunkAck { .. }) => {
-                todo!()
-            }
+            Ok(CliToAuth::FileDownloadChunkAck { .. }) => (),   // Ignored
             Ok(CliToAuth::PropagateBuffer { .. }) => {
-                todo!()
+                warn!("Ignoring propagate buffer from {}",
+                      stream.get_ref().peer_addr().unwrap());
             }
             Ok(CliToAuth::GetPublicAgeList { .. }) => {
                 todo!()
@@ -258,15 +283,15 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>) {
             Ok(CliToAuth::SetAgePublic { .. }) => {
                 todo!()
             }
-            Ok(CliToAuth::LogPythonTraceback { .. }) => {
-                todo!()
+            Ok(CliToAuth::LogPythonTraceback { traceback }) => {
+                warn!("Python Traceback from {}:\n{}",
+                      stream.get_ref().peer_addr().unwrap(), traceback);
             }
-            Ok(CliToAuth::LogStackDump { .. }) => {
-                todo!()
+            Ok(CliToAuth::LogStackDump { stackdump }) => {
+                warn!("Stack Dump from {}:\n{}",
+                      stream.get_ref().peer_addr().unwrap(), stackdump);
             }
-            Ok(CliToAuth::LogClientDebuggerConnect { .. }) => {
-                todo!()
-            }
+            Ok(CliToAuth::LogClientDebuggerConnect { .. }) => (),   // Ignored
             Ok(CliToAuth::ScoreCreate { .. }) => {
                 todo!()
             }
@@ -295,7 +320,9 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>) {
                 todo!()
             }
             Err(err) => {
-                if !matches!(err.kind(), ErrorKind::ConnectionReset | ErrorKind::UnexpectedEof) {
+                if matches!(err.kind(), ErrorKind::ConnectionReset | ErrorKind::UnexpectedEof) {
+                    debug!("Client {} disconnected", stream.get_ref().peer_addr().unwrap());
+                } else {
                     warn!("Error reading message from client: {}", err);
                 }
                 return;

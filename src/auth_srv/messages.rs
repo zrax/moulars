@@ -493,7 +493,6 @@ pub enum AuthToCli {
         score_count: u32,
         score_buffer: Vec<u8>,
     },
-    // ...
     ServerCaps {
         caps_buffer: Vec<u8>,
     },

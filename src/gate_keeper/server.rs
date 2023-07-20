@@ -18,7 +18,7 @@ use std::io::{BufRead, Cursor, Result, ErrorKind};
 use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt};
-use log::{error, warn};
+use log::{error, warn, debug};
 use tokio::io::{AsyncReadExt, BufReader};
 use tokio::sync::mpsc;
 use tokio::net::TcpStream;
@@ -116,7 +116,9 @@ async fn gate_keeper_client(client_sock: TcpStream, server_config: Arc<ServerCon
                 }
             }
             Err(err) => {
-                if !matches!(err.kind(), ErrorKind::ConnectionReset | ErrorKind::UnexpectedEof) {
+                if matches!(err.kind(), ErrorKind::ConnectionReset | ErrorKind::UnexpectedEof) {
+                    debug!("Client {} disconnected", stream.get_ref().peer_addr().unwrap());
+                } else {
                     warn!("Error reading message from client: {}", err);
                 }
                 return;
