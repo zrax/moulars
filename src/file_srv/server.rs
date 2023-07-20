@@ -194,7 +194,7 @@ async fn do_download(stream: &mut TcpStream, trans_id: u32, filename: String,
         warn!("Client {} requested invalid path '{}'", stream.peer_addr().unwrap(),
               filename);
         let reply = FileToCli::download_error(trans_id, NetResultCode::NetFileNotFound);
-        return send_message(stream, reply).await;
+        send_message(stream, reply).await
     }
 }
 

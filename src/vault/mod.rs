@@ -16,3 +16,6 @@
 
 mod node_ref;
 pub use node_ref::NodeRef;
+
+mod vault_node;
+pub use vault_node::VaultNode;

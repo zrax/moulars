@@ -26,6 +26,12 @@ pub struct NodeRef {
     owner_id: u32,
 }
 
+impl NodeRef {
+    pub fn new(parent_id: u32, child_id: u32, owner_id: u32) -> Self {
+        Self { parent_id, child_id, owner_id }
+    }
+}
+
 impl StreamWrite for NodeRef {
     fn stream_write<S>(&self, stream: &mut S) -> Result<()>
         where S: Write
