@@ -24,6 +24,39 @@ use log::{warn, info};
 
 use super::manifest::{Manifest, FileInfo};
 
+fn ignore_file(path: &Path) -> bool {
+    if let Some(ext) = path.extension() {
+        if ext == OsStr::new("gz") {
+            // We don't send the client .gz files to leave compressed,
+            // so this is probably a compressed version of another file
+            return true;
+        }
+    }
+
+    if let Some(file_name) = path.file_name() {
+        if file_name == OsStr::new("desktop.ini")
+                || file_name.to_string_lossy().starts_with(".") {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn scan_dir(path: &Path, file_set: &mut HashSet<PathBuf>) -> Result<()> {
+    for entry in path.read_dir()? {
+        let entry = entry?;
+        if !entry.metadata()?.is_file() {
+            warn!("Skipping '{}' -- not a regular file", entry.path().display());
+        }
+
+        if !ignore_file(&entry.path()) {
+            file_set.insert(entry.path());
+        }
+    }
+    Ok(())
+}
+
 pub fn cache_clients(data_root: &Path) -> Result<()> {
     lazy_static! {
         static ref CLIENT_TYPES: Vec<(&'static str, &'static str, PathBuf)> = vec![
@@ -34,30 +67,33 @@ pub fn cache_clients(data_root: &Path) -> Result<()> {
         ];
     }
 
-    for (build, suffix, data_dir) in CLIENT_TYPES.iter() {
+    let mut game_data_files = HashSet::new();
+    for data_dir in ["avi", "dat", "sfx"] {
         let src_dir = data_root.join(data_dir);
-        if !src_dir.exists() {
+        if src_dir.exists() && src_dir.is_dir() {
+            scan_dir(&src_dir, &mut game_data_files)?;
+        } else {
+            warn!("{} does not exist.  Skipping {} files for manifests.",
+                  src_dir.display(), data_dir);
+        }
+    }
+
+    let mut data_cache = HashMap::new();
+
+    // TODO: Build manifests for individual ages, and ensure any files
+    // referenced by ages and PRPs are present.
+
+    for (build, suffix, client_data_dir) in CLIENT_TYPES.iter() {
+        let src_dir = data_root.join(client_data_dir);
+        if !src_dir.exists() || !src_dir.is_dir() {
             warn!("{} does not exist.  Skipping manifest for {}{}",
-                  data_dir.display(), build, suffix);
+                  client_data_dir.display(), build, suffix);
             continue;
         }
 
-        let mut discovered_files = HashSet::new();
-        for entry in src_dir.read_dir()? {
-            let entry = entry?;
-            if entry.path().extension() == Some(OsStr::new("gz")) {
-                // We don't send the client .gz files to leave compressed,
-                // so this is probably a compressed version of another file
-                continue;
-            }
-
-            let metadata = entry.metadata()?;
-            if metadata.is_file() {
-                discovered_files.insert(entry.path());
-            } else {
-                warn!("Skipping '{}' -- not a regular file", entry.path().display());
-            }
-        }
+        // Fetch runtime files specific to this client configuration.
+        let mut client_files = game_data_files.clone();
+        scan_dir(&src_dir, &mut client_files)?;
 
         let patcher_mfs_path = data_root.join(
                 format!("{}Patcher{}.mfs_cache", build, suffix));
@@ -70,55 +106,62 @@ pub fn cache_clients(data_root: &Path) -> Result<()> {
         let mut thin_mfs = load_or_create_manifest(&thin_mfs_path)?;
         let mut full_mfs = load_or_create_manifest(&full_mfs_path)?;
 
-        // Ensure we process files found in multiple manifests only once
-        // NOTE: The thin manifest contains no unique files.
-        let mut all_client_files = HashMap::with_capacity(
-                    patcher_mfs.files().len() + full_mfs.files().len());
-        for file in patcher_mfs.files().iter().chain(full_mfs.files().iter()) {
-            all_client_files.insert(file.client_path().clone(), file.clone());
-        }
-
-        for file in all_client_files.values_mut() {
-            if let Err(err) = file.update(data_root) {
-                // TODO: If the error is NotFound, should we mark the file as deleted?
-                warn!("Failed to update cache for file {}: {}",
-                      file.client_path(), err);
-            }
-            discovered_files.remove(&file.source_path(data_root));
-        }
-
+        // Update any files already in the manifests
         for file in patcher_mfs.files_mut().iter_mut()
                         .chain(thin_mfs.files_mut().iter_mut())
                         .chain(full_mfs.files_mut().iter_mut())
         {
-            *file = all_client_files.get(file.client_path()).unwrap().clone();
+            *file = data_cache.entry(file.source_path(data_root)).or_insert_with(|| {
+                let mut file = file.clone();
+                if let Err(err) = file.update(data_root) {
+                    // TODO: If the error is NotFound, should we mark the file as deleted?
+                    warn!("Failed to update cache for file {}: {}",
+                          file.client_path(), err);
+                }
+                file
+            }).clone();
+            client_files.remove(&file.source_path(data_root));
         }
 
-        for path in discovered_files {
-            info!("Adding {}", path.display());
-            let client_path = path.file_name().unwrap().to_string_lossy().to_string();
-            let src_path = path.strip_prefix(data_root).unwrap().to_string_lossy().to_string();
-            let mut file = FileInfo::new(client_path, src_path);
-            if let Err(err) = file.update(data_root) {
-                warn!("Failed to add {} to the cache: {}", path.display(), err);
-                continue;
-            }
+        for path in client_files {
+            let src_path = path.strip_prefix(data_root).unwrap();
+            info!("Adding {}", src_path.display());
+
+            let client_path = if src_path.starts_with("client") {
+                src_path.file_name().unwrap().to_string_lossy().to_string()
+            } else {
+                src_path.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "\\")
+            };
+
+            // The file might not have been in this manifest, but it could be
+            // in others.  Use the cached version if it's available.
+            let file = data_cache.entry(path.clone()).or_insert_with(|| {
+                let download_path = src_path.to_string_lossy().to_string();
+                let mut file = FileInfo::new(client_path, download_path);
+                if let Err(err) = file.update(data_root) {
+                    warn!("Failed to add {} to the cache: {}", path.display(), err);
+                }
+                file
+            });
 
             // Add the newly detected file to the appropriate manifest(s)
             let client_path_lower = file.client_path().to_ascii_lowercase();
+            let ext = path.extension();
             if client_path_lower.contains("vcredist") {
                 file.set_redist_update();
-                patcher_mfs.add(file);
+                patcher_mfs.add(file.clone());
             } else if client_path_lower.contains("launcher") {
-                patcher_mfs.add(file);
+                patcher_mfs.add(file.clone());
+            } else if ext == Some(OsStr::new("prp")) || ext == Some(OsStr::new("fni"))
+                    || ext == Some(OsStr::new("csv")) || ext == Some(OsStr::new("ogg"))
+                    || ext == Some(OsStr::new("sub")) {
+                full_mfs.add(file.clone());
             } else {
-                // Everything else goes into the client manifests
+                // Everything else goes into both client manifests
                 thin_mfs.add(file.clone());
-                full_mfs.add(file);
+                full_mfs.add(file.clone());
             }
         }
-
-        // TODO: Also add client data files to the Thin and Full manifests
 
         if patcher_mfs.any_updated() {
             patcher_mfs.write_cache(&patcher_mfs_path)?;

@@ -204,6 +204,7 @@ impl FileInfo {
         self.file_size = 0;
         self.download_size = 0;
         self.flags = Self::DELETED;
+        self.updated = true;
     }
 
     pub fn as_ds_mfs(&self) -> String {
