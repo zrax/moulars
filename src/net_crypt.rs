@@ -29,18 +29,18 @@ use crate::plasma::StreamRead;
 
 type CryptCipher = rc4::Rc4<rc4::consts::U7>;
 
-pub struct CryptStream {
+pub struct CryptTcpStream {
     stream: TcpStream,
     cipher_read: CryptCipher,
     cipher_write: CryptCipher,
 }
 
-impl CryptStream {
+impl CryptTcpStream {
     pub fn new(stream: TcpStream, key_data: &[u8]) -> Self {
         use rc4::{Key, KeyInit};
 
         let key = Key::from_slice(key_data);
-        CryptStream {
+        CryptTcpStream {
             stream,
             cipher_read: CryptCipher::new(key),
             cipher_write: CryptCipher::new(key),
@@ -63,7 +63,7 @@ impl CryptStream {
     }
 }
 
-impl AsyncRead for CryptStream {
+impl AsyncRead for CryptTcpStream {
     fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>)
         -> Poll<Result<()>>
     {
@@ -153,7 +153,7 @@ fn crypt_key_create(key_n: &BigUint, key_k: &BigUint, key_y: &BigUint)
 }
 
 pub async fn init_crypt(mut sock: TcpStream, key_n: &BigUint, key_k: &BigUint)
-    -> Result<BufReader<CryptStream>>
+    -> Result<BufReader<CryptTcpStream>>
 {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -184,5 +184,5 @@ pub async fn init_crypt(mut sock: TcpStream, key_n: &BigUint, key_k: &BigUint)
     let reply = create_crypt_reply(&server_seed)?;
     sock.write_all(&reply).await?;
 
-    Ok(BufReader::new(CryptStream::new(sock, &crypt_key)))
+    Ok(BufReader::new(CryptTcpStream::new(sock, &crypt_key)))
 }

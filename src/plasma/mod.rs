@@ -20,6 +20,9 @@ pub use bit_vector::BitVector;
 pub mod creatable;
 pub use creatable::Creatable;
 
+pub mod file_crypt;
+pub use file_crypt::{EncryptionType, EncryptedReader, EncryptedWriter};
+
 mod key;
 pub use key::{Key, Uoid};
 

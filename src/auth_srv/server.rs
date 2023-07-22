@@ -27,7 +27,7 @@ use uuid::Uuid;
 
 use crate::general_error;
 use crate::config::ServerConfig;
-use crate::crypt::CryptStream;
+use crate::net_crypt::CryptTcpStream;
 use crate::netcli::NetResultCode;
 use crate::plasma::{StreamRead, StreamWrite, BitVector};
 use super::messages::{CliToAuth, AuthToCli};
@@ -56,7 +56,7 @@ fn read_conn_header<S>(stream: &mut S) -> Result<()>
     Ok(())
 }
 
-async fn send_message(stream: &mut CryptStream, reply: AuthToCli) -> bool {
+async fn send_message(stream: &mut CryptTcpStream, reply: AuthToCli) -> bool {
     let mut reply_buf = Cursor::new(Vec::new());
     if let Err(err) = reply.stream_write(&mut reply_buf) {
         warn!("Failed to write reply stream: {}", err);
@@ -71,14 +71,14 @@ async fn send_message(stream: &mut CryptStream, reply: AuthToCli) -> bool {
 }
 
 async fn init_client(mut sock: TcpStream, server_config: &ServerConfig)
-    -> Result<BufReader<CryptStream>>
+    -> Result<BufReader<CryptTcpStream>>
 {
     let mut header = [0u8; CONN_HEADER_SIZE];
     sock.read_exact(&mut header).await?;
     read_conn_header(&mut Cursor::new(header))?;
 
-    let mut crypt_sock = crate::crypt::init_crypt(sock, &server_config.auth_n_key,
-                                                  &server_config.auth_k_key).await?;
+    let mut crypt_sock = crate::net_crypt::init_crypt(sock, &server_config.auth_n_key,
+                                                      &server_config.auth_k_key).await?;
 
     /* Shard Capabilities */
     let mut caps = BitVector::new();

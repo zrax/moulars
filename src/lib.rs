@@ -21,8 +21,8 @@ pub mod plasma;
 pub mod vault;
 
 pub mod config;
-pub mod crypt;
 pub mod lobby;
+pub mod net_crypt;
 pub mod netcli;
 
 // Shortcut for generating (optionally formatted) general errors as std::io::Error

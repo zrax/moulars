@@ -22,7 +22,7 @@ use num_traits::FromPrimitive;
 use tokio::io::{AsyncReadExt, BufReader};
 
 use crate::general_error;
-use crate::crypt::CryptStream;
+use crate::net_crypt::CryptTcpStream;
 use crate::plasma::{StreamWrite, net_io};
 
 #[allow(clippy::enum_variant_names)]
@@ -78,7 +78,7 @@ enum ServerMsgId {
 const MAX_PING_PAYLOAD: u32 = 64 * 1024;
 
 impl CliToGateKeeper {
-    pub async fn read(stream: &mut BufReader<CryptStream>) -> Result<Self> {
+    pub async fn read(stream: &mut BufReader<CryptTcpStream>) -> Result<Self> {
         let msg_id = stream.read_u16_le().await?;
         match ClientMsgId::from_u16(msg_id) {
             Some(ClientMsgId::PingRequest) => {

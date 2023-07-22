@@ -26,7 +26,7 @@ use uuid::Uuid;
 
 use crate::general_error;
 use crate::config::ServerConfig;
-use crate::crypt::CryptStream;
+use crate::net_crypt::CryptTcpStream;
 use crate::plasma::{StreamRead, StreamWrite};
 use super::messages::{CliToGateKeeper, GateKeeperToCli};
 
@@ -51,17 +51,17 @@ fn read_conn_header<S>(stream: &mut S) -> Result<()>
 }
 
 async fn init_client(mut sock: TcpStream, server_config: &ServerConfig)
-    -> Result<BufReader<CryptStream>>
+    -> Result<BufReader<CryptTcpStream>>
 {
     let mut header = [0u8; CONN_HEADER_SIZE];
     sock.read_exact(&mut header).await?;
     read_conn_header(&mut Cursor::new(header))?;
 
-    crate::crypt::init_crypt(sock, &server_config.gate_n_key,
-                             &server_config.gate_k_key).await
+    crate::net_crypt::init_crypt(sock, &server_config.gate_n_key,
+                                 &server_config.gate_k_key).await
 }
 
-async fn send_message(stream: &mut CryptStream, reply: GateKeeperToCli) -> bool {
+async fn send_message(stream: &mut CryptTcpStream, reply: GateKeeperToCli) -> bool {
     let mut reply_buf = Cursor::new(Vec::new());
     if let Err(err) = reply.stream_write(&mut reply_buf) {
         warn!("Failed to write reply stream: {}", err);

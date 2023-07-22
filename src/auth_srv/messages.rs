@@ -23,7 +23,7 @@ use tokio::io::{AsyncReadExt, BufReader};
 use uuid::Uuid;
 
 use crate::general_error;
-use crate::crypt::CryptStream;
+use crate::net_crypt::CryptTcpStream;
 use crate::plasma::{StreamWrite, net_io};
 use crate::vault::NodeRef;
 use super::age_info::NetAgeInfo;
@@ -624,7 +624,7 @@ const MAX_PING_PAYLOAD: u32 = 64 * 1024;
 const MAX_PROPAGATE_BUFFER_SIZE: u32 = 1024 * 1024;
 
 impl CliToAuth {
-    pub async fn read(stream: &mut BufReader<CryptStream>) -> Result<Self> {
+    pub async fn read(stream: &mut BufReader<CryptTcpStream>) -> Result<Self> {
         let msg_id = stream.read_u16_le().await?;
         match ClientMsgId::from_u16(msg_id) {
             Some(ClientMsgId::PingRequest) => {
