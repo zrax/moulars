@@ -16,7 +16,7 @@
 
 use std::collections::{HashSet, HashMap};
 use std::ffi::OsStr;
-use std::io::Result;
+use std::io::{Result, ErrorKind};
 use std::path::{Path, PathBuf};
 
 use lazy_static::lazy_static;
@@ -35,7 +35,7 @@ fn ignore_file(path: &Path) -> bool {
 
     if let Some(file_name) = path.file_name() {
         if file_name == OsStr::new("desktop.ini")
-                || file_name.to_string_lossy().starts_with(".") {
+                || file_name.to_string_lossy().starts_with('.') {
             return true;
         }
     }
@@ -114,9 +114,13 @@ pub fn cache_clients(data_root: &Path) -> Result<()> {
             *file = data_cache.entry(file.source_path(data_root)).or_insert_with(|| {
                 let mut file = file.clone();
                 if let Err(err) = file.update(data_root) {
-                    // TODO: If the error is NotFound, should we mark the file as deleted?
-                    warn!("Failed to update cache for file {}: {}",
-                          file.client_path(), err);
+                    if err.kind() == ErrorKind::NotFound {
+                        warn!("Removing {}", file.client_path());
+                        file.mark_deleted();
+                    } else {
+                        warn!("Failed to update cache for file {}: {}",
+                              file.client_path(), err);
+                    }
                 }
                 file
             }).clone();

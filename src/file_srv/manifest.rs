@@ -85,11 +85,11 @@ fn test_append_extension() {
 impl FileInfo {
     // Flags for FileInfo
     const OGG_SPLIT_CHANNELS: u32 = 1 << 0;
-    const OGG_STREAM: u32 = 1 << 1;
+    const OGG_STREAM_COMPRESSED: u32 = 1 << 1;
     const OGG_STEREO: u32 = 1 << 2;
     const COMPRESSED_GZ: u32 = 1 << 3;
     const REDIST_UPDATE: u32 = 1 << 4;
-    const DELETED: u32 = 1 << 5;
+    const DELETED: u32 = 1 << 21;
 
     // Creates a new entry with invalid hash/size data.
     // It will need to be populated with real data via update() before
@@ -129,14 +129,14 @@ impl FileInfo {
     pub fn set_redist_update(&mut self) { self.flags |= Self::REDIST_UPDATE }
 
     pub fn set_ogg_flags(&mut self, sound_buffer: &SoundBuffer) {
-        self.flags &= !(Self::OGG_SPLIT_CHANNELS | Self::OGG_STREAM | Self::OGG_STEREO);
+        self.flags &= !(Self::OGG_SPLIT_CHANNELS | Self::OGG_STREAM_COMPRESSED | Self::OGG_STEREO);
         if sound_buffer.split_channel() {
             self.flags |= FileInfo::OGG_SPLIT_CHANNELS;
         } else {
             self.flags |= FileInfo::OGG_STEREO;
         }
         if sound_buffer.stream_compressed() {
-            self.flags |= FileInfo::OGG_STREAM;
+            self.flags |= FileInfo::OGG_STREAM_COMPRESSED;
         }
     }
 
@@ -197,7 +197,7 @@ impl FileInfo {
         Ok(())
     }
 
-    // Use this to indicate to the client that the file should be deleted
+    // Use this to indicate that the source file was deleted
     pub fn mark_deleted(&mut self) {
         self.file_hash = [0; 16];
         self.download_hash = [0; 16];
@@ -304,6 +304,8 @@ impl StreamWrite for FileInfo {
     fn stream_write<S>(&self, stream: &mut S) -> Result<()>
         where S: Write
     {
+        assert_eq!(self.flags & FileInfo::DELETED, 0);
+
         write_utf16z_text(stream, &self.client_path)?;
         write_utf16z_text(stream, &self.download_path)?;
         write_utf16z_md5_hash(stream, &self.file_hash)?;
@@ -387,6 +389,9 @@ impl StreamWrite for Manifest {
 
         let mut file_stream = Cursor::new(Vec::new());
         for file in &self.files {
+            if (file.flags & FileInfo::DELETED) != 0 {
+                continue;
+            }
             file.stream_write(&mut file_stream)?;
         }
         file_stream.write_u16::<LittleEndian>(0)?;
