@@ -16,12 +16,14 @@
 
 use std::collections::{HashSet, HashMap};
 use std::ffi::OsStr;
-use std::io::{Result, ErrorKind};
+use std::fs::File;
+use std::io::{Cursor, Result, ErrorKind};
 use std::path::{Path, PathBuf};
 
 use lazy_static::lazy_static;
 use log::{warn, info};
 
+use crate::plasma::file_crypt::{EncryptionType, EncryptedWriter, DEFAULT_KEY};
 use super::manifest::{Manifest, FileInfo};
 
 fn ignore_file(path: &Path) -> bool {
@@ -75,6 +77,17 @@ pub fn cache_clients(data_root: &Path) -> Result<()> {
         } else {
             warn!("{} does not exist.  Skipping {} files for manifests.",
                   src_dir.display(), data_dir);
+        }
+    }
+
+    for file in &game_data_files {
+        if let Some(ext) = file.extension() {
+            if ext == OsStr::new("age") || ext == OsStr::new("fni") || ext == OsStr::new("csv") {
+                // Ensure the file is encrypted for external clients
+                if let Err(err) = encrypt_file(file) {
+                    warn!("Failed to encrypt {}: {}", file.display(), err);
+                }
+            }
         }
     }
 
@@ -189,4 +202,17 @@ fn load_or_create_manifest(path: &Path) -> Result<Manifest> {
         info!("Creating manifest {}", path.display());
         Ok(Manifest::new())
     }
+}
+
+fn encrypt_file(path: &Path) -> Result<()> {
+    if EncryptionType::from_file(path)? == EncryptionType::Unencrypted {
+        info!("Encrypting {}", path.display());
+        // These files are generally small enough to just load entirely
+        // into memory...
+        let file_content = std::fs::read(path)?;
+        let mut out_file = EncryptedWriter::new(File::create(path)?,
+                                EncryptionType::TEA, &DEFAULT_KEY)?;
+        std::io::copy(&mut Cursor::new(file_content), &mut out_file)?;
+    }
+    Ok(())
 }
