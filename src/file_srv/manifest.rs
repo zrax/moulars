@@ -125,6 +125,7 @@ impl FileInfo {
     }
 
     pub fn is_compressed(&self) -> bool { (self.flags & Self::COMPRESSED_GZ) != 0 }
+    pub fn is_deleted(&self) -> bool { (self.flags & Self::DELETED) != 0 }
 
     pub fn set_redist_update(&mut self) { self.flags |= Self::REDIST_UPDATE }
 
@@ -304,7 +305,7 @@ impl StreamWrite for FileInfo {
     fn stream_write<S>(&self, stream: &mut S) -> Result<()>
         where S: Write
     {
-        assert_eq!(self.flags & FileInfo::DELETED, 0);
+        assert_eq!(self.flags & Self::DELETED, 0);
 
         write_utf16z_text(stream, &self.client_path)?;
         write_utf16z_text(stream, &self.download_path)?;
@@ -385,13 +386,13 @@ impl StreamWrite for Manifest {
     fn stream_write<S>(&self, stream: &mut S) -> Result<()>
         where S: Write
     {
-        stream.write_u32::<LittleEndian>(self.files.len() as u32)?;
+        // Don't write deleted files.  We need to keep them around in the
+        // cache though so the check for updated records still works properly.
+        let write_files: Vec<&FileInfo> = self.files.iter().filter(|f| !f.is_deleted()).collect();
+        stream.write_u32::<LittleEndian>(write_files.len() as u32)?;
 
         let mut file_stream = Cursor::new(Vec::new());
-        for file in &self.files {
-            if (file.flags & FileInfo::DELETED) != 0 {
-                continue;
-            }
+        for file in &write_files {
             file.stream_write(&mut file_stream)?;
         }
         file_stream.write_u16::<LittleEndian>(0)?;
