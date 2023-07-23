@@ -20,8 +20,8 @@ use std::fs::File;
 use std::io::{Cursor, Result, ErrorKind};
 use std::path::{Path, PathBuf};
 
-use lazy_static::lazy_static;
 use log::{warn, info};
+use once_cell::sync::Lazy;
 
 use crate::plasma::file_crypt::{EncryptionType, EncryptedWriter, DEFAULT_KEY};
 use super::manifest::{Manifest, FileInfo};
@@ -60,14 +60,12 @@ fn scan_dir(path: &Path, file_set: &mut HashSet<PathBuf>) -> Result<()> {
 }
 
 pub fn cache_clients(data_root: &Path) -> Result<()> {
-    lazy_static! {
-        static ref CLIENT_TYPES: Vec<(&'static str, &'static str, PathBuf)> = vec![
-            ("Internal", "", ["client", "windows_ia32", "internal"].iter().collect()),
-            ("External", "", ["client", "windows_ia32", "external"].iter().collect()),
-            ("Internal", "_x64", ["client", "windows_x64", "internal"].iter().collect()),
-            ("External", "_x64", ["client", "windows_x64", "external"].iter().collect()),
-        ];
-    }
+    static CLIENT_TYPES: Lazy<Vec<(&str, &str, PathBuf)>> = Lazy::new(|| vec![
+        ("Internal", "", ["client", "windows_ia32", "internal"].iter().collect()),
+        ("External", "", ["client", "windows_ia32", "external"].iter().collect()),
+        ("Internal", "_x64", ["client", "windows_x64", "internal"].iter().collect()),
+        ("External", "_x64", ["client", "windows_x64", "external"].iter().collect()),
+    ]);
 
     let mut game_data_files = HashSet::new();
     for data_dir in ["avi", "dat", "sfx"] {
