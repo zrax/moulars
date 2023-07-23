@@ -127,18 +127,20 @@ impl FileInfo {
     pub fn is_compressed(&self) -> bool { (self.flags & Self::COMPRESSED_GZ) != 0 }
     pub fn is_deleted(&self) -> bool { (self.flags & Self::DELETED) != 0 }
 
-    pub fn set_redist_update(&mut self) { self.flags |= Self::REDIST_UPDATE }
+    pub fn add_flags(&mut self, flags: u32) { self.flags |= flags; }
+    pub fn set_redist_update(&mut self) { self.add_flags(Self::REDIST_UPDATE); }
 
-    pub fn set_ogg_flags(&mut self, sound_buffer: &SoundBuffer) {
-        self.flags &= !(Self::OGG_SPLIT_CHANNELS | Self::OGG_STREAM_COMPRESSED | Self::OGG_STEREO);
+    pub fn ogg_flags(sound_buffer: &SoundBuffer) -> u32 {
+        let mut flags = 0;
         if sound_buffer.split_channel() {
-            self.flags |= FileInfo::OGG_SPLIT_CHANNELS;
+            flags |= Self::OGG_SPLIT_CHANNELS;
         } else {
-            self.flags |= FileInfo::OGG_STEREO;
+            flags |= Self::OGG_STEREO;
         }
         if sound_buffer.stream_compressed() {
-            self.flags |= FileInfo::OGG_STREAM_COMPRESSED;
+            flags |= Self::OGG_STREAM_COMPRESSED;
         }
+        flags
     }
 
     pub fn update(&mut self, data_root: &Path) -> Result<()> {

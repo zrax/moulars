@@ -14,6 +14,9 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+mod age_info;
+pub use age_info::AgeInfo;
+
 mod bit_vector;
 pub use bit_vector::BitVector;
 

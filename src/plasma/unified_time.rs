@@ -26,6 +26,16 @@ pub struct UnifiedTime {
     micros: u32,
 }
 
+impl UnifiedTime {
+    pub fn new(secs: u32, micros: u32) -> Self {
+        Self { secs, micros }
+    }
+
+    pub fn from_secs(secs: u32) -> Self {
+        Self { secs, micros: 0 }
+    }
+}
+
 impl StreamRead for UnifiedTime {
     fn stream_read<S>(stream: &mut S) -> Result<Self>
         where S: BufRead

@@ -23,7 +23,10 @@ use std::path::{Path, PathBuf};
 use log::{warn, info};
 use once_cell::sync::Lazy;
 
-use crate::plasma::file_crypt::{EncryptionType, EncryptedWriter, DEFAULT_KEY};
+use crate::plasma::{AgeInfo, PageFile};
+use crate::plasma::audio::SoundBuffer;
+use crate::plasma::creatable::ClassID;
+use crate::plasma::file_crypt::{self, EncryptionType, EncryptedWriter};
 use super::manifest::{Manifest, FileInfo};
 
 fn ignore_file(path: &Path) -> bool {
@@ -90,9 +93,67 @@ pub fn cache_clients(data_root: &Path) -> Result<()> {
     }
 
     let mut data_cache = HashMap::new();
+    let mut sfx_flags = HashMap::new();
 
-    // TODO: Build manifests for individual ages, and ensure any files
-    // referenced by ages and PRPs are present.
+    for age_file in game_data_files.iter().filter(|f| f.extension() == Some(OsStr::new("age"))) {
+        let age_name = age_file.file_stem().unwrap().to_string_lossy();
+
+        let mut expected_files = HashSet::new();
+        expected_files.insert(age_file.clone());
+        let fni_path = age_file.with_extension("fni");
+        if fni_path.exists() {
+            expected_files.insert(fni_path);
+        }
+        let csv_path = age_file.with_extension("csv");
+        if csv_path.exists() {
+            expected_files.insert(csv_path);
+        }
+
+        let age_info = AgeInfo::from_file(age_file)?;
+        for page in age_info.pages() {
+            let page_path = data_root.join("dat")
+                    .join(format!("{}_District_{}.prp", age_name, page.name()));
+            if page_path.exists() {
+                expected_files.insert(page_path.clone());
+
+                // Scan for and add any SFX files referenced by this PRP
+                let mut prp_stream = std::io::BufReader::new(File::open(page_path)?);
+                let page = PageFile::read(&mut prp_stream)?;
+                for key in page.get_keys(ClassID::SoundBuffer as u16) {
+                    let obj = page.read_object::<_, SoundBuffer>(&mut prp_stream, key.as_ref())?;
+                    let sfx_path = data_root.join("sfx").join(obj.file_name());
+                    sfx_flags.entry(sfx_path.clone()).or_insert(FileInfo::ogg_flags(&obj));
+                    expected_files.insert(sfx_path.clone());
+
+                    // Also look for a .sub file with the same name
+                    let sub_file = sfx_path.with_extension("sub");
+                    if sub_file.exists() {
+                        expected_files.insert(sub_file);
+                    }
+                }
+            } else {
+                warn!("Missing referenced Page file: {}", page_path.display());
+            }
+        }
+
+        let age_mfs_path = data_root.join(format!("{}.mfs_cache", age_name));
+        let mut age_mfs = load_or_create_manifest(&age_mfs_path)?;
+        for file in age_mfs.files_mut() {
+            *file = update_cache_file(&mut data_cache, file, data_root).clone();
+            expected_files.remove(&file.source_path(data_root));
+        }
+        for path in expected_files {
+            let file = create_cache_file(&mut data_cache, &path, data_root);
+            if path.extension() == Some(OsStr::new("ogg")) {
+                let ogg_flags = sfx_flags.get(&path).expect("Got SFX file with no .ogg flags");
+                file.add_flags(*ogg_flags);
+            }
+            age_mfs.add(file.clone());
+        }
+        if age_mfs.any_updated() {
+            age_mfs.write_cache(&age_mfs_path)?;
+        }
+    }
 
     for (build, suffix, client_data_dir) in CLIENT_TYPES.iter() {
         let src_dir = data_root.join(client_data_dir);
@@ -122,42 +183,12 @@ pub fn cache_clients(data_root: &Path) -> Result<()> {
                         .chain(thin_mfs.files_mut().iter_mut())
                         .chain(full_mfs.files_mut().iter_mut())
         {
-            *file = data_cache.entry(file.source_path(data_root)).or_insert_with(|| {
-                let mut file = file.clone();
-                if let Err(err) = file.update(data_root) {
-                    if err.kind() == ErrorKind::NotFound {
-                        warn!("Removing {}", file.client_path());
-                        file.mark_deleted();
-                    } else {
-                        warn!("Failed to update cache for file {}: {}",
-                              file.client_path(), err);
-                    }
-                }
-                file
-            }).clone();
+            *file = update_cache_file(&mut data_cache, file, data_root).clone();
             client_files.remove(&file.source_path(data_root));
         }
 
         for path in client_files {
-            let src_path = path.strip_prefix(data_root).unwrap();
-            info!("Adding {}", src_path.display());
-
-            let client_path = if src_path.starts_with("client") {
-                src_path.file_name().unwrap().to_string_lossy().to_string()
-            } else {
-                src_path.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "\\")
-            };
-
-            // The file might not have been in this manifest, but it could be
-            // in others.  Use the cached version if it's available.
-            let file = data_cache.entry(path.clone()).or_insert_with(|| {
-                let download_path = src_path.to_string_lossy().to_string();
-                let mut file = FileInfo::new(client_path, download_path);
-                if let Err(err) = file.update(data_root) {
-                    warn!("Failed to add {} to the cache: {}", path.display(), err);
-                }
-                file
-            });
+            let file = create_cache_file(&mut data_cache, &path, data_root);
 
             // Add the newly detected file to the appropriate manifest(s)
             let client_path_lower = file.client_path().to_ascii_lowercase();
@@ -209,8 +240,50 @@ fn encrypt_file(path: &Path) -> Result<()> {
         // into memory...
         let file_content = std::fs::read(path)?;
         let mut out_file = EncryptedWriter::new(File::create(path)?,
-                                EncryptionType::TEA, &DEFAULT_KEY)?;
+                                EncryptionType::TEA, &file_crypt::DEFAULT_KEY)?;
         std::io::copy(&mut Cursor::new(file_content), &mut out_file)?;
     }
     Ok(())
+}
+
+fn update_cache_file<'dc>(data_cache: &'dc mut HashMap<PathBuf, FileInfo>,
+                          file: &FileInfo, data_root: &Path) -> &'dc mut FileInfo
+{
+    data_cache.entry(file.source_path(data_root)).or_insert_with(|| {
+        let mut file = file.clone();
+        if let Err(err) = file.update(data_root) {
+            if err.kind() == ErrorKind::NotFound {
+                warn!("Removing {}", file.client_path());
+                file.mark_deleted();
+            } else {
+                warn!("Failed to update cache for file {}: {}",
+                      file.client_path(), err);
+            }
+        }
+        file
+    })
+}
+
+fn create_cache_file<'dc>(data_cache: &'dc mut HashMap<PathBuf, FileInfo>,
+                          path: &Path, data_root: &Path) -> &'dc mut FileInfo
+{
+    let src_path = path.strip_prefix(data_root).unwrap();
+    info!("Adding {}", src_path.display());
+
+    let client_path = if src_path.starts_with("client") {
+        src_path.file_name().unwrap().to_string_lossy().to_string()
+    } else {
+        src_path.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "\\")
+    };
+
+    // The file might not have been in this manifest, but it could be
+    // in others.  Use the cached version if it's available.
+    data_cache.entry(path.to_path_buf()).or_insert_with(|| {
+        let download_path = src_path.to_string_lossy().to_string();
+        let mut file = FileInfo::new(client_path, download_path);
+        if let Err(err) = file.update(data_root) {
+            warn!("Failed to add {} to the cache: {}", path.display(), err);
+        }
+        file
+    })
 }
