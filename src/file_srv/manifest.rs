@@ -39,6 +39,7 @@ pub struct FileInfo {
     download_size: u32,
     flags: u32,
     updated: bool,
+    deleted: bool,
 }
 
 pub struct Manifest {
@@ -89,7 +90,6 @@ impl FileInfo {
     const OGG_STEREO: u32 = 1 << 2;
     const COMPRESSED_GZ: u32 = 1 << 3;
     const REDIST_UPDATE: u32 = 1 << 4;
-    const DELETED: u32 = 1 << 21;
 
     // Creates a new entry with invalid hash/size data.
     // It will need to be populated with real data via update() before
@@ -106,6 +106,7 @@ impl FileInfo {
             download_size: 0,
             flags: 0,
             updated: true,
+            deleted: false,
         }
     }
 
@@ -125,7 +126,6 @@ impl FileInfo {
     }
 
     pub fn is_compressed(&self) -> bool { (self.flags & Self::COMPRESSED_GZ) != 0 }
-    pub fn is_deleted(&self) -> bool { (self.flags & Self::DELETED) != 0 }
 
     pub fn add_flags(&mut self, flags: u32) { self.flags |= flags; }
     pub fn set_redist_update(&mut self) { self.add_flags(Self::REDIST_UPDATE); }
@@ -202,11 +202,7 @@ impl FileInfo {
 
     // Use this to indicate that the source file was deleted
     pub fn mark_deleted(&mut self) {
-        self.file_hash = [0; 16];
-        self.download_hash = [0; 16];
-        self.file_size = 0;
-        self.download_size = 0;
-        self.flags = Self::DELETED;
+        self.deleted = true;
         self.updated = true;
     }
 
@@ -270,8 +266,10 @@ impl StreamRead for FileInfo {
         let download_size = read_utf16z_u32(stream)?;
         let flags = read_utf16z_u32(stream)?;
 
-        Ok(Self { client_path, download_path, file_hash, download_hash,
-                  file_size, download_size, flags, updated: false })
+        Ok(Self {
+            client_path, download_path, file_hash, download_hash,
+            file_size, download_size, flags, updated: false, deleted: false
+        })
     }
 }
 
@@ -307,7 +305,7 @@ impl StreamWrite for FileInfo {
     fn stream_write<S>(&self, stream: &mut S) -> Result<()>
         where S: Write
     {
-        assert_eq!(self.flags & Self::DELETED, 0);
+        assert!(!self.deleted);
 
         write_utf16z_text(stream, &self.client_path)?;
         write_utf16z_text(stream, &self.download_path)?;
@@ -390,7 +388,7 @@ impl StreamWrite for Manifest {
     {
         // Don't write deleted files.  We need to keep them around in the
         // cache though so the check for updated records still works properly.
-        let write_files: Vec<&FileInfo> = self.files.iter().filter(|f| !f.is_deleted()).collect();
+        let write_files: Vec<&FileInfo> = self.files.iter().filter(|f| !f.deleted).collect();
         stream.write_u32::<LittleEndian>(write_files.len() as u32)?;
 
         let mut file_stream = Cursor::new(Vec::new());

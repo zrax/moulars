@@ -14,8 +14,7 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-mod data_cache;
-pub use data_cache::cache_clients;
+pub mod data_cache;
 
 pub mod manifest;
 pub use manifest::{FileInfo, Manifest};

@@ -21,5 +21,7 @@ pub use manifest::{FileInfo, Manifest};
 
 mod messages;
 
+pub mod sec_files;
+
 mod server;
 pub use server::AuthServer;

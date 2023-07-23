@@ -30,7 +30,7 @@ use crate::plasma::file_crypt::{self, EncryptionType, EncryptedWriter};
 use super::manifest::{Manifest, FileInfo};
 use super::server::ignore_file;
 
-fn scan_dir(path: &Path, file_set: &mut HashSet<PathBuf>) -> Result<()> {
+pub fn scan_dir(path: &Path, file_set: &mut HashSet<PathBuf>) -> Result<()> {
     for entry in path.read_dir()? {
         let entry = entry?;
         if !entry.metadata()?.is_file() {
