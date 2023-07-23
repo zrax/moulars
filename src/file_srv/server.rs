@@ -14,6 +14,7 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+use std::ffi::OsStr;
 use std::io::{BufRead, Cursor, ErrorKind, Result};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -114,16 +115,37 @@ async fn do_manifest(stream: &mut TcpStream, trans_id: u32, manifest_name: Strin
     send_message(stream, reply).await
 }
 
+pub fn ignore_file(path: &Path) -> bool {
+    if let Some(ext) = path.extension() {
+        if ext == OsStr::new("gz") {
+            // We don't send the client .gz files to leave compressed,
+            // so this is probably a compressed version of another file
+            return true;
+        }
+    }
+
+    if let Some(file_name) = path.file_name() {
+        if file_name == OsStr::new("desktop.ini")
+                || file_name.to_string_lossy().starts_with('.') {
+            return true;
+        }
+    }
+
+    false
+}
+
 async fn open_server_file(filename: &str, data_root: &Path)
     -> Option<(tokio::fs::File, std::fs::Metadata, PathBuf)>
 {
     let native_path = filename.replace('\\', std::path::MAIN_SEPARATOR_STR);
     let download_path = data_root.join(native_path);
 
-    // Reject path traversal attempts, and check if the file exists.
+    // Reject path traversal attempts, hidden/ignored files,
+    // and check if the file exists.
     if filename.contains("..")
         || !download_path.starts_with(data_root)
         || !download_path.exists()
+        || ignore_file(&download_path)
     {
         return None;
     }

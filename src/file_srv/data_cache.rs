@@ -28,25 +28,7 @@ use crate::plasma::audio::SoundBuffer;
 use crate::plasma::creatable::ClassID;
 use crate::plasma::file_crypt::{self, EncryptionType, EncryptedWriter};
 use super::manifest::{Manifest, FileInfo};
-
-fn ignore_file(path: &Path) -> bool {
-    if let Some(ext) = path.extension() {
-        if ext == OsStr::new("gz") {
-            // We don't send the client .gz files to leave compressed,
-            // so this is probably a compressed version of another file
-            return true;
-        }
-    }
-
-    if let Some(file_name) = path.file_name() {
-        if file_name == OsStr::new("desktop.ini")
-                || file_name.to_string_lossy().starts_with('.') {
-            return true;
-        }
-    }
-
-    false
-}
+use super::server::ignore_file;
 
 fn scan_dir(path: &Path, file_set: &mut HashSet<PathBuf>) -> Result<()> {
     for entry in path.read_dir()? {
