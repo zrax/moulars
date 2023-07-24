@@ -33,6 +33,9 @@ pub mod net_io;
 mod page_file;
 pub use page_file::PageFile;
 
+mod pak_file;
+pub use pak_file::PakFile;
+
 mod safe_string;
 pub use safe_string::{read_safe_str, write_safe_str, StringFormat};
 

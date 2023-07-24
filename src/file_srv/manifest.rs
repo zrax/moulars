@@ -42,6 +42,7 @@ pub struct FileInfo {
     deleted: bool,
 }
 
+#[derive(Default)]
 pub struct Manifest {
     files: Vec<FileInfo>,
 }
@@ -166,11 +167,13 @@ impl FileInfo {
             // This will generally be the case for encrypted files and ogg
             // files (which are already compressed in their own way)
             let gz_path = append_extension(&src_path, "gz");
-            let mut gz_stream = GzEncoder::new(File::create(&gz_path)?,
-                                               flate2::Compression::default());
-            let mut src_file = File::open(&src_path)?;
-            std::io::copy(&mut src_file, &mut gz_stream)?;
-            drop(gz_stream);
+            {
+                let mut gz_stream = GzEncoder::new(File::create(&gz_path)?,
+                                                   flate2::Compression::default());
+                let mut src_file = File::open(&src_path)?;
+                std::io::copy(&mut src_file, &mut gz_stream)?;
+                gz_stream.flush()?;
+            }
             let gz_metadata = gz_path.metadata()?;
             if gz_metadata.len() < ((self.file_size as f64) * 0.9) as u64 {
                 // Compressed stream is small enough -- keep it and update
@@ -338,10 +341,10 @@ impl Manifest {
     }
 
     pub fn write_cache(&self, path: &Path) -> Result<()> {
-        let mfs_file = File::create(path)?;
-        let mut stream = BufWriter::new(mfs_file);
+        let mut stream = BufWriter::new(File::create(path)?);
         stream.write_u32::<LittleEndian>(Self::CACHE_MAGIC)?;
-        self.stream_write(&mut stream)
+        self.stream_write(&mut stream)?;
+        stream.flush()
     }
 
     pub fn files(&self) -> &Vec<FileInfo> { &self.files }
@@ -350,12 +353,6 @@ impl Manifest {
 
     pub fn any_updated(&self) -> bool {
         self.files.iter().any(|f| f.updated)
-    }
-}
-
-impl Default for Manifest {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

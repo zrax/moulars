@@ -14,19 +14,40 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
+use std::ffi::OsStr;
 use std::fs::File;
-use std::io::{Cursor, BufReader, Result, ErrorKind};
-use std::path::Path;
+use std::io::{Cursor, BufReader, BufWriter, Write, Result, ErrorKind};
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use log::{warn, info};
 use rand::Rng;
 
 use crate::file_srv::data_cache::scan_dir;
+use crate::plasma::{PakFile, StreamWrite};
 use crate::plasma::file_crypt::{EncryptionType, EncryptedWriter};
 
-pub fn build_secure_files(data_root: &Path) -> Result<()> {
+fn scan_python_dir(python_root: &Path) -> Result<HashSet<PathBuf>> {
+    let mut file_set = HashSet::new();
+    let mut scan_dirs = VecDeque::new();
+    scan_dirs.push_back(python_root.to_owned());
+    while let Some(dir) = scan_dirs.pop_front() {
+        for entry in dir.read_dir()? {
+            let entry = entry?;
+            let metadata = entry.metadata()?;
+            if metadata.is_file() && entry.path().extension() == Some(OsStr::new("py")) {
+                file_set.insert(entry.path());
+            } else if metadata.is_dir() {
+                scan_dirs.push_back(entry.path());
+            }
+        }
+    }
+    Ok(file_set)
+}
+
+pub fn build_secure_files(data_root: &Path, python_exe: Option<&Path>) -> Result<()> {
     let ntd_key = load_or_create_ntd_key(data_root)?;
 
     let sdl_dir = data_root.join("SDL");
@@ -41,12 +62,45 @@ pub fn build_secure_files(data_root: &Path) -> Result<()> {
         warn!("{} not found; skipping SDL files.", sdl_dir.display());
     }
 
-    let python_dir = data_root.join("Python");
-    if python_dir.exists() {
-        // Build a .pak from the source files
-        todo!()
+    if let Some(python_exe) = python_exe {
+        let python_dir = data_root.join("Python");
+        if python_dir.exists() {
+            // Build a .pak from the source files
+            let py_sources = scan_python_dir(&python_dir)?;
+            info!("Compiling {} Python sources...", py_sources.len());
+            let mut pak_file = PakFile::new();
+            for py_file in py_sources {
+                let dfile = py_file.strip_prefix(&python_dir).unwrap();
+                let cfile = py_file.with_extension("pyc");
+                let py_cmd = format!(
+                    "import py_compile; py_compile.compile('{}', cfile='{}', dfile='{}')",
+                    py_escape(&py_file), py_escape(&cfile), py_escape(dfile)
+                );
+                let status = Command::new(python_exe).args(["-c", &py_cmd]).status()?;
+                match status.code() {
+                    Some(0) => (),
+                    Some(code) => warn!("py_compile exited with status {}", code),
+                    None => warn!("py_compile process killed by signal"),
+                }
+                let client_path = dfile.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "\\");
+                pak_file.add(&cfile, client_path)?;
+            }
+
+            // We always just write the .pak file if --python was specified.
+            // Checking that it's up to date requires extra bookkeeping on
+            // all the contained files, which the .pak file doesn't natively
+            // store anywhere.
+            let pak_path = python_dir.join("Python.pak");
+            info!("Creating {}", pak_path.display());
+            let mut pak_stream = EncryptedWriter::new(BufWriter::new(File::create(pak_path)?),
+                                                      EncryptionType::XXTEA, &ntd_key)?;
+            pak_file.stream_write(&mut pak_stream)?;
+            pak_stream.flush()?;
+        } else {
+            warn!("{} not found; skipping Python files.", python_dir.display());
+        }
     } else {
-        warn!("{} not found; skipping Python files.", python_dir.display());
+        warn!("No Python compiler specified.  Skipping Python files.");
     }
 
     Ok(())
@@ -54,7 +108,7 @@ pub fn build_secure_files(data_root: &Path) -> Result<()> {
 
 // NOTE: This file stores the keys in Big Endian format for easier debugging
 // with tools like PlasmaShop
-fn load_or_create_ntd_key(data_root: &Path) -> Result<[u32; 4]> {
+pub fn load_or_create_ntd_key(data_root: &Path) -> Result<[u32; 4]> {
     let key_path = data_root.join(".ntd_server.key");
     let mut key_buffer = [0; 4];
     match File::open(&key_path) {
@@ -66,7 +120,7 @@ fn load_or_create_ntd_key(data_root: &Path) -> Result<[u32; 4]> {
         Err(err) => {
             if err.kind() == ErrorKind::NotFound {
                 let mut rng = rand::thread_rng();
-                let mut stream = File::create(&key_path)?;
+                let mut stream = BufWriter::new(File::create(&key_path)?);
                 for v in key_buffer.iter_mut() {
                     *v = rng.gen::<u32>();
                     stream.write_u32::<BigEndian>(*v)?;
@@ -85,9 +139,14 @@ fn encrypt_file(path: &Path, key: &[u32; 4]) -> Result<()> {
         // These files are generally small enough to just load entirely
         // into memory...
         let file_content = std::fs::read(path)?;
-        let mut out_file = EncryptedWriter::new(File::create(path)?,
+        let mut out_file = EncryptedWriter::new(BufWriter::new(File::create(path)?),
                                                 EncryptionType::XXTEA, key)?;
         std::io::copy(&mut Cursor::new(file_content), &mut out_file)?;
+        out_file.flush()?;
     }
     Ok(())
+}
+
+fn py_escape(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', r"\\").replace('\'', r#"\"""#)
 }

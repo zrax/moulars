@@ -90,9 +90,7 @@ pub fn write_safe_str<S>(stream: &mut S, value: &str, format: StringFormat) -> R
             return Err(general_error!("String too large for SafeString encoding"));
         }
         stream.write_u16::<LittleEndian>(length_key as u16 | 0xF000)?;
-        for ch in buffer {
-            stream.write_u8(!ch)?;
-        }
+        stream.write_all(buffer.as_slice())?;
     }
 
     Ok(())

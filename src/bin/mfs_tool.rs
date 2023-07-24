@@ -43,10 +43,15 @@ fn main() -> Result<()> {
         .about("Tool for updating and debugging manifests for MOULArs")
         .arg(Arg::new("dump_file").value_name("mfs_cache")
                 .value_parser(PathBufValueParser::new())
-                .short('d').long("dump").exclusive(true))
+                .short('d').long("dump").exclusive(true)
+                .help("Dump a cached manifest in DirtSand format"))
         .arg(Arg::new("update_path").value_name("data_root")
                 .value_parser(PathBufValueParser::new())
-                .short('u').long("update").exclusive(true))
+                .short('u').long("update")
+                .help("Update manifests and secure files for the data and auth servers"))
+        .arg(Arg::new("python_exe").value_name("python_exe")
+                .value_parser(PathBufValueParser::new()).long("python")
+                .help("Path to Python executable for compiling .pak files"))
         .arg_required_else_help(true)
         .get_matches();
 
@@ -59,7 +64,8 @@ fn main() -> Result<()> {
         if let Err(err) = cache_clients(data_root) {
             warn!("Failed to update file server cache: {}", err);
         }
-        if let Err(err) = build_secure_files(data_root) {
+        let python_exe = args.get_one::<PathBuf>("python_exe").map(|p| p.as_path());
+        if let Err(err) = build_secure_files(data_root, python_exe) {
             warn!("Failed to build secure files: {}", err);
         }
     }

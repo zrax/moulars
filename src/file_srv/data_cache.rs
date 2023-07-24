@@ -17,7 +17,7 @@
 use std::collections::{HashSet, HashMap};
 use std::ffi::OsStr;
 use std::fs::File;
-use std::io::{Cursor, Result, ErrorKind};
+use std::io::{Cursor, BufWriter, Write, Result, ErrorKind};
 use std::path::{Path, PathBuf};
 
 use log::{warn, info};
@@ -221,9 +221,10 @@ fn encrypt_file(path: &Path) -> Result<()> {
         // These files are generally small enough to just load entirely
         // into memory...
         let file_content = std::fs::read(path)?;
-        let mut out_file = EncryptedWriter::new(File::create(path)?,
+        let mut out_file = EncryptedWriter::new(BufWriter::new(File::create(path)?),
                                 EncryptionType::TEA, &file_crypt::DEFAULT_KEY)?;
         std::io::copy(&mut Cursor::new(file_content), &mut out_file)?;
+        out_file.flush()?;
     }
     Ok(())
 }

@@ -30,6 +30,7 @@ pub struct FileInfo {
     file_size: u32,
 }
 
+#[derive(Default)]
 pub struct Manifest {
     files: Vec<FileInfo>,
 }
@@ -62,12 +63,6 @@ impl Manifest {
     pub fn files(&self) -> &Vec<FileInfo> { &self.files }
     pub fn files_mut(&mut self) -> &mut Vec<FileInfo> { &mut self.files }
     pub fn add(&mut self, file: FileInfo) { self.files.push(file); }
-}
-
-impl Default for Manifest {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl StreamRead for Manifest {
