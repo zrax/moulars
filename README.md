@@ -6,7 +6,8 @@ Online: Uru Live (Again) server written in Rust.  Although it is based on
 DirtSand, it is differentiated by a few key features:
 * Memory and error safety means the server is more resilient to crashes and 
   misbehavior caused by clients sending bad or unexpected data.
-* Automatic File Server manifest generation (see below)
+* Simpler configuration and setup, including automatic File Server manifest
+  generation (see below)
 * Better cross-platform compatibility.  MOULArs is known to work on both
   Linux and Windows, but it should also work anywhere else Rust and the
   library dependencies can run (macOS, OpenIndiana, *BSD, etc...)
@@ -29,11 +30,14 @@ instead with `cargo build --release`.
 ### File Server
 Unlike DirtSand, MOULArs includes a manifest generation tool that only
 requires you to provide files in an expected directory structure, and it
-will automatically generate manifests and compress the files as appropriate.
-To use it, run `mfs_tool --update <path to data root>`. This will update
-existing manifests with any changes and new files, as well as producing new
-manifests (both for the initial server setup and for newly added client
-flavors, ages, etc.).
+will automatically generate manifests and encrypt/compress the files as
+appropriate.  To use it, run
+`mfs_tool --update <path to data root> [--python <path to python executable>]`.
+This will update existing manifests with any changes and new files, as well as
+producing new manifests (both for the initial server setup and for newly added
+client flavors, ages, etc.).  When the `--python` parameter is also used, it
+will also compile any .py source files in the `Python` directory and produce
+an encrypted .pak file for the Auth server to send to clients.
 
 To ensure all required manifests are properly generated, you should provide
 the files in the following structure:
@@ -63,12 +67,14 @@ the files in the following structure:
 |        |- plUruLauncher.exe  (Internal x64 build)
 |        |- vcredist_x64.exe
 |        `- Other .dll, .pdb, etc files for internal build
-|- dat/
-|  `- .age, .prp, .fni, .p2f, etc files
-|- SDL/
-|  `- .sdl files
 |- avi/
 |  `- video files (.webm, .bik, etc)
+|- dat/
+|  `- .age, .prp, .fni, .p2f, etc files
+|- Python/
+|  `- .py source files
+|- SDL/
+|  `- .sdl files
 `- sfx/
    `- .ogg files required by PRPs
 ```
