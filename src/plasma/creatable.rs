@@ -24,6 +24,7 @@ pub trait Creatable: StreamRead + StreamWrite {
 pub(crate) enum ClassID {
     SoundBuffer = 0x0029,
     CoopCoordinator = 0x011B,
+    RelevanceRegion = 0x011E,
     AnimCmdMsg = 0x0206,
     InputEventMsg = 0x020B,
     ControlEventMsg = 0x0210,

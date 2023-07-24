@@ -86,12 +86,9 @@ pub fn cache_clients(data_root: &Path) -> Result<()> {
         if fni_path.exists() {
             expected_files.insert(fni_path);
         }
-        let csv_path = age_file.with_extension("csv");
-        if csv_path.exists() {
-            expected_files.insert(csv_path);
-        }
 
         let age_info = AgeInfo::from_file(age_file)?;
+        let mut has_relevance = false;
         for page in age_info.pages() {
             let page_path = data_root.join("dat")
                     .join(format!("{}_District_{}.prp", age_name, page.name()));
@@ -113,9 +110,18 @@ pub fn cache_clients(data_root: &Path) -> Result<()> {
                         expected_files.insert(sub_file);
                     }
                 }
+
+                if page.has_keys(ClassID::RelevanceRegion as u16) {
+                    has_relevance = true;
+                }
             } else {
                 warn!("Missing referenced Page file: {}", page_path.display());
             }
+        }
+
+        if has_relevance {
+            let csv_path = age_file.with_extension("csv");
+            expected_files.insert(csv_path);
         }
 
         let age_mfs_path = data_root.join(format!("{}.mfs_cache", age_name));

@@ -82,6 +82,13 @@ impl PageFile {
     pub fn page_name(&self) -> &String { &self.page_name }
     pub fn page_version(&self) -> u16 { self.page_version }
 
+    pub fn has_keys(&self, class_id: u16) -> bool {
+        match self.key_index.get(&class_id) {
+            Some(keys) => !keys.is_empty(),
+            None => false,
+        }
+    }
+
     pub fn get_keys(&self, class_id: u16) -> Vec<Arc<Uoid>> {
         match self.key_index.get(&class_id) {
             Some(keys) => keys.iter().map(|key| key.uoid.clone()).collect(),
