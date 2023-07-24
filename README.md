@@ -32,7 +32,7 @@ Unlike DirtSand, MOULArs includes a manifest generation tool that only
 requires you to provide files in an expected directory structure, and it
 will automatically generate manifests and encrypt/compress the files as
 appropriate.  To use it, run
-`mfs_tool --update <path to data root> [--python <path to python executable>]`.
+`mfs_tool update <path to data root> [--python <path to python executable>]`.
 This will update existing manifests with any changes and new files, as well as
 producing new manifests (both for the initial server setup and for newly added
 client flavors, ages, etc.).  When the `--python` parameter is also used, it
