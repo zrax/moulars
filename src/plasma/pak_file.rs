@@ -15,16 +15,17 @@
  */
 
 use std::fs::File;
-use std::io::{Cursor, Write, Result};
+use std::io::{Cursor, BufRead, Write, Result};
 use std::mem::size_of;
 use std::path::Path;
 
-use byteorder::{LittleEndian, WriteBytesExt};
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::general_error;
-use crate::plasma::{StreamWrite, StringFormat, write_safe_str};
+use crate::plasma::{StreamRead, StreamWrite, StringFormat,
+                    read_safe_str, write_safe_str};
 
-struct FileInfo {
+pub struct FileInfo {
     name: String,
     data: Vec<u8>,
 }
@@ -32,6 +33,10 @@ struct FileInfo {
 #[derive(Default)]
 pub struct PakFile {
     files: Vec<FileInfo>
+}
+
+impl FileInfo {
+    pub fn name(&self) -> &String { &self.name }
 }
 
 impl PakFile {
@@ -45,6 +50,31 @@ impl PakFile {
         std::io::copy(&mut file, &mut buffer)?;
         self.files.push(FileInfo { name: stored_name, data: buffer.into_inner() });
         Ok(())
+    }
+
+    pub fn files(&self) -> &Vec<FileInfo> { &self.files }
+}
+
+impl StreamRead for PakFile {
+    fn stream_read<S>(stream: &mut S) -> Result<Self>
+        where S: BufRead
+    {
+        let num_files = stream.read_u32::<LittleEndian>()?;
+        let mut files = Vec::with_capacity(num_files as usize);
+
+        for _ in 0..num_files {
+            let name = read_safe_str(stream, StringFormat::Utf8)?;
+            // Offset.  We hope they're in order...
+            let _ = stream.read_u32::<LittleEndian>()?;
+            files.push(FileInfo { name, data: Vec::new() });
+        }
+        for file in files.iter_mut() {
+            let size = stream.read_u32::<LittleEndian>()?;
+            file.data.resize(size as usize, 0);
+            stream.read_exact(file.data.as_mut_slice())?;
+        }
+
+        Ok(Self { files })
     }
 }
 

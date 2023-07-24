@@ -19,7 +19,7 @@
 // DirtSand for compatibility/comparison.
 
 use std::fs::File;
-use std::io::{Cursor, Write, BufWriter, Result};
+use std::io::{Cursor, BufReader, Write, BufWriter, Result};
 use std::mem::size_of;
 use std::path::{Path, PathBuf};
 
@@ -31,6 +31,7 @@ use moulars::auth_srv::sec_files::build_secure_files;
 use moulars::file_srv::Manifest;
 use moulars::file_srv::data_cache::cache_clients;
 use moulars::general_error;
+use moulars::plasma::{StreamRead, PakFile};
 use moulars::plasma::file_crypt::EncryptedReader;
 
 fn main() {
@@ -61,6 +62,13 @@ fn main() {
         .arg(Arg::new("mfs_cache").required(true)
                 .value_parser(PathBufValueParser::new()));
 
+    let list_pak_cmd = Command::new("ls-pak")
+        .about("List the files in an optionally encrypted .pak file")
+        .arg(Arg::new("key").value_name("key_value").short('k').long("key")
+                .help("Big Endian key to use for decryption"))
+        .arg(Arg::new("pak_file").required(true)
+                .value_parser(PathBufValueParser::new()));
+
     let update_cmd = Command::new("update")
         .about("Update manifests and secure files for the data and auth servers")
         .arg(Arg::new("python_exe").value_name("python_exe").long("python")
@@ -74,6 +82,7 @@ fn main() {
         .about("Tool for updating and debugging manifests for MOULArs")
         .subcommand(decrypt_cmd)
         .subcommand(dump_cmd)
+        .subcommand(list_pak_cmd)
         .subcommand(update_cmd)
         .arg_required_else_help(true)
         .get_matches();
@@ -105,6 +114,14 @@ fn main() {
                 println!("{}", file.as_ds_mfs());
             }
         }
+        Some(("ls-pak", ls_pak_args)) => {
+            let pak_file = ls_pak_args.get_one::<PathBuf>("pak_file").unwrap();
+            let key_opt = ls_pak_args.get_one::<String>("key").map(|v| v.as_str());
+            if let Err(err) = list_pak(pak_file, key_opt) {
+                error!("Failed to load pak file: {}", err);
+                std::process::exit(1);
+            }
+        }
         Some(("update", update_args)) => {
             let data_root = update_args.get_one::<PathBuf>("data_root").unwrap();
             if let Err(err) = cache_clients(data_root) {
@@ -119,10 +136,8 @@ fn main() {
     }
 }
 
-fn decrypt_file(path: &Path, out_file: Option<&Path>, key_opt: Option<&str>)
-    -> Result<()>
-{
-    let key = if let Some(key_str) = key_opt {
+fn get_key(key_opt: Option<&str>) -> Result<[u32; 4]> {
+    if let Some(key_str) = key_opt {
         let mut buffer = [0; 16];
         match hex::decode_to_slice(key_str, &mut buffer) {
             Ok(()) => {
@@ -130,15 +145,21 @@ fn decrypt_file(path: &Path, out_file: Option<&Path>, key_opt: Option<&str>)
                 for (src, dest) in buffer.chunks_exact(size_of::<u32>()).zip(key.iter_mut()) {
                     *dest = u32::from_be_bytes(src.try_into().unwrap());
                 }
-                key
+                Ok(key)
             }
             Err(err) => {
-                return Err(general_error!("Invalid key value: {}", err));
+                Err(general_error!("Invalid key value: {}", err))
             }
         }
     } else {
-        moulars::plasma::file_crypt::DEFAULT_KEY
-    };
+        Ok(moulars::plasma::file_crypt::DEFAULT_KEY)
+    }
+}
+
+fn decrypt_file(path: &Path, out_file: Option<&Path>, key_opt: Option<&str>)
+    -> Result<()>
+{
+    let key = get_key(key_opt)?;
     let mut stream = EncryptedReader::new(File::open(path)?, &key)?;
     if let Some(out_filename) = out_file {
         if out_filename.exists() &&
@@ -158,6 +179,17 @@ fn decrypt_file(path: &Path, out_file: Option<&Path>, key_opt: Option<&str>)
         };
     } else {
         std::io::copy(&mut stream, &mut std::io::stdout())?;
+    }
+    Ok(())
+}
+
+fn list_pak(path: &Path, key_opt: Option<&str>) -> Result<()>
+{
+    let key = get_key(key_opt)?;
+    let mut stream = BufReader::new(EncryptedReader::new(File::open(path)?, &key)?);
+    let pak_file = PakFile::stream_read(&mut stream)?;
+    for file in pak_file.files() {
+        println!("{}", file.name());
     }
     Ok(())
 }
