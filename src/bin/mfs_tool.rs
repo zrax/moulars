@@ -19,7 +19,7 @@
 // DirtSand for compatibility/comparison.
 
 use std::fs::File;
-use std::io::{Write, Result};
+use std::io::{Write, BufWriter, Result};
 use std::mem::size_of;
 use std::path::{Path, PathBuf};
 
@@ -43,9 +43,12 @@ fn main() {
         .init();
 
     let decrypt_cmd = Command::new("decrypt")
-        .about("Decrypt an encrypted file to stdout")
-        .arg(Arg::new("key").value_name("key_value").long("key")
+        .about("Decrypt an encrypted file")
+        .arg(Arg::new("key").value_name("key_value").short('k').long("key")
                 .help("Big Endian key to use for decryption"))
+        .arg(Arg::new("out_filename").value_name("out_file").short('o').long("out")
+                .value_parser(PathBufValueParser::new())
+                .help("Write output to file instead of stdout"))
         .arg(Arg::new("filename").required(true)
                 .value_parser(PathBufValueParser::new()));
 
@@ -56,8 +59,8 @@ fn main() {
 
     let update_cmd = Command::new("update")
         .about("Update manifests and secure files for the data and auth servers")
-        .arg(Arg::new("python_exe").value_name("python_exe")
-                .value_parser(PathBufValueParser::new()).long("python")
+        .arg(Arg::new("python_exe").value_name("python_exe").long("python")
+                .value_parser(PathBufValueParser::new())
                 .help("Path to Python executable for compiling .pak files"))
         .arg(Arg::new("data_root").required(true)
                 .value_parser(PathBufValueParser::new()));
@@ -74,8 +77,9 @@ fn main() {
     match args.subcommand() {
         Some(("decrypt", decrypt_args)) => {
             let file_path = decrypt_args.get_one::<PathBuf>("filename").unwrap();
+            let out_file = decrypt_args.get_one::<PathBuf>("out_filename").map(|v| v.as_path());
             let key_opt = decrypt_args.get_one::<String>("key").map(|v| v.as_str());
-            if let Err(err) = decrypt_file(file_path, key_opt) {
+            if let Err(err) = decrypt_file(file_path, out_file, key_opt) {
                 error!("Failed to decrypt {}: {}", file_path.display(), err);
                 std::process::exit(1);
             }
@@ -107,7 +111,9 @@ fn main() {
     }
 }
 
-fn decrypt_file(path: &Path, key_opt: Option<&str>) -> Result<()> {
+fn decrypt_file(path: &Path, out_file: Option<&Path>, key_opt: Option<&str>)
+    -> Result<()>
+{
     let key = if let Some(key_str) = key_opt {
         let mut buffer = [0; 16];
         match hex::decode_to_slice(key_str, &mut buffer) {
@@ -126,6 +132,11 @@ fn decrypt_file(path: &Path, key_opt: Option<&str>) -> Result<()> {
         moulars::plasma::file_crypt::DEFAULT_KEY
     };
     let mut stream = EncryptedReader::new(File::open(path)?, &key)?;
-    std::io::copy(&mut stream, &mut std::io::stdout())?;
+    if let Some(out_filename) = out_file {
+        let mut out_stream = BufWriter::new(File::create(out_filename)?);
+        std::io::copy(&mut stream, &mut out_stream)?;
+    } else {
+        std::io::copy(&mut stream, &mut std::io::stdout())?;
+    }
     Ok(())
 }
