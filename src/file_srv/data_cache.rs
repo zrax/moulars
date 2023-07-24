@@ -17,7 +17,7 @@
 use std::collections::{HashSet, HashMap};
 use std::ffi::OsStr;
 use std::fs::File;
-use std::io::{Cursor, BufWriter, Write, Result, ErrorKind};
+use std::io::{Cursor, BufReader, BufWriter, Write, Result, ErrorKind};
 use std::path::{Path, PathBuf};
 
 use log::{warn, info};
@@ -37,7 +37,7 @@ pub fn scan_dir(path: &Path, file_set: &mut HashSet<PathBuf>) -> Result<()> {
             warn!("Skipping '{}' -- not a regular file", entry.path().display());
         }
 
-        if !ignore_file(&entry.path()) {
+        if !ignore_file(&entry.path(), false) {
             file_set.insert(entry.path());
         }
     }
@@ -96,7 +96,7 @@ pub fn cache_clients(data_root: &Path) -> Result<()> {
                 expected_files.insert(page_path.clone());
 
                 // Scan for and add any SFX files referenced by this PRP
-                let mut prp_stream = std::io::BufReader::new(File::open(page_path)?);
+                let mut prp_stream = BufReader::new(File::open(page_path)?);
                 let page = PageFile::read(&mut prp_stream)?;
                 for key in page.get_keys(ClassID::SoundBuffer as u16) {
                     let obj = page.read_object::<_, SoundBuffer>(&mut prp_stream, key.as_ref())?;

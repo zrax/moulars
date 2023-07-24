@@ -115,9 +115,9 @@ async fn do_manifest(stream: &mut TcpStream, trans_id: u32, manifest_name: Strin
     send_message(stream, reply).await
 }
 
-pub fn ignore_file(path: &Path) -> bool {
+pub fn ignore_file(path: &Path, allow_compressed: bool) -> bool {
     if let Some(ext) = path.extension() {
-        if ext == OsStr::new("gz") {
+        if !allow_compressed && ext == OsStr::new("gz") {
             // We don't send the client .gz files to leave compressed,
             // so this is probably a compressed version of another file
             return true;
@@ -145,7 +145,7 @@ async fn open_server_file(filename: &str, data_root: &Path)
     if filename.contains("..")
         || !download_path.starts_with(data_root)
         || !download_path.exists()
-        || ignore_file(&download_path)
+        || ignore_file(&download_path, true)
     {
         return None;
     }
