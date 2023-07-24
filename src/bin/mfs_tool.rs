@@ -19,11 +19,11 @@
 // DirtSand for compatibility/comparison.
 
 use std::fs::File;
-use std::io::{Write, BufWriter, Result};
+use std::io::{Cursor, Write, BufWriter, Result};
 use std::mem::size_of;
 use std::path::{Path, PathBuf};
 
-use clap::{Command, Arg};
+use clap::{Command, Arg, ArgAction};
 use clap::builder::PathBufValueParser;
 use log::{error, warn};
 
@@ -48,7 +48,11 @@ fn main() {
                 .help("Big Endian key to use for decryption"))
         .arg(Arg::new("out_filename").value_name("out_file").short('o').long("out")
                 .value_parser(PathBufValueParser::new())
+                .conflicts_with("in_place")
                 .help("Write output to file instead of stdout"))
+        .arg(Arg::new("in_place").short('i').long("in-place")
+                .action(ArgAction::SetTrue)
+                .help("Decrypt file in-place"))
         .arg(Arg::new("filename").required(true)
                 .value_parser(PathBufValueParser::new()));
 
@@ -77,7 +81,11 @@ fn main() {
     match args.subcommand() {
         Some(("decrypt", decrypt_args)) => {
             let file_path = decrypt_args.get_one::<PathBuf>("filename").unwrap();
-            let out_file = decrypt_args.get_one::<PathBuf>("out_filename").map(|v| v.as_path());
+            let out_file = if decrypt_args.get_flag("in_place") {
+                Some(file_path.as_path())
+            } else {
+                decrypt_args.get_one::<PathBuf>("out_filename").map(|v| v.as_path())
+            };
             let key_opt = decrypt_args.get_one::<String>("key").map(|v| v.as_str());
             if let Err(err) = decrypt_file(file_path, out_file, key_opt) {
                 error!("Failed to decrypt {}: {}", file_path.display(), err);
@@ -133,8 +141,21 @@ fn decrypt_file(path: &Path, out_file: Option<&Path>, key_opt: Option<&str>)
     };
     let mut stream = EncryptedReader::new(File::open(path)?, &key)?;
     if let Some(out_filename) = out_file {
-        let mut out_stream = BufWriter::new(File::create(out_filename)?);
-        std::io::copy(&mut stream, &mut out_stream)?;
+        if out_filename.exists() &&
+                std::fs::canonicalize(out_filename)? == std::fs::canonicalize(path)?
+        {
+            // The files are the same, so we need to decrypt it in memory first...
+            let mut in_stream = Cursor::new(Vec::new());
+            std::io::copy(&mut stream, &mut in_stream)?;
+            drop(stream);
+
+            in_stream.set_position(0);
+            let mut out_stream = BufWriter::new(File::create(out_filename)?);
+            std::io::copy(&mut in_stream, &mut out_stream)?;
+        } else {
+            let mut out_stream = BufWriter::new(File::create(out_filename)?);
+            std::io::copy(&mut stream, &mut out_stream)?;
+        };
     } else {
         std::io::copy(&mut stream, &mut std::io::stdout())?;
     }

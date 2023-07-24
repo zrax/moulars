@@ -82,7 +82,7 @@ pub fn build_secure_files(data_root: &Path, python_exe: Option<&Path>) -> Result
                     Some(code) => warn!("py_compile exited with status {}", code),
                     None => warn!("py_compile process killed by signal"),
                 }
-                let client_path = dfile.to_string_lossy().replace(&['/', '\\'], ".");
+                let client_path = dfile.to_string_lossy().replace(['/', '\\'], ".");
                 pak_file.add(&cfile, client_path)?;
             }
 
