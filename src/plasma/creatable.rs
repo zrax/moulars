@@ -16,12 +16,12 @@
 
 use crate::plasma::{StreamRead, StreamWrite};
 
-pub trait Creatable : StreamRead + StreamWrite {
+pub trait Creatable: StreamRead + StreamWrite {
     fn class_id() -> u16;
 }
 
 #[repr(u16)]
-pub enum ClassID {
+pub(crate) enum ClassID {
     SoundBuffer = 0x0029,
     CoopCoordinator = 0x011B,
     AnimCmdMsg = 0x0206,
@@ -72,7 +72,7 @@ pub enum ClassID {
     AvOneShotTask = 0x036E,
     AvTaskBrain = 0x0370,
     AnimStage = 0x0371,
-    GenericValue = 0x038C,
+    CreatableGenericValue = 0x038C,
     AvBrainGenericMsg = 0x038F,
     AvTaskSeek = 0x0390,
     MultistageModMsg = 0x03A3,

@@ -14,38 +14,5 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-mod age_info;
-pub use age_info::AgeInfo;
-
-mod bit_vector;
-pub use bit_vector::BitVector;
-
-pub mod creatable;
-pub use creatable::Creatable;
-
-pub mod file_crypt;
-
-mod key;
-pub use key::{Key, Uoid};
-
-pub mod net_io;
-
-mod page_file;
-pub use page_file::PageFile;
-
-mod pak_file;
-pub use pak_file::PakFile;
-
-mod safe_string;
-pub use safe_string::{read_safe_str, write_safe_str, StringFormat};
-
-mod streamable;
-pub use streamable::{StreamRead, StreamWrite};
-
-mod unified_time;
-pub use unified_time::UnifiedTime;
-
-pub mod audio;
-pub mod messages;
-pub mod net_common;
-pub mod net_messages;
+mod generic_value;
+pub use generic_value::CreatableGenericValue;
