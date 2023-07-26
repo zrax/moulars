@@ -82,7 +82,7 @@ impl<S: BufRead> Parser<S> {
     }
 
     fn next_line(&mut self) -> Result<bool> {
-        // NOTE: Not using read_line since that assumes the input is UTF-8.
+        // NOTE: Not using read_line since that assumes the input is valid UTF-8.
         let mut line_buf = Vec::new();
         let num_read = self.stream.read_until(b'\n', &mut line_buf)?;
         if num_read == 0 {
@@ -109,8 +109,9 @@ impl<S: BufRead> Parser<S> {
                             _ => break,
                         }
                     }
-                    let num_value = string_from_latin1(&line_buf[start..end]);
-                    self.push_token(Token::Number(num_value), start);
+                    // SAFETY: The characters in this range are already validated to be ASCII
+                    let num_value = unsafe { std::str::from_utf8_unchecked(&line_buf[start..end]) };
+                    self.push_token(Token::Number(num_value.to_string()), start);
                     start = end;
                 }
 
@@ -124,16 +125,18 @@ impl<S: BufRead> Parser<S> {
                         }
                     }
                     if line_buf[start] == b'$' {
-                        let statedesc = string_from_latin1(&line_buf[start+1..end]);
+                        // SAFETY: The characters in this range are already validated to be ASCII
+                        let statedesc = unsafe { std::str::from_utf8_unchecked(&line_buf[start+1..end]) };
                         if statedesc.is_empty() {
                             // A '$' with no identifier behind it is invalid
                             self.push_token(Token::Invalid(line_buf[start] as char), start);
                         } else {
-                            self.push_token(Token::TypeReference(statedesc), start);
+                            self.push_token(Token::TypeReference(statedesc.to_string()), start);
                         }
                     } else {
-                        let ident = string_from_latin1(&line_buf[start..end]);
-                        self.push_token(Token::Identifier(ident), start);
+                        // SAFETY: The characters in this range are already validated to be ASCII
+                        let ident = unsafe { std::str::from_utf8_unchecked(&line_buf[start..end]) };
+                        self.push_token(Token::Identifier(ident.to_string()), start);
                     }
                     start = end;
                 }
@@ -151,9 +154,9 @@ impl<S: BufRead> Parser<S> {
                     while end < line_buf.len() && line_buf[end] != b'"' {
                         end += 1;
                     }
-                    let literal = string_from_latin1(&line_buf[start+1..end]);
+                    let literal = String::from_utf8_lossy(&line_buf[start+1..end]);
                     if end < line_buf.len() && line_buf[end] == b'"' {
-                        self.push_token(Token::StringLiteral(literal), start);
+                        self.push_token(Token::StringLiteral(literal.to_string()), start);
                     } else {
                         self.push_token(Token::IncompleteString, start);
                         break;
@@ -499,10 +502,6 @@ impl<S: BufRead> Parser<S> {
             None => Err(general_error!("Unexpected EOF while parsing {}", context))
         }
     }
-}
-
-fn string_from_latin1(value: &[u8]) -> String {
-    value.iter().map(|&ch| ch as char).collect()
 }
 
 // For simplifying the tokenizer tests
