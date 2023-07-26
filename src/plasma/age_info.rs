@@ -58,8 +58,8 @@ impl AgeInfo {
         let mut info = AgeInfo::default();
 
         // The EncryptedReader will also read from unencrypted files
-        let reader = BufReader::new(EncryptedReader::new(File::open(path)?,
-                        &file_crypt::DEFAULT_KEY)?);
+        let file_reader = BufReader::new(File::open(path)?);
+        let reader = BufReader::new(EncryptedReader::new(file_reader, &file_crypt::DEFAULT_KEY)?);
         for line in reader.lines() {
             let line = line?;
             let line = line.split('#').next().unwrap();

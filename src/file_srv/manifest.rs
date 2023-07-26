@@ -330,8 +330,7 @@ impl Manifest {
     }
 
     pub fn from_cache(path: &Path) -> Result<Self> {
-        let mfs_file = File::open(path)?;
-        let mut stream = BufReader::new(mfs_file);
+        let mut stream = BufReader::new(File::open(path)?);
         let cache_magic = stream.read_u32::<LittleEndian>()?;
         if cache_magic != Self::CACHE_MAGIC {
             return Err(general_error!("Unknown/invalid cache file magic '{:08x}'", cache_magic));

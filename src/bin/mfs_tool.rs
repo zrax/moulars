@@ -159,7 +159,7 @@ fn decrypt_file(path: &Path, out_file: Option<&Path>, key_opt: Option<&str>)
     -> Result<()>
 {
     let key = get_key(key_opt)?;
-    let mut stream = EncryptedReader::new(File::open(path)?, &key)?;
+    let mut stream = EncryptedReader::new(BufReader::new(File::open(path)?), &key)?;
     if let Some(out_filename) = out_file {
         if out_filename.exists() &&
                 std::fs::canonicalize(out_filename)? == std::fs::canonicalize(path)?
@@ -185,7 +185,8 @@ fn decrypt_file(path: &Path, out_file: Option<&Path>, key_opt: Option<&str>)
 fn list_pak(path: &Path, key_opt: Option<&str>) -> Result<()>
 {
     let key = get_key(key_opt)?;
-    let mut stream = BufReader::new(EncryptedReader::new(File::open(path)?, &key)?);
+    let file_reader = BufReader::new(File::open(path)?);
+    let mut stream = BufReader::new(EncryptedReader::new(file_reader, &key)?);
     let pak_file = PakFile::stream_read(&mut stream)?;
     for file in pak_file.files() {
         println!("{}", file.name());

@@ -15,7 +15,7 @@
  */
 
 use std::fs::File;
-use std::io::{Read, Write, Seek, SeekFrom, Result, ErrorKind};
+use std::io::{Read, BufRead, Write, Seek, SeekFrom, Result, ErrorKind};
 use std::mem::size_of;
 use std::path::Path;
 use std::{mem, ptr};
@@ -86,7 +86,7 @@ impl EncryptionType {
 // Used for encrypted .age, .csv, .fni files
 pub const DEFAULT_KEY: [u32; 4] = [0x6c0a5452, 0x03827d0f, 0x3a170b92, 0x16db7fc2];
 
-pub struct EncryptedReader<S: Read> {
+pub struct EncryptedReader<S: BufRead> {
     base: S,
     encryption_type: EncryptionType,
     key: [u32; 4],
@@ -95,7 +95,7 @@ pub struct EncryptedReader<S: Read> {
     base_size: usize,
 }
 
-impl<S: Read + Seek> EncryptedReader<S> {
+impl<S: BufRead + Seek> EncryptedReader<S> {
     pub fn new(mut base_stream: S, key: &[u32; 4]) -> Result<Self> {
         let encryption_type = EncryptionType::from_stream(&mut base_stream)?;
         let base_size = if encryption_type != EncryptionType::Unencrypted {
@@ -115,7 +115,7 @@ impl<S: Read + Seek> EncryptedReader<S> {
     }
 }
 
-impl<S: Read> EncryptedReader<S> {
+impl<S: BufRead> EncryptedReader<S> {
     fn next_block(&mut self) -> Result<()> {
         let mut block = [0; TEA_BLOCK_SIZE];
         self.base.read_u32_into::<LittleEndian>(&mut block)?;
@@ -135,7 +135,7 @@ impl<S: Read> EncryptedReader<S> {
     }
 }
 
-impl<S: Read> Read for EncryptedReader<S> {
+impl<S: BufRead> Read for EncryptedReader<S> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         if self.encryption_type == EncryptionType::Unencrypted {
             return self.base.read(buf);
