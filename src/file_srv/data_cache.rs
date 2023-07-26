@@ -23,6 +23,7 @@ use std::path::{Path, PathBuf};
 use log::{warn, info};
 use once_cell::sync::Lazy;
 
+use crate::path_utils;
 use crate::plasma::{AgeInfo, PageFile};
 use crate::plasma::audio::SoundBuffer;
 use crate::plasma::creatable::ClassID;
@@ -262,14 +263,14 @@ fn create_cache_file<'dc>(data_cache: &'dc mut HashMap<PathBuf, FileInfo>,
     let client_path = if src_path.starts_with("client") {
         src_path.file_name().unwrap().to_string_lossy().to_string()
     } else {
-        src_path.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "\\")
+        path_utils::to_windows(&src_path.to_string_lossy())
     };
 
     // The file might not have been in this manifest, but it could be
     // in others.  Use the cached version if it's available.
     data_cache.entry(path.to_path_buf()).or_insert_with(|| {
-        let download_path = src_path.to_string_lossy().to_string();
-        let mut file = FileInfo::new(client_path, download_path);
+        let download_path = src_path.to_string_lossy();
+        let mut file = FileInfo::new(client_path, &download_path);
         if let Err(err) = file.update(data_root) {
             warn!("Failed to add {} to the cache: {}", path.display(), err);
         }

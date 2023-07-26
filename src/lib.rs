@@ -25,6 +25,7 @@ pub mod config;
 pub mod lobby;
 pub mod net_crypt;
 pub mod netcli;
+pub mod path_utils;
 
 // Shortcut for generating (optionally formatted) general errors as std::io::Error
 #[macro_export]

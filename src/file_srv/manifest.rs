@@ -26,6 +26,7 @@ use log::debug;
 use md5::{Md5, Digest};
 
 use crate::general_error;
+use crate::path_utils;
 use crate::plasma::{StreamRead, StreamWrite};
 use crate::plasma::audio::SoundBuffer;
 
@@ -54,36 +55,6 @@ fn md5_hash_file(path: &Path) -> Result<[u8; 16]> {
     Ok(hash.finalize().into())
 }
 
-// Rust makes this surprisingly difficult...
-fn append_extension(path: impl AsRef<Path>, ext: impl AsRef<OsStr>) -> PathBuf {
-    let path = path.as_ref();
-    let ext = ext.as_ref();
-
-    if ext.is_empty() {
-        return path.to_owned();
-    }
-
-    match path.extension() {
-        Some(cur_ext) => {
-            let mut new_ext = cur_ext.to_os_string();
-            new_ext.push(".");
-            new_ext.push(ext);
-            path.with_extension(new_ext)
-        }
-        None => path.with_extension(ext)
-    }
-}
-
-#[test]
-fn test_append_extension() {
-    assert_eq!(append_extension(Path::new("/foo/bar"), "gz"), Path::new("/foo/bar.gz"));
-    assert_eq!(append_extension(Path::new("/foo/bar.exe"), "gz"), Path::new("/foo/bar.exe.gz"));
-    assert_eq!(append_extension(Path::new("bar"), "gz"), Path::new("bar.gz"));
-    assert_eq!(append_extension(Path::new("bar.exe"), "gz"), Path::new("bar.exe.gz"));
-    assert_eq!(append_extension(Path::new("/foo/bar"), ""), Path::new("/foo/bar"));
-    assert_eq!(append_extension(Path::new("/foo/bar.exe"), ""), Path::new("/foo/bar.exe"));
-}
-
 impl FileInfo {
     // Flags for FileInfo
     const OGG_SPLIT_CHANNELS: u32 = 1 << 0;
@@ -95,8 +66,8 @@ impl FileInfo {
     // Creates a new entry with invalid hash/size data.
     // It will need to be populated with real data via update() before
     // it can be send to a client.
-    pub fn new(client_path: String, download_path: String) -> Self {
-        let download_path = download_path.replace(std::path::MAIN_SEPARATOR, "\\");
+    pub fn new(client_path: String, download_path: &str) -> Self {
+        let download_path = path_utils::to_windows(download_path);
 
         Self {
             client_path,
@@ -116,7 +87,7 @@ impl FileInfo {
 
     // Returns the path to the source file on the server
     pub fn source_path(&self, data_root: &Path) -> PathBuf {
-        let native_path = self.download_path.replace('\\', std::path::MAIN_SEPARATOR_STR);
+        let native_path = path_utils::to_native(&self.download_path);
         let src_path = data_root.join(native_path);
         if self.is_compressed() && src_path.extension() == Some(OsStr::new("gz")) {
             // The original source file is uncompressed at the same path.
@@ -166,7 +137,7 @@ impl FileInfo {
             // it's not worth compressing and we should send it uncompressed.
             // This will generally be the case for encrypted files and ogg
             // files (which are already compressed in their own way)
-            let gz_path = append_extension(&src_path, "gz");
+            let gz_path = path_utils::append_extension(&src_path, "gz");
             {
                 let mut gz_stream = GzEncoder::new(File::create(&gz_path)?,
                                                    flate2::Compression::default());
@@ -178,9 +149,10 @@ impl FileInfo {
             if gz_metadata.len() < ((self.file_size as f64) * 0.9) as u64 {
                 // Compressed stream is small enough -- keep it and update
                 // the manifest cache to reference it.
-                self.download_path = gz_path.strip_prefix(data_root)
+                self.download_path = path_utils::to_windows(
+                        &gz_path.strip_prefix(data_root)
                         .map_err(|_| general_error!("Path '{}' is not in the data root", gz_path.display()))?
-                        .to_string_lossy().replace(std::path::MAIN_SEPARATOR, "\\");
+                        .to_string_lossy());
                 self.download_hash = md5_hash_file(&gz_path)?;
                 // Already verified to be less than the (checked) size of the
                 // source file.
@@ -189,9 +161,10 @@ impl FileInfo {
             } else {
                 // Keep the file uncompressed.  The download hash and size will
                 // match the hash and size of the destination file.
-                self.download_path = src_path.strip_prefix(data_root)
+                self.download_path = path_utils::to_windows(
+                        &src_path.strip_prefix(data_root)
                         .map_err(|_| general_error!("Path '{}' is not in the data root", src_path.display()))?
-                        .to_string_lossy().replace(std::path::MAIN_SEPARATOR, "\\");
+                        .to_string_lossy());
                 self.download_hash = self.file_hash;
                 self.download_size = self.file_size;
                 self.flags &= !Self::COMPRESSED_GZ;

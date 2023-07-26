@@ -28,6 +28,7 @@ use tokio::sync::mpsc;
 use crate::general_error;
 use crate::config::ServerConfig;
 use crate::netcli::NetResultCode;
+use crate::path_utils;
 use super::messages::{CliToFile, FileToCli};
 use super::manifest::Manifest;
 
@@ -137,7 +138,7 @@ pub fn ignore_file(path: &Path, allow_compressed: bool) -> bool {
 async fn open_server_file(filename: &str, data_root: &Path)
     -> Option<(tokio::fs::File, std::fs::Metadata, PathBuf)>
 {
-    let native_path = filename.replace('\\', std::path::MAIN_SEPARATOR_STR);
+    let native_path = path_utils::to_native(filename);
     let download_path = data_root.join(native_path);
 
     // Reject path traversal attempts, hidden/ignored files,
