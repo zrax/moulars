@@ -17,5 +17,8 @@
 mod descriptor;
 pub use descriptor::{VarType, VarValue, VarDescriptor, StateDescriptor};
 
+mod descriptor_db;
+pub use descriptor_db::DescriptorDb;
+
 mod parser;
 pub use parser::Parser;
