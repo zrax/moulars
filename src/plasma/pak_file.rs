@@ -79,9 +79,7 @@ impl StreamRead for PakFile {
 }
 
 impl StreamWrite for PakFile {
-    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write
-    {
+    fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         stream.write_u32::<LittleEndian>(self.files.len() as u32)?;
         let mut offset_accum = size_of::<u32>();
 

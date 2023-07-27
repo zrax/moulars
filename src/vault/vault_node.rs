@@ -118,9 +118,7 @@ fn read_vault_string<S>(stream: &mut S) -> Result<String>
     Ok(String::from_utf16_lossy(&buffer))
 }
 
-fn write_vault_string<S>(stream: &mut S, value: &str) -> Result<()>
-    where S: Write
-{
+fn write_vault_string(stream: &mut dyn Write, value: &str) -> Result<()> {
     let buffer: Vec<u16> = value.encode_utf16().collect();
     stream.write_u32::<LittleEndian>(((buffer.len() + 1) * size_of::<u16>()) as u32)?;
     for ch in buffer {
@@ -280,9 +278,7 @@ macro_rules! f_write_blob {
 }
 
 impl StreamWrite for VaultNode {
-    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write
-    {
+    fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         stream.write_u64::<LittleEndian>(self.fields)?;
 
         f_write_u32!(stream, self.fields, FIELD_NODE_IDX, self.node_id);

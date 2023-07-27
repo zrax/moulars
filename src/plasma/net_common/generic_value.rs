@@ -99,9 +99,7 @@ impl StreamRead for CreatableGenericValue {
 }
 
 impl StreamWrite for CreatableGenericValue {
-    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write
-    {
+    fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         match &self.value {
             GenericType::Int(value) => {
                 stream.write_u8(TypeID::Int as u8)?;

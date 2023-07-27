@@ -46,9 +46,7 @@ impl StreamRead for FileInfo {
 }
 
 impl StreamWrite for FileInfo {
-    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write
-    {
+    fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         write_utf16z_text(stream, &self.path)?;
         write_utf16z_u32(stream, self.file_size)?;
         Ok(())
@@ -89,9 +87,7 @@ impl StreamRead for Manifest {
 }
 
 impl StreamWrite for Manifest {
-    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write
-    {
+    fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         let mut file_stream = Cursor::new(Vec::new());
         for file in &self.files {
             file.stream_write(&mut file_stream)?;

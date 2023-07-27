@@ -63,9 +63,7 @@ impl StreamRead for BitVector {
 }
 
 impl StreamWrite for BitVector {
-    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write
-    {
+    fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         if self.bits.len() > u32::MAX as usize {
             return Err(general_error!("Waaaaaay too many bits..."));
         }

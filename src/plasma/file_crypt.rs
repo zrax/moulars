@@ -67,9 +67,7 @@ impl EncryptionType {
         Self::from_stream(&mut file)
     }
 
-    pub fn write_magic<S>(self, stream: &mut S) -> Result<()>
-        where S: Write
-    {
+    pub fn write_magic(self, stream: &mut dyn Write) -> Result<()> {
         match self {
             EncryptionType::Unencrypted => (),
             EncryptionType::TEA => {

@@ -195,9 +195,7 @@ impl FileToCli {
 }
 
 impl StreamWrite for FileToCli {
-    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write
-    {
+    fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         match self {
             FileToCli::PingReply { ping_time } => {
                 stream.write_u32::<LittleEndian>(ServerMsgId::PingReply as u32)?;

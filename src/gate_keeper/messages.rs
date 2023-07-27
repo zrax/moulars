@@ -102,9 +102,7 @@ impl CliToGateKeeper {
 }
 
 impl StreamWrite for GateKeeperToCli {
-    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write
-    {
+    fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         match self {
             GateKeeperToCli::PingReply { trans_id, ping_time, payload } => {
                 stream.write_u16::<LittleEndian>(ServerMsgId::PingReply as u16)?;

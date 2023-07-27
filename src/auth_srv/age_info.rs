@@ -71,9 +71,7 @@ impl StreamRead for NetAgeInfo {
 }
 
 impl StreamWrite for NetAgeInfo {
-    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write
-    {
+    fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         self.instance_id.stream_write(stream)?;
         write_fixed_utf16!(stream, 64, self.filename);
         write_fixed_utf16!(stream, 64, self.instance_name);

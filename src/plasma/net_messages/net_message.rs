@@ -109,9 +109,7 @@ impl StreamRead for NetMessage {
 }
 
 impl StreamWrite for NetMessage {
-    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write
-    {
+    fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         stream.write_u32::<LittleEndian>(self.content_flags)?;
 
         if (self.content_flags & Self::HAS_VERSION) != 0 {

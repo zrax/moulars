@@ -24,8 +24,7 @@ pub trait StreamRead {
 }
 
 pub trait StreamWrite {
-    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write, Self: Sized;
+    fn stream_write(&self, stream: &mut dyn Write) -> Result<()>;
 }
 
 impl StreamRead for Uuid {
@@ -39,9 +38,7 @@ impl StreamRead for Uuid {
 }
 
 impl StreamWrite for Uuid {
-    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write
-    {
+    fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         stream.write_all(self.to_bytes_le().as_slice())
     }
 }

@@ -65,8 +65,8 @@ pub fn read_safe_str<S>(stream: &mut S, format: StringFormat) -> Result<String>
     }
 }
 
-pub fn write_safe_str<S>(stream: &mut S, value: &str, format: StringFormat) -> Result<()>
-    where S: Write
+pub fn write_safe_str(stream: &mut dyn Write, value: &str, format: StringFormat)
+    -> Result<()>
 {
     if format == StringFormat::Utf16 {
         let buffer: Vec<u16> = value.encode_utf16().collect();

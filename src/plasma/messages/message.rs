@@ -71,9 +71,7 @@ impl StreamRead for Message {
 }
 
 impl StreamWrite for Message {
-    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write
-    {
+    fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         self.sender.stream_write(stream)?;
         stream.write_u32::<LittleEndian>(self.receivers.len() as u32)?;
         for rc_key in &self.receivers {

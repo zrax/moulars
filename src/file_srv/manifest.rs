@@ -249,17 +249,15 @@ impl StreamRead for FileInfo {
     }
 }
 
-pub fn write_utf16z_text<S>(stream: &mut S, value: &str) -> Result<()>
-    where S: Write
-{
+pub fn write_utf16z_text(stream: &mut dyn Write, value: &str) -> Result<()> {
     for ch in value.encode_utf16() {
         stream.write_u16::<LittleEndian>(ch)?;
     }
     stream.write_u16::<LittleEndian>(0)
 }
 
-pub fn write_utf16z_md5_hash<S>(stream: &mut S, value: &[u8; 16]) -> Result<()>
-    where S: Write
+pub fn write_utf16z_md5_hash(stream: &mut dyn Write, value: &[u8; 16])
+    -> Result<()>
 {
     // Convert binary hash to a UTF-16 hex representation
     for ch in hex::encode(value).encode_utf16() {
@@ -269,18 +267,14 @@ pub fn write_utf16z_md5_hash<S>(stream: &mut S, value: &[u8; 16]) -> Result<()>
 }
 
 // Yes, it's as dumb as it sounds...
-pub fn write_utf16z_u32<S>(stream: &mut S, value: u32) -> Result<()>
-    where S: Write
-{
+pub fn write_utf16z_u32(stream: &mut dyn Write, value: u32) -> Result<()> {
     stream.write_u16::<LittleEndian>((value >> 16) as u16)?;
     stream.write_u16::<LittleEndian>((value & 0xFFFF) as u16)?;
     stream.write_u16::<LittleEndian>(0)
 }
 
 impl StreamWrite for FileInfo {
-    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write
-    {
+    fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         assert!(!self.deleted);
 
         write_utf16z_text(stream, &self.client_path)?;
@@ -352,9 +346,7 @@ impl StreamRead for Manifest {
 }
 
 impl StreamWrite for Manifest {
-    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write
-    {
+    fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         // Don't write deleted files.  We need to keep them around in the
         // cache though so the check for updated records still works properly.
         let write_files: Vec<&FileInfo> = self.files.iter().filter(|f| !f.deleted).collect();

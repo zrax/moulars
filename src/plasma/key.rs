@@ -55,9 +55,7 @@ impl StreamRead for Key {
 }
 
 impl StreamWrite for Key {
-    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write
-    {
+    fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         if let Some(uoid) = &self.data {
             stream.write_u8(1)?;
             uoid.stream_write(stream)?;
@@ -108,9 +106,7 @@ impl StreamRead for Uoid {
 }
 
 impl StreamWrite for Uoid {
-    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write
-    {
+    fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         let mut contents = 0;
         if self.load_mask != 0xFF {
             contents |= Uoid::HAS_LOAD_MASK;
@@ -161,9 +157,7 @@ impl StreamRead for Location {
 }
 
 impl StreamWrite for Location {
-    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write
-    {
+    fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         stream.write_u32::<LittleEndian>(self.sequence)?;
         stream.write_u16::<LittleEndian>(self.flags)?;
         Ok(())

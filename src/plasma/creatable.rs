@@ -16,6 +16,8 @@
 
 use std::fmt::{Debug, Formatter};
 
+use num_derive::FromPrimitive;
+
 use crate::plasma::{StreamRead, StreamWrite};
 
 pub trait Creatable: StreamRead + StreamWrite {
@@ -31,6 +33,7 @@ impl Debug for dyn Creatable {
 }
 
 #[repr(u16)]
+#[derive(FromPrimitive)]
 pub(crate) enum ClassID {
     SoundBuffer = 0x0029,
     CoopCoordinator = 0x011B,
@@ -103,4 +106,6 @@ pub(crate) enum ClassID {
     AvOneShotLinkTask = 0x0488,
     PseudoLinkEffectMsg = 0x0494,
     AvBrainRideAnimatedPhysical = 0x049E,
+
+    Nil = 0x8000,
 }

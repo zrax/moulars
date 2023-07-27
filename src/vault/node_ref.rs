@@ -33,9 +33,7 @@ impl NodeRef {
 }
 
 impl StreamWrite for NodeRef {
-    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write
-    {
+    fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         stream.write_u32::<LittleEndian>(self.parent_id)?;
         stream.write_u32::<LittleEndian>(self.child_id)?;
         stream.write_u32::<LittleEndian>(self.owner_id)?;

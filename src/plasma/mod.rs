@@ -23,6 +23,9 @@ pub use bit_vector::BitVector;
 pub mod creatable;
 pub use creatable::Creatable;
 
+pub mod factory;
+pub use factory::Factory;
+
 pub mod file_crypt;
 
 mod key;

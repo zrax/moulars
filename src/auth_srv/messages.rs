@@ -994,9 +994,7 @@ impl CliToAuth {
 
 
 impl StreamWrite for AuthToCli {
-    fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write
-    {
+    fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         match self {
             AuthToCli::PingReply { trans_id, ping_time, payload } => {
                 stream.write_u16::<LittleEndian>(ServerMsgId::PingReply as u16)?;
