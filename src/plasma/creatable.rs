@@ -14,10 +14,20 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+use std::fmt::{Debug, Formatter};
+
 use crate::plasma::{StreamRead, StreamWrite};
 
 pub trait Creatable: StreamRead + StreamWrite {
-    fn class_id() -> u16;
+    fn class_id(&self) -> u16;
+    fn static_class_id() -> u16
+        where Self: Sized;
+}
+
+impl Debug for dyn Creatable {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Creatable {{ type=0x{:04x} }}", self.class_id())
+    }
 }
 
 #[repr(u16)]

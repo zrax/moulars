@@ -42,9 +42,8 @@ pub struct CreatableGenericValue {
 }
 
 impl Creatable for CreatableGenericValue {
-    fn class_id() -> u16 {
-        ClassID::CreatableGenericValue as u16
-    }
+    fn class_id(&self) -> u16 { ClassID::CreatableGenericValue as u16 }
+    fn static_class_id() -> u16 { ClassID::CreatableGenericValue as u16 }
 }
 
 #[repr(u8)]

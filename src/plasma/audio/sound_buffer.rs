@@ -64,7 +64,8 @@ impl SoundBuffer {
 }
 
 impl Creatable for SoundBuffer {
-    fn class_id() -> u16 { ClassID::SoundBuffer as u16 }
+    fn class_id(&self) -> u16 { ClassID::SoundBuffer as u16 }
+    fn static_class_id() -> u16 { ClassID::SoundBuffer as u16 }
 }
 
 impl StreamRead for SoundBuffer {

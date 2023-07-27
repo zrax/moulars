@@ -661,7 +661,7 @@ fn test_parser() {
         assert_eq!(vars[0].name().as_str(), "foobar");
         assert_eq!(vars[0].var_type(), &VarType::Bool);
         assert_eq!(vars[0].count(), Some(1));
-        assert_eq!(vars[0].default(), None);
+        assert!(vars[0].default().is_none());
     }
 
     {
@@ -726,7 +726,7 @@ fn test_parser() {
         let vars = descs[0].vars();
         assert_eq!(vars.len(), 1);
         assert_eq!(vars[0].var_type(), &VarType::Int);
-        assert_eq!(vars[0].default(), Some(&VarValue::Int(42)));
+        assert!(matches!(vars[0].default(), Some(&VarValue::Int(42))));
     }
 
     {
@@ -738,7 +738,7 @@ fn test_parser() {
         let vars = descs[0].vars();
         assert_eq!(vars.len(), 1);
         assert_eq!(vars[0].var_type(), &VarType::Rgb8);
-        assert_eq!(vars[0].default(), Some(&VarValue::Rgb8(255, 127, 7)));
+        assert!(matches!(vars[0].default(), Some(&VarValue::Rgb8(255, 127, 7))));
     }
 
     {
@@ -750,7 +750,7 @@ fn test_parser() {
         let vars = descs[0].vars();
         assert_eq!(vars.len(), 1);
         assert_eq!(vars[0].var_type(), &VarType::Bool);
-        assert_eq!(vars[0].default(), Some(&VarValue::Bool(true)));
+        assert!(matches!(vars[0].default(), Some(&VarValue::Bool(true))));
     }
 
     {
@@ -762,7 +762,7 @@ fn test_parser() {
         let vars = descs[0].vars();
         assert_eq!(vars.len(), 1);
         assert_eq!(vars[0].var_type(), &VarType::Bool);
-        assert_eq!(vars[0].default(), Some(&VarValue::Bool(false)));
+        assert!(matches!(vars[0].default(), Some(&VarValue::Bool(false))));
     }
 
     {
@@ -802,7 +802,8 @@ fn test_parser() {
         let vars = descs[0].vars();
         assert_eq!(vars.len(), 1);
         assert_eq!(vars[0].var_type(), &VarType::String32);
-        assert_eq!(vars[0].default(), Some(&VarValue::String32("String Value".to_string())));
+        assert!(matches!(vars[0].default(), Some(&VarValue::String32(ref value))
+                                            if value.as_str() == "String Value"));
     }
 
     {
@@ -814,7 +815,8 @@ fn test_parser() {
         let vars = descs[0].vars();
         assert_eq!(vars.len(), 1);
         assert_eq!(vars[0].var_type(), &VarType::String32);
-        assert_eq!(vars[0].default(), Some(&VarValue::String32("empty".to_string())));
+        assert!(matches!(vars[0].default(), Some(&VarValue::String32(ref value))
+                                            if value.as_str() == "empty"));
     }
 
     {

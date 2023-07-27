@@ -25,7 +25,7 @@ pub trait StreamRead {
 
 pub trait StreamWrite {
     fn stream_write<S>(&self, stream: &mut S) -> Result<()>
-        where S: Write;
+        where S: Write, Self: Sized;
 }
 
 impl StreamRead for Uuid {

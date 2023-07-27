@@ -100,7 +100,7 @@ impl PageFile {
         where S: BufRead + Seek,
               ObType: Creatable
     {
-        assert_eq!(ObType::class_id(), uoid.obj_type());
+        assert_eq!(ObType::static_class_id(), uoid.obj_type());
 
         if let Some(keys) = self.key_index.get(&uoid.obj_type()) {
             if let Some(index_key) = keys.iter().find(|k| k.uoid.as_ref() == uoid) {
@@ -112,7 +112,7 @@ impl PageFile {
                 let mut obj_stream = Cursor::new(obj_buffer);
 
                 let stream_class = obj_stream.read_u16::<LittleEndian>()?;
-                if stream_class != ObType::class_id() {
+                if stream_class != ObType::static_class_id() {
                     return Err(general_error!("Unexpected class ID 0x{:04x} encountered",
                                               stream_class));
                 }
