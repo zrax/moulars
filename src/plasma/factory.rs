@@ -37,10 +37,11 @@ impl Factory {
         match ClassID::from_u16(class_id) {
             Some(ClassID::SoundBuffer) =>
                 Err(general_error!("SoundBuffer only supported for Manifest generation")),
+            Some(ClassID::RelevanceRegion) =>
+                Err(general_error!("RelevanceRegion only supported for Manifest generation")),
             Some(ClassID::CreatableGenericValue) =>
                 Ok(Some(Arc::new(CreatableGenericValue::stream_read(stream)?))),
             Some(ClassID::Nil) => Ok(None),
-            Some(_) => todo!(),
             None => Err(general_error!("Unknown creatable type 0x{:04x}", class_id)),
         }
     }
