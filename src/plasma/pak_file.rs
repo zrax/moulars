@@ -15,7 +15,7 @@
  */
 
 use std::fs::File;
-use std::io::{Cursor, BufRead, Write, Result};
+use std::io::{Cursor, BufRead, BufReader, Write, Result};
 use std::mem::size_of;
 use std::path::Path;
 
@@ -45,7 +45,8 @@ impl PakFile {
     }
 
     pub fn add(&mut self, path: &Path, stored_name: String) -> Result<()> {
-        let mut file = File::open(path)?;
+        let mut file = BufReader::new(File::open(path)?);
+        skip_pyc_headers(&mut file)?;
         let mut buffer = Cursor::new(Vec::new());
         std::io::copy(&mut file, &mut buffer)?;
         self.files.push(FileInfo { name: stored_name, data: buffer.into_inner() });
@@ -110,4 +111,45 @@ impl StreamWrite for PakFile {
 
         Ok(())
     }
+}
+
+const MAGIC_PY_MIN: u32 = 0x0A0D0000;
+const MAGIC_PY_MAX: u32 = 0x0A0DFFFF;
+
+// WARNING:  Python magic numbers are NOT in order; specifically, there was
+// a break from 2.x to 3.0, so the ranges must be checked as well.
+//const MAGIC_PY3_MIN: u32 = 0x0A0D0C3A;
+const MAGIC_PY_3_3: u32 = 0x0A0D0C9E;
+const MAGIC_PY_3_7: u32 = 0x0A0D0D42;
+const MAGIC_PY2_MIN: u32 = 0x0A0DC687;
+
+fn skip_pyc_headers<S>(stream: &mut S) -> Result<()>
+    where S: BufRead
+{
+    // Skip the file headers.  How much to skip depends on the Python
+    // version, which can be simplified by looking at the magic number.
+    let magic = stream.read_u32::<LittleEndian>()?;
+    if !(MAGIC_PY_MIN..=MAGIC_PY_MAX).contains(&magic) {
+        return Err(general_error!("Unsupported Python version or not a pyc file"));
+    }
+
+    let flags = if (MAGIC_PY_3_7..MAGIC_PY2_MIN).contains(&magic) {
+        stream.read_u32::<LittleEndian>()?
+    } else {
+        0
+    };
+    if (flags & 0x1) != 0 {
+        // Optional checksums added in Python 3.7
+        let _ = stream.read_u32::<LittleEndian>()?;
+        let _ = stream.read_u32::<LittleEndian>()?;
+    } else {
+        // Timestamp
+        let _ = stream.read_u32::<LittleEndian>()?;
+        if (MAGIC_PY_3_3..MAGIC_PY2_MIN).contains(&magic) {
+            // Size parameter added in Python 3.3
+            let _ = stream.read_u32::<LittleEndian>()?;
+        }
+    }
+
+    Ok(())
 }
