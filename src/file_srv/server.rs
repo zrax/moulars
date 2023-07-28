@@ -72,7 +72,7 @@ async fn send_message(stream: &mut TcpStream, reply: FileToCli) -> bool {
     }
 }
 
-fn fetch_manifest(manifest_name: &String, data_path: &Path) -> Option<Manifest> {
+fn fetch_manifest(manifest_name: &str, data_path: &Path) -> Option<Manifest> {
     if manifest_name.contains(|ch| ch == '/' || ch == '\\' || ch == ':' || ch == '.') {
         // Reject anything that looks like a path
         return None;
@@ -92,11 +92,11 @@ fn fetch_manifest(manifest_name: &String, data_path: &Path) -> Option<Manifest> 
     }
 }
 
-async fn do_manifest(stream: &mut TcpStream, trans_id: u32, manifest_name: String,
+async fn do_manifest(stream: &mut TcpStream, trans_id: u32, manifest_name: &str,
                      client_reader_id: &mut u32, data_root: &Path) -> bool
 {
     let reply =
-        if let Some(manifest) = fetch_manifest(&manifest_name, data_root) {
+        if let Some(manifest) = fetch_manifest(manifest_name, data_root) {
             debug!("Client {} requested manifest '{}'",
                    stream.peer_addr().unwrap(), manifest_name);
 
@@ -162,8 +162,7 @@ async fn open_server_file(filename: &str, data_root: &Path)
     let metadata = match file.metadata().await {
         Ok(metadata) => metadata,
         Err(err) => {
-            warn!("Could not read file metadata for {}: {}",
-                  download_path.display(), err);
+            warn!("Could not read file metadata for {}: {}", download_path.display(), err);
             return None;
         }
     };
@@ -171,14 +170,13 @@ async fn open_server_file(filename: &str, data_root: &Path)
     Some((file, metadata, download_path))
 }
 
-async fn do_download(stream: &mut TcpStream, trans_id: u32, filename: String,
+async fn do_download(stream: &mut TcpStream, trans_id: u32, filename: &str,
                      client_reader_id: &mut u32, data_root: &Path) -> bool
 {
     if let Some((mut file, metadata, download_path))
-                = open_server_file(&filename, data_root).await
+                = open_server_file(filename, data_root).await
     {
-        debug!("Client {} requested file '{}'", stream.peer_addr().unwrap(),
-               filename);
+        debug!("Client {} requested file '{}'", stream.peer_addr().unwrap(), filename);
 
         if metadata.len() > u32::MAX as u64 {
             debug!("File {} too large for 32-bit stream", filename);
@@ -214,8 +212,7 @@ async fn do_download(stream: &mut TcpStream, trans_id: u32, filename: String,
             }
         }
     } else {
-        warn!("Client {} requested invalid path '{}'", stream.peer_addr().unwrap(),
-              filename);
+        warn!("Client {} requested invalid path '{}'", stream.peer_addr().unwrap(), filename);
         let reply = FileToCli::download_error(trans_id, NetResultCode::NetFileNotFound);
         send_message(stream, reply).await
     }
@@ -261,7 +258,7 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
                     }
                     continue;
                 }
-                if !do_manifest(stream.get_mut(), trans_id, manifest_name,
+                if !do_manifest(stream.get_mut(), trans_id, &manifest_name,
                                 &mut client_reader_id, &server_config.data_root).await
                 {
                     return;
@@ -277,7 +274,7 @@ async fn file_server_client(client_sock: TcpStream, server_config: Arc<ServerCon
                     }
                     continue;
                 }
-                if !do_download(stream.get_mut(), trans_id, filename,
+                if !do_download(stream.get_mut(), trans_id, &filename,
                                 &mut client_reader_id, &server_config.data_root).await
                 {
                     return;

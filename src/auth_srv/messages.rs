@@ -24,6 +24,7 @@ use uuid::Uuid;
 
 use crate::general_error;
 use crate::net_crypt::CryptTcpStream;
+use crate::netcli::NetResultCode;
 use crate::plasma::{StreamWrite, net_io};
 use crate::vault::NodeRef;
 use super::age_info::NetAgeInfo;
@@ -992,6 +993,17 @@ impl CliToAuth {
     }
 }
 
+impl AuthToCli {
+    pub fn download_error(trans_id: u32, result: NetResultCode) -> Self {
+        Self::FileDownloadChunk {
+            trans_id,
+            result: result as i32,
+            total_size: 0,
+            offset: 0,
+            file_data: Vec::new(),
+        }
+    }
+}
 
 impl StreamWrite for AuthToCli {
     fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {

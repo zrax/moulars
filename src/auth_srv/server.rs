@@ -15,6 +15,7 @@
  */
 
 use std::io::{BufRead, Cursor, Result, ErrorKind};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -29,14 +30,18 @@ use crate::general_error;
 use crate::config::ServerConfig;
 use crate::net_crypt::CryptTcpStream;
 use crate::netcli::NetResultCode;
+use crate::path_utils;
 use crate::plasma::{StreamRead, StreamWrite, BitVector};
+use super::manifest::Manifest;
 use super::messages::{CliToAuth, AuthToCli};
+use super::sec_files::load_or_create_ntd_key;
 
 pub struct AuthServer {
     incoming_send: mpsc::Sender<TcpStream>,
 }
 
 const CONN_HEADER_SIZE: usize = 20;
+const FILE_CHUNK_SIZE: usize = 64 * 1024;
 
 enum ServerCaps {
     ScoreLeaderBoards,
@@ -93,12 +98,153 @@ async fn init_client(mut sock: TcpStream, server_config: &ServerConfig)
     Ok(crypt_sock)
 }
 
+fn check_file_request(dir_name: &str, ext: &str) -> bool {
+    (dir_name == "Python" && ext == "pak")
+        || (dir_name == "SDL" && ext == "sdl")
+}
+
+fn fetch_list(dir_name: &str, ext: &str, data_root: &Path) -> Option<Manifest> {
+    // Whitelist what the client is allowed to request.
+    if !check_file_request(dir_name, ext) {
+        return None;
+    }
+
+    match Manifest::from_dir(data_root, dir_name, ext) {
+        Ok(manifest) => Some(manifest),
+        Err(err) => {
+            warn!("Failed to fetch directory list for {}\\*.{}: {}", dir_name, ext, err);
+            None
+        }
+    }
+}
+
+async fn do_manifest(stream: &mut CryptTcpStream, trans_id: u32, dir_name: &str,
+                     ext: &str, data_root: &Path) -> bool
+{
+    let reply =
+        if let Some(manifest) = fetch_list(dir_name, ext, data_root) {
+            debug!("Client {} requested list '{}\\*.{}'",
+                   stream.peer_addr().unwrap(), dir_name, ext);
+
+            AuthToCli::FileListReply {
+                trans_id,
+                result: NetResultCode::NetSuccess as i32,
+                manifest
+            }
+        } else {
+            warn!("Client {} requested invalid list '{}\\*.{}'",
+                  stream.peer_addr().unwrap(), dir_name, ext);
+            AuthToCli::FileListReply {
+                trans_id,
+                result: NetResultCode::NetFileNotFound as i32,
+                manifest: Manifest::new()
+            }
+        };
+
+    send_message(stream, reply).await
+}
+
+async fn open_server_file(filename: &str, data_root: &Path)
+    -> Option<(tokio::fs::File, std::fs::Metadata, PathBuf)>
+{
+    let path_parts: Vec<&str> = filename.split('\\').collect();
+    if path_parts.len() != 2 {
+        // The requested path should be exactly "<dir>\<file>.<ext>"
+        return None;
+    }
+    let native_path = path_utils::to_native(filename);
+    let download_path = data_root.join(native_path);
+
+    let ext = download_path.extension().unwrap_or_default();
+    if !check_file_request(path_parts[0], &ext.to_string_lossy())
+        || path_parts[1].starts_with('.')
+    {
+        // Ensure the requested file is whitelisted
+        return None;
+    }
+
+    let file = match tokio::fs::File::open(&download_path).await {
+        Ok(file) => file,
+        Err(err) => {
+            warn!("Could not open {} for reading: {}", download_path.display(), err);
+            return None;
+        }
+    };
+
+    let metadata = match file.metadata().await {
+        Ok(metadata) => metadata,
+        Err(err) => {
+            warn!("Could not read file metadata for {}: {}",download_path.display(), err);
+            return None;
+        }
+    };
+
+    Some((file, metadata, download_path))
+}
+
+async fn do_download(stream: &mut CryptTcpStream, trans_id: u32, filename: &str,
+                     data_root: &Path) -> bool
+{
+    if let Some((mut file, metadata, download_path))
+                = open_server_file(filename, data_root).await
+    {
+        debug!("Client {} requested file '{}'", stream.peer_addr().unwrap(), filename);
+
+        if metadata.len() > u32::MAX as u64 {
+            debug!("File {} too large for 32-bit stream", filename);
+            let reply = AuthToCli::download_error(trans_id, NetResultCode::NetInternalError);
+            return send_message(stream, reply).await;
+        }
+
+        let mut buffer = [0u8; FILE_CHUNK_SIZE];
+        let mut offset = 0;
+        loop {
+            match file.read(&mut buffer).await {
+                Ok(count) => {
+                    if count == 0 {
+                        // End of file reached
+                        return true;
+                    }
+                    let reply = AuthToCli::FileDownloadChunk {
+                        trans_id,
+                        result: NetResultCode::NetSuccess as i32,
+                        total_size: metadata.len() as u32,
+                        offset,
+                        file_data: Vec::from(&buffer[..count]),
+                    };
+                    if !send_message(stream, reply).await {
+                        return false;
+                    }
+                    offset += count as u32;
+                }
+                Err(err) => {
+                    warn!("Could not read from {}: {}", download_path.display(), err);
+                    let reply = AuthToCli::download_error(trans_id, NetResultCode::NetInternalError);
+                    return send_message(stream, reply).await;
+                }
+            }
+        }
+    } else {
+        warn!("Client {} requested invalid path '{}'", stream.peer_addr().unwrap(), filename);
+        let reply = AuthToCli::download_error(trans_id, NetResultCode::NetFileNotFound);
+        send_message(stream, reply).await
+    }
+}
+
 async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>) {
     let mut stream = match init_client(client_sock, &server_config).await {
         Ok(cipher) => cipher,
         Err(err) => {
             warn!("Failed to initialize client: {}", err);
             return;
+        }
+    };
+
+    let ntd_key = match load_or_create_ntd_key(&server_config.data_root) {
+        Ok(key) => key,
+        Err(err) => {
+            warn!("Failed to get encryption key: {}", err);
+            [0; 4]
         }
     };
 
@@ -266,11 +412,19 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>) {
             Ok(CliToAuth::AgeRequest { .. }) => {
                 todo!()
             }
-            Ok(CliToAuth::FileListRequest { .. }) => {
-                todo!()
+            Ok(CliToAuth::FileListRequest { trans_id, directory, ext }) => {
+                if !do_manifest(stream.get_mut(), trans_id, &directory, &ext,
+                                &server_config.data_root).await
+                {
+                    return;
+                }
             }
-            Ok(CliToAuth::FileDownloadRequest { .. }) => {
-                todo!()
+            Ok(CliToAuth::FileDownloadRequest { trans_id, filename }) => {
+                if !do_download(stream.get_mut(), trans_id, &filename,
+                                &server_config.data_root).await
+                {
+                    return;
+                }
             }
             Ok(CliToAuth::FileDownloadChunkAck { .. }) => (),   // Ignored
             Ok(CliToAuth::PropagateBuffer { .. }) => {

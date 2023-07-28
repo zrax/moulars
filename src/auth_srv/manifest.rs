@@ -14,10 +14,13 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+use std::ffi::OsStr;
 use std::io::{BufRead, Write, Cursor, Result};
 use std::mem::size_of;
+use std::path::Path;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use log::warn;
 
 use crate::general_error;
 use crate::plasma::{StreamRead, StreamWrite};
@@ -56,6 +59,24 @@ impl StreamWrite for FileInfo {
 impl Manifest {
     pub fn new() -> Self {
         Manifest { files: vec![] }
+    }
+
+    pub fn from_dir(data_root: &Path, directory: &str, ext: &str) -> Result<Self> {
+        let mut files = Vec::new();
+        for entry in data_root.join(directory).read_dir()? {
+            let entry = entry?;
+            let metadata = entry.metadata()?;
+            if metadata.is_file() && entry.path().extension() == Some(OsStr::new(ext)) {
+                if metadata.len() > u32::MAX as u64 {
+                    warn!("File {} is too large to send to client; Ignoring it...",
+                          entry.path().display());
+                    continue;
+                }
+                let client_path = format!("{}\\{}", directory, entry.file_name().to_string_lossy());
+                files.push(FileInfo { path: client_path, file_size: metadata.len() as u32 });
+            }
+        }
+        Ok(Manifest { files })
     }
 
     pub fn files(&self) -> &Vec<FileInfo> { &self.files }
