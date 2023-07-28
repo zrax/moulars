@@ -14,20 +14,22 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashSet, HashMap, VecDeque};
 use std::ffi::OsStr;
 use std::fs::File;
 use std::io::{Cursor, BufReader, BufWriter, Write, Result, ErrorKind};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use log::{warn, info};
 use once_cell::sync::Lazy;
 
 use crate::path_utils;
-use crate::plasma::{AgeInfo, PageFile};
+use crate::plasma::{AgeInfo, PageFile, PakFile, StreamWrite};
 use crate::plasma::audio::SoundBuffer;
 use crate::plasma::creatable::ClassID;
-use crate::plasma::file_crypt::{self, EncryptionType, EncryptedWriter};
+use crate::plasma::file_crypt::{self, EncryptionType, EncryptedWriter,
+                                load_or_create_ntd_key};
 use super::manifest::{Manifest, FileInfo};
 use super::server::ignore_file;
 
@@ -45,7 +47,25 @@ pub fn scan_dir(path: &Path, file_set: &mut HashSet<PathBuf>) -> Result<()> {
     Ok(())
 }
 
-pub fn cache_clients(data_root: &Path) -> Result<()> {
+fn scan_python_dir(python_root: &Path) -> Result<HashSet<PathBuf>> {
+    let mut file_set = HashSet::new();
+    let mut scan_dirs = VecDeque::new();
+    scan_dirs.push_back(python_root.to_owned());
+    while let Some(dir) = scan_dirs.pop_front() {
+        for entry in dir.read_dir()? {
+            let entry = entry?;
+            let metadata = entry.metadata()?;
+            if metadata.is_file() && entry.path().extension() == Some(OsStr::new("py")) {
+                file_set.insert(entry.path());
+            } else if metadata.is_dir() {
+                scan_dirs.push_back(entry.path());
+            }
+        }
+    }
+    Ok(file_set)
+}
+
+pub fn cache_clients(data_root: &Path, python_exe: Option<&Path>) -> Result<()> {
     static CLIENT_TYPES: Lazy<Vec<(&str, &str, PathBuf)>> = Lazy::new(|| vec![
         ("Internal", "", ["client", "windows_ia32", "internal"].iter().collect()),
         ("External", "", ["client", "windows_ia32", "external"].iter().collect()),
@@ -53,8 +73,10 @@ pub fn cache_clients(data_root: &Path) -> Result<()> {
         ("External", "_x64", ["client", "windows_x64", "external"].iter().collect()),
     ]);
 
+    let ntd_key = load_or_create_ntd_key(data_root)?;
+
     let mut game_data_files = HashSet::new();
-    for data_dir in ["avi", "dat", "sfx"] {
+    for data_dir in ["avi", "dat", "sfx", "SDL"] {
         let src_dir = data_root.join(data_dir);
         if src_dir.exists() && src_dir.is_dir() {
             scan_dir(&src_dir, &mut game_data_files)?;
@@ -64,6 +86,23 @@ pub fn cache_clients(data_root: &Path) -> Result<()> {
         }
     }
 
+    if let Some(python_exe) = python_exe {
+        let python_dir = data_root.join("Python");
+        if python_dir.exists() {
+            match process_python(&python_dir, python_exe, &ntd_key) {
+                Ok(pak_path) => {
+                    game_data_files.insert(pak_path);
+                }
+                Err(err) => warn!("Failed to build Python.pak: {}", err),
+            }
+        } else {
+            warn!("{} does not exist.  Skipping Python files.",
+                  python_dir.display());
+        }
+    } else {
+        warn!("No Python compiler specified.  Skipping Python files.");
+    }
+
     for file in &game_data_files {
         if let Some(ext) = file.extension() {
             if ext == OsStr::new("age") || ext == OsStr::new("fni") || ext == OsStr::new("csv") {
@@ -71,6 +110,10 @@ pub fn cache_clients(data_root: &Path) -> Result<()> {
                 if let Err(err) = encrypt_file(file, EncryptionType::TEA,
                                                &file_crypt::DEFAULT_KEY)
                 {
+                    warn!("Failed to encrypt {}: {}", file.display(), err);
+                }
+            } else if ext == OsStr::new("sdl") {
+                if let Err(err) = encrypt_file(file, EncryptionType::XXTEA, &ntd_key) {
                     warn!("Failed to encrypt {}: {}", file.display(), err);
                 }
             }
@@ -224,7 +267,7 @@ fn load_or_create_manifest(path: &Path) -> Result<Manifest> {
     }
 }
 
-pub fn encrypt_file(path: &Path, encryption_type: EncryptionType, key: &[u32; 4])
+fn encrypt_file(path: &Path, encryption_type: EncryptionType, key: &[u32; 4])
     -> Result<()>
 {
     if EncryptionType::from_file(path)? == EncryptionType::Unencrypted {
@@ -280,4 +323,46 @@ fn create_cache_file<'dc>(data_cache: &'dc mut HashMap<PathBuf, FileInfo>,
         }
         file
     })
+}
+
+fn process_python(python_dir: &Path, python_exe: &Path, key: &[u32; 4])
+    -> Result<PathBuf>
+{
+    // Build a .pak from the source files
+    let py_sources = scan_python_dir(python_dir)?;
+    info!("Compiling {} Python sources...", py_sources.len());
+    let mut pak_file = PakFile::new();
+    for py_file in py_sources {
+        let dfile = py_file.strip_prefix(python_dir).unwrap();
+        let cfile = py_file.with_extension("pyc");
+        let py_cmd = format!(
+            "import py_compile; py_compile.compile('{}', cfile='{}', dfile='{}')",
+            py_escape(&py_file), py_escape(&cfile), py_escape(dfile)
+        );
+        let status = Command::new(python_exe).args(["-c", &py_cmd]).status()?;
+        match status.code() {
+            Some(0) => (),
+            Some(code) => warn!("py_compile exited with status {}", code),
+            None => warn!("py_compile process killed by signal"),
+        }
+        let client_path = dfile.to_string_lossy().replace(['/', '\\'], ".");
+        pak_file.add(&cfile, client_path)?;
+    }
+
+    // We always just write the .pak file if --python was specified.
+    // Checking that it's up to date requires extra bookkeeping on
+    // all the contained files, which the .pak file doesn't natively
+    // store anywhere.
+    let pak_path = python_dir.join("Python.pak");
+    info!("Creating {}", pak_path.display());
+    let mut pak_stream = EncryptedWriter::new(BufWriter::new(File::create(&pak_path)?),
+                                              EncryptionType::XXTEA, key)?;
+    pak_file.stream_write(&mut pak_stream)?;
+    pak_stream.flush()?;
+
+    Ok(pak_path)
+}
+
+fn py_escape(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', r"\\").replace('\'', r#"\"""#)
 }

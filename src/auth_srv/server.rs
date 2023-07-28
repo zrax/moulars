@@ -32,9 +32,9 @@ use crate::net_crypt::CryptTcpStream;
 use crate::netcli::NetResultCode;
 use crate::path_utils;
 use crate::plasma::{StreamRead, StreamWrite, BitVector};
+use crate::plasma::file_crypt::load_or_create_ntd_key;
 use super::manifest::Manifest;
 use super::messages::{CliToAuth, AuthToCli};
-use super::sec_files::load_or_create_ntd_key;
 
 pub struct AuthServer {
     incoming_send: mpsc::Sender<TcpStream>,

@@ -15,13 +15,15 @@
  */
 
 use std::fs::File;
-use std::io::{Read, BufRead, Write, Seek, SeekFrom, Result, ErrorKind};
+use std::io::{Read, BufRead, BufReader, Write, BufWriter, Seek, SeekFrom,
+              Result, ErrorKind};
 use std::mem::size_of;
 use std::path::Path;
 use std::{mem, ptr};
 
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use byteorder::{BigEndian, LittleEndian, ReadBytesExt, WriteBytesExt};
 use log::warn;
+use rand::Rng;
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum EncryptionType {
@@ -265,6 +267,33 @@ impl<S: Write + Seek> Drop for EncryptedWriter<S> {
     fn drop(&mut self) {
         if let Err(err) = self.flush() {
             warn!("Failed to flush stream on drop: {}", err);
+        }
+    }
+}
+
+// NOTE: This file stores the keys in Big Endian format for easier debugging
+// with tools like PlasmaShop
+pub fn load_or_create_ntd_key(data_root: &Path) -> Result<[u32; 4]> {
+    let key_path = data_root.join(".ntd_server.key");
+    let mut key_buffer = [0; 4];
+    match File::open(&key_path) {
+        Ok(file) => {
+            let mut stream = BufReader::new(file);
+            stream.read_u32_into::<BigEndian>(&mut key_buffer)?;
+            Ok(key_buffer)
+        }
+        Err(err) => {
+            if err.kind() == ErrorKind::NotFound {
+                let mut rng = rand::thread_rng();
+                let mut stream = BufWriter::new(File::create(&key_path)?);
+                for v in key_buffer.iter_mut() {
+                    *v = rng.gen::<u32>();
+                    stream.write_u32::<BigEndian>(*v)?;
+                }
+                Ok(key_buffer)
+            } else {
+                Err(err)
+            }
         }
     }
 }

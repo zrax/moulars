@@ -27,7 +27,6 @@ use clap::{Command, Arg, ArgAction};
 use clap::builder::PathBufValueParser;
 use log::{error, warn};
 
-use moulars::auth_srv::sec_files::build_secure_files;
 use moulars::file_srv::Manifest;
 use moulars::file_srv::data_cache::cache_clients;
 use moulars::general_error;
@@ -123,12 +122,9 @@ fn main() {
         }
         Some(("update", update_args)) => {
             let data_root = update_args.get_one::<PathBuf>("data_root").unwrap();
-            if let Err(err) = cache_clients(data_root) {
-                warn!("Failed to update file server cache: {}", err);
-            }
             let python_exe = update_args.get_one::<PathBuf>("python_exe").map(|p| p.as_path());
-            if let Err(err) = build_secure_files(data_root, python_exe) {
-                warn!("Failed to build secure files: {}", err);
+            if let Err(err) = cache_clients(data_root, python_exe) {
+                warn!("Failed to update file server cache: {}", err);
             }
         }
         _ => ()
