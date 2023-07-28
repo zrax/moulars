@@ -86,21 +86,21 @@ pub fn cache_clients(data_root: &Path, python_exe: Option<&Path>) -> Result<()> 
         }
     }
 
-    if let Some(python_exe) = python_exe {
-        let python_dir = data_root.join("Python");
-        if python_dir.exists() {
-            match process_python(&python_dir, python_exe, &ntd_key) {
-                Ok(pak_path) => {
-                    game_data_files.insert(pak_path);
-                }
-                Err(err) => warn!("Failed to build Python.pak: {}", err),
+    let python_dir = data_root.join("Python");
+    if python_dir.exists() {
+        let python_pak = python_dir.join("Python.pak");
+        if let Some(python_exe) = python_exe {
+            if let Err(err) = process_python(&python_dir, python_exe, &python_pak, &ntd_key) {
+                warn!("Failed to build Python.pak: {}", err);
             }
         } else {
-            warn!("{} does not exist.  Skipping Python files.",
-                  python_dir.display());
+            warn!("No Python compiler specified.  Skipping Python files.");
+        }
+        if python_pak.exists() {
+            game_data_files.insert(python_pak);
         }
     } else {
-        warn!("No Python compiler specified.  Skipping Python files.");
+        warn!("{} does not exist.  Skipping Python files.", python_dir.display());
     }
 
     for file in &game_data_files {
@@ -187,6 +187,23 @@ pub fn cache_clients(data_root: &Path, python_exe: Option<&Path>) -> Result<()> 
         if age_mfs.any_updated() {
             age_mfs.write_cache(&age_mfs_path)?;
         }
+    }
+
+    // Build a SecurePreloader manifest
+    let secure_preloader_mfs_path = data_root.join("SecurePreloader.mfs_cache");
+    let mut secure_preloader_mfs = load_or_create_manifest(&secure_preloader_mfs_path)?;
+    let mut secure_preloader_files: HashSet<PathBuf>
+            = game_data_files.iter().filter(|f| is_secure_preloader_file(f)).cloned().collect();
+    for file in secure_preloader_mfs.files_mut() {
+        *file = update_cache_file(&mut data_cache, file, data_root).clone();
+        secure_preloader_files.remove(&file.source_path(data_root));
+    }
+    for sec_file in secure_preloader_files {
+        let file = create_cache_file(&mut data_cache, &sec_file, data_root);
+        secure_preloader_mfs.add(file.clone());
+    }
+    if secure_preloader_mfs.any_updated() {
+        secure_preloader_mfs.write_cache(&secure_preloader_mfs_path)?;
     }
 
     for (build, suffix, client_data_dir) in CLIENT_TYPES.iter() {
@@ -325,8 +342,8 @@ fn create_cache_file<'dc>(data_cache: &'dc mut HashMap<PathBuf, FileInfo>,
     })
 }
 
-fn process_python(python_dir: &Path, python_exe: &Path, key: &[u32; 4])
-    -> Result<PathBuf>
+fn process_python(python_dir: &Path, python_exe: &Path, python_pak: &Path,
+                  key: &[u32; 4]) -> Result<()>
 {
     // Build a .pak from the source files
     let py_sources = scan_python_dir(python_dir)?;
@@ -353,16 +370,23 @@ fn process_python(python_dir: &Path, python_exe: &Path, key: &[u32; 4])
     // Checking that it's up to date requires extra bookkeeping on
     // all the contained files, which the .pak file doesn't natively
     // store anywhere.
-    let pak_path = python_dir.join("Python.pak");
-    info!("Creating {}", pak_path.display());
-    let mut pak_stream = EncryptedWriter::new(BufWriter::new(File::create(&pak_path)?),
+    info!("Creating {}", python_pak.display());
+    let mut pak_stream = EncryptedWriter::new(BufWriter::new(File::create(python_pak)?),
                                               EncryptionType::XXTEA, key)?;
     pak_file.stream_write(&mut pak_stream)?;
     pak_stream.flush()?;
 
-    Ok(pak_path)
+    Ok(())
 }
 
 fn py_escape(path: &Path) -> String {
     path.to_string_lossy().replace('\\', r"\\").replace('\'', r#"\"""#)
+}
+
+fn is_secure_preloader_file(path: &Path) -> bool {
+    if let Some(ext) = path.extension() {
+        ext == OsStr::new("sdl") || ext == OsStr::new("pak")
+    } else {
+        false
+    }
 }
