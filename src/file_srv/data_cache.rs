@@ -68,7 +68,9 @@ pub fn cache_clients(data_root: &Path) -> Result<()> {
         if let Some(ext) = file.extension() {
             if ext == OsStr::new("age") || ext == OsStr::new("fni") || ext == OsStr::new("csv") {
                 // Ensure the file is encrypted for external clients
-                if let Err(err) = encrypt_file(file) {
+                if let Err(err) = encrypt_file(file, EncryptionType::TEA,
+                                               &file_crypt::DEFAULT_KEY)
+                {
                     warn!("Failed to encrypt {}: {}", file.display(), err);
                 }
             }
@@ -222,14 +224,16 @@ fn load_or_create_manifest(path: &Path) -> Result<Manifest> {
     }
 }
 
-fn encrypt_file(path: &Path) -> Result<()> {
+pub fn encrypt_file(path: &Path, encryption_type: EncryptionType, key: &[u32; 4])
+    -> Result<()>
+{
     if EncryptionType::from_file(path)? == EncryptionType::Unencrypted {
         info!("Encrypting {}", path.display());
         // These files are generally small enough to just load entirely
         // into memory...
         let file_content = std::fs::read(path)?;
         let mut out_file = EncryptedWriter::new(BufWriter::new(File::create(path)?),
-                                EncryptionType::TEA, &file_crypt::DEFAULT_KEY)?;
+                                                encryption_type, key)?;
         std::io::copy(&mut Cursor::new(file_content), &mut out_file)?;
         out_file.flush()?;
     }

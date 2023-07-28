@@ -17,7 +17,7 @@
 use std::collections::{HashSet, VecDeque};
 use std::ffi::OsStr;
 use std::fs::File;
-use std::io::{Cursor, BufReader, BufWriter, Write, Result, ErrorKind};
+use std::io::{BufReader, BufWriter, Write, Result, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -25,7 +25,7 @@ use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use log::{warn, info};
 use rand::Rng;
 
-use crate::file_srv::data_cache::scan_dir;
+use crate::file_srv::data_cache::{scan_dir, encrypt_file};
 use crate::plasma::{PakFile, StreamWrite};
 use crate::plasma::file_crypt::{EncryptionType, EncryptedWriter};
 
@@ -56,7 +56,7 @@ pub fn build_secure_files(data_root: &Path, python_exe: Option<&Path>) -> Result
         let mut sdl_files = HashSet::new();
         scan_dir(&sdl_dir, &mut sdl_files)?;
         for sdl_file in sdl_files {
-            encrypt_file(&sdl_file, &ntd_key)?;
+            encrypt_file(&sdl_file, EncryptionType::XXTEA, &ntd_key)?;
         }
     } else {
         warn!("{} not found; skipping SDL files.", sdl_dir.display());
@@ -131,20 +131,6 @@ pub fn load_or_create_ntd_key(data_root: &Path) -> Result<[u32; 4]> {
             }
         }
     }
-}
-
-fn encrypt_file(path: &Path, key: &[u32; 4]) -> Result<()> {
-    if EncryptionType::from_file(path)? == EncryptionType::Unencrypted {
-        info!("Encrypting {}", path.display());
-        // These files are generally small enough to just load entirely
-        // into memory...
-        let file_content = std::fs::read(path)?;
-        let mut out_file = EncryptedWriter::new(BufWriter::new(File::create(path)?),
-                                                EncryptionType::XXTEA, key)?;
-        std::io::copy(&mut Cursor::new(file_content), &mut out_file)?;
-        out_file.flush()?;
-    }
-    Ok(())
 }
 
 fn py_escape(path: &Path) -> String {
