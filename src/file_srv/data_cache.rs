@@ -25,7 +25,7 @@ use log::{warn, info};
 use once_cell::sync::Lazy;
 use tempfile::NamedTempFile;
 
-use crate::path_utils;
+use crate::{general_error, path_utils};
 use crate::plasma::{AgeInfo, PageFile, PakFile, StreamWrite};
 use crate::plasma::audio::SoundBuffer;
 use crate::plasma::creatable::ClassID;
@@ -361,30 +361,52 @@ fn compyle_dir(python_dir: &Path, python_exe: &Path, pak_file: &mut PakFile)
     let py_sources = scan_python_dir(python_dir)?;
     info!("Compiling {} Python sources from {}...", py_sources.len(),
           python_dir.display());
+
+    // Spawning hundreds of Python processes is very slow, so we build a big
+    // list and compile all sources in a single Python script instead
+    let mut compyle_src = BufWriter::new(NamedTempFile::new()?);
+    compyle_src.write_all(b"import py_compile\n")?;
+
+    // We need to keep the NamedTempFile handles around so the files don't
+    // get deleted before we can compile them...
+    let mut temp_sources = Vec::new();
+
     for py_file in &py_sources {
         let dfile = py_file.strip_prefix(python_dir).unwrap();
         let cfile = py_file.with_extension("pyc");
 
-        // We need to keep the NamedTempFile handle around so the file doesn't
-        // get deleted before we can use it...
-        let mut temp_src = NamedTempFile::new()?;
-        std::io::copy(&mut File::open(py_file)?, &mut temp_src)?;
-        if !glue_source.is_empty() {
+        let (src_path, temp_src) = if glue_source.is_empty() {
+            (py_file.clone(), None)
+        } else {
+            let mut temp_src = BufWriter::new(NamedTempFile::new()?);
+            std::io::copy(&mut File::open(py_file)?, &mut temp_src)?;
             temp_src.write_all(b"\n\n")?;
             temp_src.write_all(glue_source.as_bytes())?;
-        };
-        temp_src.flush()?;
 
-        let py_cmd = format!(
-            "import py_compile; py_compile.compile('{}', cfile='{}', dfile='{}')",
-            py_escape(temp_src.path()), py_escape(&cfile), py_escape(dfile)
-        );
-        let status = Command::new(python_exe).args(["-OO", "-c", &py_cmd]).status()?;
-        match status.code() {
-            Some(0) => (),
-            Some(code) => warn!("py_compile exited with status {}", code),
-            None => warn!("py_compile process killed by signal"),
-        }
+            // NOTE: into_inner() will also flush the buffer
+            let temp_src = temp_src.into_inner().map_err(|err| {
+                general_error!("Failed to extract buffered stream: {}", err)
+            })?;
+            (temp_src.path().to_path_buf(), Some(temp_src))
+        };
+
+        writeln!(compyle_src, "py_compile.compile('{}', cfile='{}', dfile='{}')",
+                 py_escape(&src_path), py_escape(&cfile), py_escape(dfile))?;
+        temp_sources.push((cfile, dfile, temp_src));
+    }
+
+    // NOTE: into_inner() will also flush the buffer
+    let compyle_src = compyle_src.into_inner().map_err(|err| {
+        general_error!("Failed to extract buffered stream: {}", err)
+    })?;
+    match Command::new(python_exe).args([OsStr::new("-OO"),
+                compyle_src.path().as_os_str()]).status()?.code()
+    {
+        Some(0) => (),
+        Some(code) => warn!("py_compile exited with status {}", code),
+        None => warn!("py_compile process killed by signal"),
+    }
+    for (cfile, dfile, _) in temp_sources {
         pak_file.add(&cfile, get_module_name(dfile, python_dir))?;
     }
 
