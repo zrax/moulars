@@ -72,7 +72,10 @@ the files in the following structure:
 |- dat/
 |  `- .age, .prp, .fni, .p2f, etc files
 |- Python/
-|  `- .py source files
+|  |- plasma/
+|  |  `- .py files from Plasma's Scripts
+|  `- system/
+|     `- .py files from the target Python's standard library
 |- SDL/
 |  `- .sdl files
 `- sfx/

@@ -23,6 +23,7 @@ use std::process::Command;
 
 use log::{warn, info};
 use once_cell::sync::Lazy;
+use tempfile::NamedTempFile;
 
 use crate::path_utils;
 use crate::plasma::{AgeInfo, PageFile, PakFile, StreamWrite};
@@ -342,28 +343,68 @@ fn create_cache_file<'dc>(data_cache: &'dc mut HashMap<PathBuf, FileInfo>,
     })
 }
 
-fn process_python(python_dir: &Path, python_exe: &Path, python_pak: &Path,
-                  key: &[u32; 4]) -> Result<()>
+fn compyle_dir(python_dir: &Path, python_exe: &Path, pak_file: &mut PakFile)
+    -> Result<()>
 {
-    // Build a .pak from the source files
+    // Look for the glue code.  For now, we append this to everything in the
+    // specified subdir if the glue file exists (this will be the case for
+    // the plasma sources, but not generally for the system sources).  This
+    // can probably be refined later...
+    let glue_path = python_dir.join(["plasma", "glue.py"].iter().collect::<PathBuf>());
+    let glue_source = if glue_path.exists() {
+        std::io::read_to_string(BufReader::new(File::open(glue_path)?))?
+    } else {
+        info!("Skipping glue for {}.", python_dir.display());
+        String::new()
+    };
+
     let py_sources = scan_python_dir(python_dir)?;
-    info!("Compiling {} Python sources...", py_sources.len());
-    let mut pak_file = PakFile::new();
-    for py_file in py_sources {
+    info!("Compiling {} Python sources from {}...", py_sources.len(),
+          python_dir.display());
+    for py_file in &py_sources {
         let dfile = py_file.strip_prefix(python_dir).unwrap();
         let cfile = py_file.with_extension("pyc");
+
+        // We need to keep the NamedTempFile handle around so the file doesn't
+        // get deleted before we can use it...
+        let mut temp_src = NamedTempFile::new()?;
+        std::io::copy(&mut File::open(py_file)?, &mut temp_src)?;
+        if !glue_source.is_empty() {
+            temp_src.write_all(b"\n\n")?;
+            temp_src.write_all(glue_source.as_bytes())?;
+        };
+        temp_src.flush()?;
+
         let py_cmd = format!(
             "import py_compile; py_compile.compile('{}', cfile='{}', dfile='{}')",
-            py_escape(&py_file), py_escape(&cfile), py_escape(dfile)
+            py_escape(temp_src.path()), py_escape(&cfile), py_escape(dfile)
         );
-        let status = Command::new(python_exe).args(["-c", &py_cmd]).status()?;
+        let status = Command::new(python_exe).args(["-OO", "-c", &py_cmd]).status()?;
         match status.code() {
             Some(0) => (),
             Some(code) => warn!("py_compile exited with status {}", code),
             None => warn!("py_compile process killed by signal"),
         }
-        let client_path = dfile.to_string_lossy().replace(['/', '\\'], ".");
-        pak_file.add(&cfile, client_path)?;
+        pak_file.add(&cfile, get_module_name(dfile, python_dir))?;
+    }
+
+    Ok(())
+}
+
+fn process_python(python_dir: &Path, python_exe: &Path, python_pak: &Path,
+                  key: &[u32; 4]) -> Result<()>
+{
+    // Build a .pak from the source files
+    let mut pak_file = PakFile::new();
+
+    for subdir in ["plasma", "system"] {
+        let python_subdir = python_dir.join(subdir);
+        if python_subdir.exists() {
+            compyle_dir(&python_subdir, python_exe, &mut pak_file)?;
+        } else {
+            warn!("Could not find {} python sources in {}", subdir,
+                  python_subdir.display());
+        }
     }
 
     // We always just write the .pak file if --python was specified.
@@ -381,6 +422,22 @@ fn process_python(python_dir: &Path, python_exe: &Path, python_pak: &Path,
 
 fn py_escape(path: &Path) -> String {
     path.to_string_lossy().replace('\\', r"\\").replace('\'', r#"\"""#)
+}
+
+fn get_module_name(path: &Path, base_dir: &Path) -> String {
+    let mut module_components = Vec::new();
+    module_components.push(path.file_name().unwrap().to_string_lossy());
+    for ancestor in path.ancestors().skip(1) {
+        if let Some(component) = ancestor.file_name() {
+            if base_dir.join(ancestor).join("__init__.py").exists() {
+                // This is a module subdir
+                module_components.push(component.to_string_lossy());
+            }
+        }
+    }
+
+    module_components.reverse();
+    module_components.join(".")
 }
 
 fn is_secure_preloader_file(path: &Path) -> bool {
