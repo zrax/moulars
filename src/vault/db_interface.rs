@@ -14,19 +14,18 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-mod db_interface;
-mod db_memory;
+use super::ShaDigest;
+use super::messages::LoginReply;
 
-pub mod messages;
-pub use messages::VaultMessage;
+#[derive(Clone)]
+pub struct PlayerInfo {
+    pub player_id: u32,
+    pub player_name: String,
+    pub avatar_shape: String,
+    pub explorer: u32,
+}
 
-mod node_ref;
-pub use node_ref::NodeRef;
-
-mod server;
-pub use server::VaultServer;
-
-mod vault_node;
-pub use vault_node::VaultNode;
-
-pub type ShaDigest = [u8; 20];
+pub trait DbInterface: Sync + Send {
+    fn login_request(&mut self, client_challenge: u32, account_name: String,
+                     pass_hash: ShaDigest) -> LoginReply;
+}

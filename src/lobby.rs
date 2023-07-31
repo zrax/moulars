@@ -30,6 +30,7 @@ use crate::auth_srv::AuthServer;
 use crate::gate_keeper::GateKeeper;
 use crate::file_srv::FileServer;
 use crate::plasma::StreamRead;
+use crate::vault::VaultServer;
 
 struct ConnectionHeader {
     conn_type: u8,
@@ -123,7 +124,8 @@ impl LobbyServer {
             }
         };
 
-        let auth_server = AuthServer::start(server_config.clone());
+        let vault = VaultServer::start(server_config.clone());
+        let auth_server = AuthServer::start(server_config.clone(), vault.clone());
         let file_server = FileServer::start(server_config.clone());
         let gate_keeper = GateKeeper::start(server_config.clone());
         let mut lobby = Self { auth_server, file_server, gate_keeper };

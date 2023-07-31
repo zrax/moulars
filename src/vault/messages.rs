@@ -14,19 +14,26 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-mod db_interface;
-mod db_memory;
+use tokio::sync::oneshot;
+use uuid::Uuid;
 
-pub mod messages;
-pub use messages::VaultMessage;
+use crate::netcli::NetResultCode;
+use super::ShaDigest;
+use super::db_interface::PlayerInfo;
 
-mod node_ref;
-pub use node_ref::NodeRef;
+pub enum VaultMessage {
+    LoginRequest {
+        client_challenge: u32,
+        account_name: String,
+        pass_hash: ShaDigest,
+        response_send: oneshot::Sender<LoginReply>
+    },
+}
 
-mod server;
-pub use server::VaultServer;
-
-mod vault_node;
-pub use vault_node::VaultNode;
-
-pub type ShaDigest = [u8; 20];
+pub struct LoginReply {
+    pub result: NetResultCode,
+    pub account_id: Uuid,
+    pub players: Vec<PlayerInfo>,
+    pub account_flags: u32,
+    pub billing_type: u32,
+}

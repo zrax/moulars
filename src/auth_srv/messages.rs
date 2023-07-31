@@ -26,11 +26,9 @@ use crate::general_error;
 use crate::net_crypt::CryptTcpStream;
 use crate::netcli::NetResultCode;
 use crate::plasma::{StreamWrite, net_io};
-use crate::vault::NodeRef;
+use crate::vault::{NodeRef, ShaDigest};
 use super::age_info::NetAgeInfo;
 use super::manifest::Manifest;
-
-type ShaDigest = [u8; 20];
 
 pub enum CliToAuth {
     PingRequest {
@@ -48,7 +46,7 @@ pub enum CliToAuth {
         trans_id: u32,
         client_challenge: u32,
         account_name: String,
-        challenge: ShaDigest,
+        pass_hash: ShaDigest,
         auth_token: String,
         os: String,
     },
@@ -646,12 +644,12 @@ impl CliToAuth {
                 let trans_id = stream.read_u32_le().await?;
                 let client_challenge = stream.read_u32_le().await?;
                 let account_name = net_io::read_utf16_str(stream).await?;
-                let mut challenge = [0u8; 20];
-                stream.read_exact(&mut challenge).await?;
+                let mut pass_hash = [0u8; 20];
+                stream.read_exact(&mut pass_hash).await?;
                 let auth_token = net_io::read_utf16_str(stream).await?;
                 let os = net_io::read_utf16_str(stream).await?;
                 Ok(CliToAuth::AcctLoginRequest {
-                    trans_id, client_challenge, account_name, challenge,
+                    trans_id, client_challenge, account_name, pass_hash,
                     auth_token, os
                 })
             }

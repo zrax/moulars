@@ -22,7 +22,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use log::{error, warn, debug};
 use rand::Rng;
 use tokio::io::{AsyncReadExt, BufReader};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio::net::TcpStream;
 use uuid::Uuid;
 
@@ -33,6 +33,7 @@ use crate::netcli::NetResultCode;
 use crate::path_utils;
 use crate::plasma::{StreamRead, StreamWrite, BitVector};
 use crate::plasma::file_crypt::load_or_create_ntd_key;
+use crate::vault::{ShaDigest, VaultMessage, VaultServer};
 use super::manifest::Manifest;
 use super::messages::{CliToAuth, AuthToCli};
 
@@ -72,6 +73,16 @@ async fn send_message(stream: &mut CryptTcpStream, reply: AuthToCli) -> bool {
         false
     } else {
         true
+    }
+}
+
+async fn vault_recv<T>(recv: oneshot::Receiver<T>) -> Option<T> {
+    match recv.await {
+        Ok(response) => Some(response),
+        Err(err) => {
+            warn!("Failed to recieve response from Vault: {}", err);
+            None
+        }
     }
 }
 
@@ -231,7 +242,49 @@ async fn do_download(stream: &mut CryptTcpStream, trans_id: u32, filename: &str,
     }
 }
 
-async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>) {
+async fn do_login_request(stream: &mut CryptTcpStream, trans_id: u32,
+                          client_challenge: u32, account_name: String,
+                          pass_hash: ShaDigest, ntd_key: [u32; 4],
+                          vault: &VaultServer) -> bool
+{
+    let (response_send, response_recv) = oneshot::channel();
+    let request = VaultMessage::LoginRequest {
+        client_challenge, account_name, pass_hash, response_send
+    };
+    vault.send(request).await;
+
+    if let Some(response) = vault_recv(response_recv).await {
+        for player in response.players {
+            let msg = AuthToCli::AcctPlayerInfo {
+                trans_id,
+                player_id: player.player_id,
+                player_name: player.player_name,
+                avatar_shape: player.avatar_shape,
+                explorer: player.explorer,
+            };
+            if !send_message(stream, msg).await {
+                return false;
+            }
+        }
+
+        // Send the final reply after all players are sent
+        let reply = AuthToCli::AcctLoginReply {
+            trans_id,
+            result: response.result as i32,
+            account_id: response.account_id,
+            account_flags: response.account_flags,
+            billing_type: response.billing_type,
+            encryption_key: ntd_key,
+        };
+        send_message(stream, reply).await
+    } else {
+        false
+    }
+}
+
+async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
+                     vault: Arc<VaultServer>)
+{
     let mut stream = match init_client(client_sock, &server_config).await {
         Ok(cipher) => cipher,
         Err(err) => {
@@ -277,11 +330,30 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>) {
                 warn!("Ignoring CCR level set request from {}",
                       stream.get_ref().peer_addr().unwrap());
             }
-            Ok(CliToAuth::AcctLoginRequest { .. }) => {
-                todo!()
+            Ok(CliToAuth::AcctLoginRequest { trans_id, client_challenge, account_name,
+                                             pass_hash, auth_token, os }) => {
+                debug!("Login Request U:{} P:{} T:{} O:{}", account_name,
+                       hex::encode(pass_hash), auth_token, os);
+                if !do_login_request(stream.get_mut(), trans_id, client_challenge,
+                                     account_name, pass_hash, ntd_key,
+                                     vault.as_ref()).await
+                {
+                    return;
+                }
             }
-            Ok(CliToAuth::AcctSetPlayerRequest { .. }) => {
-                todo!()
+            Ok(CliToAuth::AcctSetPlayerRequest { trans_id, player_id }) => {
+                // Setting no player (player_id = 0) is always successful
+                if player_id == 0 {
+                    let reply = AuthToCli::AcctSetPlayerReply {
+                        trans_id,
+                        result: NetResultCode::NetSuccess as i32,
+                    };
+                    if !send_message(stream.get_mut(), reply).await {
+                        return;
+                    }
+                } else {
+                    todo!()
+                }
             }
             Ok(CliToAuth::AcctCreateRequest { trans_id, .. }) => {
                 let reply = AuthToCli::AcctCreateReply {
@@ -486,14 +558,17 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>) {
 }
 
 impl AuthServer {
-    pub fn start(server_config: Arc<ServerConfig>) -> AuthServer {
+    pub fn start(server_config: Arc<ServerConfig>, vault: Arc<VaultServer>)
+        -> AuthServer
+    {
         let (incoming_send, mut incoming_recv) = mpsc::channel(5);
 
         tokio::spawn(async move {
             while let Some(sock) = incoming_recv.recv().await {
                 let server_config = server_config.clone();
+                let vault = vault.clone();
                 tokio::spawn(async move {
-                    auth_client(sock, server_config).await;
+                    auth_client(sock, server_config, vault).await;
                 });
             }
         });

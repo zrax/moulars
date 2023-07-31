@@ -24,6 +24,12 @@ use serde_derive::Deserialize;
 
 use crate::general_error;
 
+pub enum VaultDbBackend {
+    None,
+    Sqlite,
+    Postgres,
+}
+
 pub struct ServerConfig {
     /* Listen address for the lobby server */
     pub listen_address: String,
@@ -45,6 +51,9 @@ pub struct ServerConfig {
 
     /* File server data path */
     pub data_root: PathBuf,
+
+    /* Vault backend */
+    pub db_type: VaultDbBackend,
 }
 
 fn decode_crypt_key(value: &str) -> Result<BigUint> {
@@ -95,6 +104,18 @@ impl ServerConfig {
         let file_serv_ip = server_section.file_server_ip.unwrap_or("127.0.0.1".to_string());
         let auth_serv_ip = server_section.auth_server_ip.unwrap_or("127.0.0.1".to_string());
 
+        let vault_db_section = config.vault_db.unwrap_or_default();
+        let db_type = if let Some(type_str) = vault_db_section.db_type {
+            match type_str.as_str() {
+                "none" => VaultDbBackend::None,
+                "sqlite" => VaultDbBackend::Sqlite,
+                "postgres" => VaultDbBackend::Postgres,
+                _ => return Err(general_error!("Unknown database type: {}", type_str))
+            }
+        } else {
+            VaultDbBackend::None
+        };
+
         Ok(Arc::new(ServerConfig {
             listen_address,
             build_id,
@@ -107,6 +128,7 @@ impl ServerConfig {
             file_serv_ip,
             auth_serv_ip,
             data_root,
+            db_type,
         }))
     }
 
@@ -164,6 +186,7 @@ impl ServerConfig {
             auth_serv_ip: "127.0.0.1".to_string(),
             // Only works if we're running from a directory that contains a data dir...
             data_root: cwd.join("data"),
+            db_type: VaultDbBackend::Sqlite,
         })
     }
 }
@@ -174,6 +197,7 @@ struct StructuredConfig {
     build_id: Option<u32>,
     data_root: Option<String>,
     crypt_keys: ConfigKeys,
+    vault_db: Option<VaultDbConfig>,
 }
 
 #[derive(Deserialize, Default)]
@@ -195,4 +219,9 @@ struct ConfigKeys {
 struct ConfigKeyPair {
     n: String,
     k: String,
+}
+
+#[derive(Deserialize, Default)]
+struct VaultDbConfig {
+    db_type: Option<String>,
 }
