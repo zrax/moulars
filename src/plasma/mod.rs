@@ -28,6 +28,8 @@ pub use factory::Factory;
 
 pub mod file_crypt;
 
+pub mod geometry;
+
 mod key;
 pub use key::{Key, Uoid};
 
