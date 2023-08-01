@@ -26,11 +26,15 @@ use super::db_interface::{DbInterface, AccountInfo, PlayerInfo};
 // An ephemeral vault backend that vanishes once the server exits.
 pub struct DbMemory {
     accounts: HashMap<UniCase<String>, AccountInfo>,
+    players: HashMap<Uuid, Vec<PlayerInfo>>,
 }
 
 impl DbMemory {
     pub fn new() -> Self {
-        Self { accounts: HashMap::new() }
+        Self {
+            accounts: HashMap::new(),
+            players: HashMap::new(),
+        }
     }
 }
 
@@ -58,6 +62,10 @@ impl DbInterface for DbMemory {
     }
 
     fn get_players(&mut self, account_id: &Uuid) -> Vec<PlayerInfo> {
-        todo!()
+        if let Some(players) = self.players.get(account_id) {
+            players.clone()
+        } else {
+            Vec::new()
+        }
     }
 }
