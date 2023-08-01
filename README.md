@@ -28,10 +28,9 @@ instead with `cargo build --release`.
 *... Database TBD ...*
 
 ### File Server
-Unlike DirtSand, MOULArs includes a manifest generation tool that only
-requires you to provide files in an expected directory structure, and it
-will automatically generate manifests and encrypt/compress the files as
-appropriate.  To use it, run
+MOULArs includes a manifest generation tool that only requires you to provide
+files in an expected directory structure, and it will automatically generate
+manifests and encrypt/compress the files as appropriate.  To use it, run
 `mfs_tool update <path to data root> [--python <path to python executable>]`.
 This will update existing manifests with any changes and new files, as well as
 producing new manifests (both for the initial server setup and for newly added
@@ -81,3 +80,8 @@ the files in the following structure:
 `- sfx/
    `- .ogg files required by PRPs
 ```
+
+NOTE: Even if you do not plan on hosting a file server, you will need to
+provide the .age and .sdl files for the Game and Vault servers to function
+properly with the client's data set.  It is not required to encrypt the files
+or build manifests when running without a file server.
