@@ -14,8 +14,6 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::sync::Arc;
-
 use crate::plasma::{Uoid, Creatable};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -30,7 +28,7 @@ pub enum VarValue {
     AgeTimeOfDay,       // No stored value
     Bool(bool),
     Byte(u8),
-    Creatable(Option<Arc<dyn Creatable>>),
+    Creatable(Option<Box<dyn Creatable>>),
     Double(f64),
     Float(f32),
     Int(i32),

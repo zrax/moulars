@@ -18,12 +18,16 @@ use std::fmt::{Debug, Formatter};
 
 use num_derive::FromPrimitive;
 
-use crate::plasma::{StreamRead, StreamWrite};
+use super::{StreamRead, StreamWrite};
+use super::messages::MessageInterface;
 
 pub trait Creatable: StreamRead + StreamWrite {
     fn class_id(&self) -> u16;
     fn static_class_id() -> u16
         where Self: Sized;
+
+    fn as_creatable(&self) -> &dyn Creatable;
+    fn as_message(self: Box<Self>) -> Option<Box<dyn MessageInterface>> { None }
 }
 
 impl Debug for dyn Creatable {
@@ -51,7 +55,7 @@ pub(crate) enum ClassID {
     //ServerReplyMsg = 0x026F,
     //NetMsgVoice = 0x0279,
     //NetMsgTestAndSet = 0x027D,
-    //MessageWithCallbacks = 0x0283,
+    MessageWithCallbacks = 0x0283,
     //AvTaskMsg = 0x0298,
     //AvSeekMsg = 0x0299,
     //AvOneShotMsg = 0x029A,

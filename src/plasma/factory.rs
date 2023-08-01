@@ -14,7 +14,6 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::sync::Arc;
 use std::io::{BufRead, Write, Result};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -23,15 +22,17 @@ use num_traits::FromPrimitive;
 use crate::general_error;
 use crate::plasma::StreamRead;
 use super::creatable::{Creatable, ClassID};
+use super::messages::MessageInterface;
 
 // Just used for namespace familiarity...
 pub struct Factory { }
 
 impl Factory {
-    pub fn read_creatable<S>(stream: &mut S) -> Result<Option<Arc<dyn Creatable>>>
+    pub fn read_creatable<S>(stream: &mut S) -> Result<Option<Box<dyn Creatable>>>
         where S: BufRead
     {
         use super::net_common::CreatableGenericValue;
+        use super::messages::MessageWithCallbacks;
 
         let class_id = stream.read_u16::<LittleEndian>()?;
         match ClassID::from_u16(class_id) {
@@ -39,15 +40,33 @@ impl Factory {
                 Err(general_error!("SoundBuffer only supported for Manifest generation")),
             Some(ClassID::RelevanceRegion) =>
                 Err(general_error!("RelevanceRegion only supported for Manifest generation")),
+            Some(ClassID::MessageWithCallbacks) =>
+                Ok(Some(Box::new(MessageWithCallbacks::stream_read(stream)?))),
             Some(ClassID::CreatableGenericValue) =>
-                Ok(Some(Arc::new(CreatableGenericValue::stream_read(stream)?))),
+                Ok(Some(Box::new(CreatableGenericValue::stream_read(stream)?))),
             Some(ClassID::Nil) => Ok(None),
             None => Err(general_error!("Unknown creatable type 0x{:04x}", class_id)),
         }
     }
 
+    pub fn read_message<S>(stream: &mut S) -> Result<Option<Box<dyn MessageInterface>>>
+        where S: BufRead
+    {
+        if let Some(creatable) = Self::read_creatable(stream)? {
+            let msg_type = creatable.class_id();
+            if let Some(msg) = creatable.as_message() {
+                Ok(Some(msg))
+            } else {
+                Err(general_error!("Unexpected creatable type 0x{:04x} (expected Message)",
+                    msg_type))
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
     pub fn write_creatable(stream: &mut dyn Write,
-                           creatable: &Option<Arc<dyn Creatable>>) -> Result<()>
+                           creatable: Option<&dyn Creatable>) -> Result<()>
     {
         if let Some(creatable) = creatable {
             stream.write_u16::<LittleEndian>(creatable.class_id())?;
