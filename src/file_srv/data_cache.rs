@@ -26,11 +26,11 @@ use once_cell::sync::Lazy;
 use tempfile::NamedTempFile;
 
 use crate::{general_error, path_utils};
+use crate::config::load_or_create_ntd_key;
 use crate::plasma::{AgeInfo, PageFile, PakFile, StreamWrite};
 use crate::plasma::audio::SoundBuffer;
 use crate::plasma::creatable::ClassID;
-use crate::plasma::file_crypt::{self, EncryptionType, EncryptedWriter,
-                                load_or_create_ntd_key};
+use crate::plasma::file_crypt::{self, EncryptionType, EncryptedWriter};
 use super::manifest::{Manifest, FileInfo};
 use super::server::ignore_file;
 

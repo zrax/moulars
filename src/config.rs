@@ -14,12 +14,16 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::Result;
+use std::fs::File;
+use std::io::{BufReader, BufWriter, Result, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use log::error;
 use num_bigint::BigUint;
+use once_cell::sync::OnceCell;
+use rand::Rng;
 use serde_derive::Deserialize;
 
 use crate::general_error;
@@ -196,6 +200,10 @@ impl ServerConfig {
             restrict_logins: false,
         })
     }
+
+    pub fn get_ntd_key(&self) -> Result<[u32; 4]> {
+        load_or_create_ntd_key(&self.data_root)
+    }
 }
 
 #[derive(Deserialize)]
@@ -232,4 +240,39 @@ struct ConfigKeyPair {
 #[derive(Deserialize, Default)]
 struct VaultDbConfig {
     db_type: Option<String>,
+}
+
+// NOTE: This file stores the keys in Big Endian format for easier debugging
+// with tools like PlasmaShop
+pub fn load_or_create_ntd_key(data_root: &Path) -> Result<[u32; 4]> {
+    static NTD_KEY: OnceCell<[u32; 4]> = OnceCell::new();
+    if let Some(key) = NTD_KEY.get() {
+        return Ok(*key);
+    }
+
+    let key_path = data_root.join(".ntd_server.key");
+    let mut key_buffer = [0; 4];
+    let key = match File::open(&key_path) {
+        Ok(file) => {
+            let mut stream = BufReader::new(file);
+            stream.read_u32_into::<BigEndian>(&mut key_buffer)?;
+            key_buffer
+        }
+        Err(err) => {
+            if err.kind() == ErrorKind::NotFound {
+                let mut rng = rand::thread_rng();
+                let mut stream = BufWriter::new(File::create(&key_path)?);
+                for v in key_buffer.iter_mut() {
+                    *v = rng.gen::<u32>();
+                    stream.write_u32::<BigEndian>(*v)?;
+                }
+                key_buffer
+            } else {
+                return Err(err)
+            }
+        }
+    };
+
+    NTD_KEY.set(key).unwrap();
+    Ok(key)
 }

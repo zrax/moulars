@@ -33,7 +33,6 @@ use crate::net_crypt::CryptTcpStream;
 use crate::netcli::NetResultCode;
 use crate::path_utils;
 use crate::plasma::{StreamRead, StreamWrite, BitVector};
-use crate::plasma::file_crypt::load_or_create_ntd_key;
 use crate::vault::{VaultMessage, VaultServer};
 use super::auth_hash::{hash_password_challenge, use_email_auth};
 use super::manifest::Manifest;
@@ -244,15 +243,15 @@ async fn do_download(stream: &mut CryptTcpStream, trans_id: u32, filename: &str,
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn do_login_request(stream: &mut CryptTcpStream, trans_id: u32,
                           client_challenge: u32, server_challenge: u32,
-                          account_name: String, pass_hash: ShaDigest,
-                          ntd_key: [u32; 4], restrict_logins: bool,
-                          vault: &VaultServer) -> bool
+                          account_name: &str, pass_hash: ShaDigest,
+                          server_config: &ServerConfig, vault: &VaultServer) -> bool
 {
     let (response_send, response_recv) = oneshot::channel();
     let request = VaultMessage::GetAccount {
-        account_name: account_name.clone(),
+        account_name: account_name.to_string(),
         response_send
     };
     vault.send(request).await;
@@ -274,10 +273,11 @@ async fn do_login_request(stream: &mut CryptTcpStream, trans_id: u32,
         // NOTE: Neither of these is good or secure, but they are what the
         // client expects.  To fix these, we'd have to break compatibility
         // with older clients.
-        if use_email_auth(&account_name) {
+        if use_email_auth(account_name) {
             // Use broken LE Sha0 hash mechanism
-            let challenge_hash = match hash_password_challenge(client_challenge,
-                                            server_challenge, account.pass_hash) {
+            let challenge_hash = match hash_password_challenge(
+                        client_challenge, server_challenge, account.pass_hash)
+            {
                 Ok(digest) => digest,
                 Err(err) => {
                     warn!("Failed to generate challenge hash: {}", err);
@@ -310,12 +310,21 @@ async fn do_login_request(stream: &mut CryptTcpStream, trans_id: u32,
             let reply = AuthToCli::login_error(trans_id, NetResultCode::NetAccountBanned);
             return send_message(stream, reply).await;
         }
-        if restrict_logins && !account.can_login_restricted() {
+        if server_config.restrict_logins && !account.can_login_restricted() {
             info!("{}: Account {} login is restricted", stream.peer_addr().unwrap(),
                   account_name);
             let reply = AuthToCli::login_error(trans_id, NetResultCode::NetLoginDenied);
             return send_message(stream, reply).await;
         }
+
+        let ntd_key = match server_config.get_ntd_key() {
+            Ok(key) => key,
+            Err(err) => {
+                warn!("Failed to get encryption key: {}", err);
+                let reply = AuthToCli::login_error(trans_id, NetResultCode::NetInternalError);
+                return send_message(stream, reply).await;
+            }
+        };
 
         info!("{}: Logged in as {} {}", stream.peer_addr().unwrap(),
               account_name, account.account_id);
@@ -379,14 +388,6 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
         }
     };
 
-    let ntd_key = match load_or_create_ntd_key(&server_config.data_root) {
-        Ok(key) => key,
-        Err(err) => {
-            warn!("Failed to get encryption key: {}", err);
-            [0; 4]
-        }
-    };
-
     let server_challenge = rand::thread_rng().gen::<u32>();
 
     loop {
@@ -422,8 +423,8 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
                 debug!("Login Request U:{} P:{} T:{} O:{}", account_name,
                        pass_hash.as_hex(), auth_token, os);
                 if !do_login_request(stream.get_mut(), trans_id, client_challenge,
-                                     server_challenge, account_name, pass_hash, ntd_key,
-                                     server_config.restrict_logins, vault.as_ref()).await
+                                     server_challenge, &account_name, pass_hash,
+                                     server_config.as_ref(), vault.as_ref()).await
                 {
                     return;
                 }
