@@ -17,8 +17,8 @@
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
+use crate::hashes::ShaDigest;
 use crate::netcli::NetResultCode;
-use super::ShaDigest;
 use super::db_interface::PlayerInfo;
 
 pub enum VaultMessage {

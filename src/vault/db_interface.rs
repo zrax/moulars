@@ -14,7 +14,7 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use super::ShaDigest;
+use crate::hashes::ShaDigest;
 use super::messages::LoginReply;
 
 #[derive(Clone)]

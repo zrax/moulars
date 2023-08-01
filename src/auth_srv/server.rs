@@ -28,12 +28,13 @@ use uuid::Uuid;
 
 use crate::general_error;
 use crate::config::ServerConfig;
+use crate::hashes::ShaDigest;
 use crate::net_crypt::CryptTcpStream;
 use crate::netcli::NetResultCode;
 use crate::path_utils;
 use crate::plasma::{StreamRead, StreamWrite, BitVector};
 use crate::plasma::file_crypt::load_or_create_ntd_key;
-use crate::vault::{ShaDigest, VaultMessage, VaultServer};
+use crate::vault::{VaultMessage, VaultServer};
 use super::manifest::Manifest;
 use super::messages::{CliToAuth, AuthToCli};
 
@@ -333,7 +334,7 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
             Ok(CliToAuth::AcctLoginRequest { trans_id, client_challenge, account_name,
                                              pass_hash, auth_token, os }) => {
                 debug!("Login Request U:{} P:{} T:{} O:{}", account_name,
-                       hex::encode(pass_hash), auth_token, os);
+                       pass_hash.as_hex(), auth_token, os);
                 if !do_login_request(stream.get_mut(), trans_id, client_challenge,
                                      account_name, pass_hash, ntd_key,
                                      vault.as_ref()).await

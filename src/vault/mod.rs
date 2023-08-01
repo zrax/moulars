@@ -28,5 +28,3 @@ pub use server::VaultServer;
 
 mod vault_node;
 pub use vault_node::VaultNode;
-
-pub type ShaDigest = [u8; 20];

@@ -22,6 +22,7 @@ pub mod sdl;
 pub mod vault;
 
 pub mod config;
+pub mod hashes;
 pub mod lobby;
 pub mod net_crypt;
 pub mod netcli;

@@ -19,9 +19,9 @@ use std::collections::HashMap;
 use unicase::UniCase;
 use uuid::Uuid;
 
+use crate::hashes::ShaDigest;
 use crate::netcli::NetResultCode;
 use crate::vault::messages::LoginReply;
-use crate::vault::ShaDigest;
 use super::db_interface::{DbInterface, PlayerInfo};
 
 // An ephemeral vault backend that vanishes once the server exits.

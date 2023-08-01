@@ -23,10 +23,11 @@ use tokio::io::{AsyncReadExt, BufReader};
 use uuid::Uuid;
 
 use crate::general_error;
+use crate::hashes::ShaDigest;
 use crate::net_crypt::CryptTcpStream;
 use crate::netcli::NetResultCode;
 use crate::plasma::{StreamWrite, net_io};
-use crate::vault::{NodeRef, ShaDigest};
+use crate::vault::NodeRef;
 use super::age_info::NetAgeInfo;
 use super::manifest::Manifest;
 
@@ -644,8 +645,7 @@ impl CliToAuth {
                 let trans_id = stream.read_u32_le().await?;
                 let client_challenge = stream.read_u32_le().await?;
                 let account_name = net_io::read_utf16_str(stream).await?;
-                let mut pass_hash = [0u8; 20];
-                stream.read_exact(&mut pass_hash).await?;
+                let pass_hash = ShaDigest::read(stream).await?;
                 let auth_token = net_io::read_utf16_str(stream).await?;
                 let os = net_io::read_utf16_str(stream).await?;
                 Ok(CliToAuth::AcctLoginRequest {
@@ -669,8 +669,7 @@ impl CliToAuth {
             Some(ClientMsgId::AcctCreateRequest) => {
                 let trans_id = stream.read_u32_le().await?;
                 let account_name = net_io::read_utf16_str(stream).await?;
-                let mut auth_hash = [0u8; 20];
-                stream.read_exact(&mut auth_hash).await?;
+                let auth_hash = ShaDigest::read(stream).await?;
                 let account_flags = stream.read_u32_le().await?;
                 let billing_type = stream.read_u32_le().await?;
                 Ok(CliToAuth::AcctCreateRequest {
@@ -681,8 +680,7 @@ impl CliToAuth {
             Some(ClientMsgId::AcctChangePasswordRequest) => {
                 let trans_id = stream.read_u32_le().await?;
                 let account_name = net_io::read_utf16_str(stream).await?;
-                let mut auth_hash = [0u8; 20];
-                stream.read_exact(&mut auth_hash).await?;
+                let auth_hash = ShaDigest::read(stream).await?;
                 Ok(CliToAuth::AcctChangePasswordRequest {
                     trans_id, account_name, auth_hash
                 })
@@ -711,8 +709,7 @@ impl CliToAuth {
             Some(ClientMsgId::AcctCreateFromKeyRequest) => {
                 let trans_id = stream.read_u32_le().await?;
                 let account_name = net_io::read_utf16_str(stream).await?;
-                let mut auth_hash = [0u8; 20];
-                stream.read_exact(&mut auth_hash).await?;
+                let auth_hash = ShaDigest::read(stream).await?;
                 let key = net_io::read_uuid(stream).await?;
                 let billing_type = stream.read_u32_le().await?;
                 Ok(CliToAuth::AcctCreateFromKeyRequest {
