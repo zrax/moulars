@@ -17,23 +17,15 @@
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
-use crate::hashes::ShaDigest;
-use crate::netcli::NetResultCode;
-use super::db_interface::PlayerInfo;
+use super::db_interface::{AccountInfo, PlayerInfo};
 
 pub enum VaultMessage {
-    LoginRequest {
-        client_challenge: u32,
+    GetAccount {
         account_name: String,
-        pass_hash: ShaDigest,
-        response_send: oneshot::Sender<LoginReply>
+        response_send: oneshot::Sender<Option<AccountInfo>>,
     },
-}
-
-pub struct LoginReply {
-    pub result: NetResultCode,
-    pub account_id: Uuid,
-    pub players: Vec<PlayerInfo>,
-    pub account_flags: u32,
-    pub billing_type: u32,
+    GetPlayers {
+        account_id: Uuid,
+        response_send: oneshot::Sender<Vec<PlayerInfo>>,
+    },
 }

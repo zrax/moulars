@@ -138,6 +138,18 @@ impl ShaDigest {
         let result = hash.finalize();
         Self { data: result.into() }
     }
+
+    pub fn endian_swap(&self) -> Self {
+        let mut swapped = [0; 20];
+        for (src, dest) in self.data.chunks_exact(size_of::<u32>())
+                            .zip(swapped.chunks_exact_mut(size_of::<u32>())) {
+            dest[0] = src[3];
+            dest[1] = src[2];
+            dest[2] = src[1];
+            dest[3] = src[0];
+        }
+        Self { data: swapped }
+    }
 }
 
 impl StreamWrite for ShaDigest {

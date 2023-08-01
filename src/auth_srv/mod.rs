@@ -16,6 +16,8 @@
 
 mod age_info;
 
+pub mod auth_hash;
+
 mod manifest;
 pub use manifest::{FileInfo, Manifest};
 

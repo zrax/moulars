@@ -998,6 +998,17 @@ impl AuthToCli {
             file_data: Vec::new(),
         }
     }
+
+    pub fn login_error(trans_id: u32, result: NetResultCode) -> Self {
+        Self::AcctLoginReply {
+            trans_id,
+            result: result as i32,
+            account_id: Uuid::nil(),
+            account_flags: 0,
+            billing_type: 0,
+            encryption_key: [0; 4]
+        }
+    }
 }
 
 impl StreamWrite for AuthToCli {

@@ -30,9 +30,12 @@ pub struct VaultServer {
 
 fn process_vault_message(msg: VaultMessage, db: &mut Box<dyn DbInterface>) {
     match msg {
-        VaultMessage::LoginRequest { client_challenge, account_name, pass_hash,
-                                     response_send } => {
-            let reply = db.login_request(client_challenge, account_name, pass_hash);
+        VaultMessage::GetAccount { account_name, response_send } => {
+            let reply = db.get_account(&account_name);
+            let _ = response_send.send(reply);
+        }
+        VaultMessage::GetPlayers { account_id, response_send } => {
+            let reply = db.get_players(&account_id);
             let _ = response_send.send(reply);
         }
     }

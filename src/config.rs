@@ -54,6 +54,9 @@ pub struct ServerConfig {
 
     /* Vault backend */
     pub db_type: VaultDbBackend,
+
+    /* Restrict logins to just Admins + Beta Testers */
+    pub restrict_logins: bool,
 }
 
 fn decode_crypt_key(value: &str) -> Result<BigUint> {
@@ -116,6 +119,8 @@ impl ServerConfig {
             VaultDbBackend::None
         };
 
+        let restrict_logins = config.restrict_logins.unwrap_or(false);
+
         Ok(Arc::new(ServerConfig {
             listen_address,
             build_id,
@@ -129,6 +134,7 @@ impl ServerConfig {
             auth_serv_ip,
             data_root,
             db_type,
+            restrict_logins,
         }))
     }
 
@@ -186,7 +192,8 @@ impl ServerConfig {
             auth_serv_ip: "127.0.0.1".to_string(),
             // Only works if we're running from a directory that contains a data dir...
             data_root: cwd.join("data"),
-            db_type: VaultDbBackend::Sqlite,
+            db_type: VaultDbBackend::None,
+            restrict_logins: false,
         })
     }
 }
@@ -198,6 +205,7 @@ struct StructuredConfig {
     data_root: Option<String>,
     crypt_keys: ConfigKeys,
     vault_db: Option<VaultDbConfig>,
+    restrict_logins: Option<bool>,
 }
 
 #[derive(Deserialize, Default)]
