@@ -86,7 +86,7 @@ impl ServerConfig {
         // connections from localhost are allowed.  To listen on any IPv4
         // address, you should set listen_address = "0.0.0.0"
         let listen_address = format!("{}:{}",
-                server_section.listen_address.unwrap_or("127.0.0.1".to_string()),
+                server_section.listen_address.as_deref().unwrap_or("127.0.0.1"),
                 server_section.listen_port.unwrap_or(14617));
         let build_id = config.build_id.unwrap_or(918);
         let data_root =
@@ -108,8 +108,10 @@ impl ServerConfig {
         // These should be configured to an EXTERNAL IP address, since they
         // are the addresses sent to the client for establishing additional
         // connections to this (or another) server.
-        let file_serv_ip = server_section.file_server_ip.unwrap_or("127.0.0.1".to_string());
-        let auth_serv_ip = server_section.auth_server_ip.unwrap_or("127.0.0.1".to_string());
+        let file_serv_ip = server_section.file_server_ip.as_deref()
+                                .unwrap_or("127.0.0.1").to_string();
+        let auth_serv_ip = server_section.auth_server_ip.as_deref()
+                                .unwrap_or("127.0.0.1").to_string();
 
         let vault_db_section = config.vault_db.unwrap_or_default();
         let db_type = if let Some(type_str) = vault_db_section.db_type {

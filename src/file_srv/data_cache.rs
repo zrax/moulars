@@ -148,7 +148,7 @@ pub fn cache_clients(data_root: &Path, python_exe: Option<&Path>) -> Result<()> 
                 for key in page.get_keys(ClassID::SoundBuffer as u16) {
                     let obj = page.read_object::<_, SoundBuffer>(&mut prp_stream, key.as_ref())?;
                     let sfx_path = data_root.join("sfx").join(obj.file_name());
-                    sfx_flags.entry(sfx_path.clone()).or_insert(FileInfo::ogg_flags(&obj));
+                    sfx_flags.entry(sfx_path.clone()).or_insert_with(|| FileInfo::ogg_flags(&obj));
                     expected_files.insert(sfx_path.clone());
 
                     // Also look for a .sub file with the same name
@@ -352,7 +352,7 @@ fn compyle_dir(python_dir: &Path, python_exe: &Path, pak_file: &mut PakFile)
     // can probably be refined later...
     let glue_path = python_dir.join(["plasma", "glue.py"].iter().collect::<PathBuf>());
     let glue_source = if glue_path.exists() {
-        std::io::read_to_string(BufReader::new(File::open(glue_path)?))?
+        std::fs::read_to_string(glue_path)?
     } else {
         info!("Skipping glue for {}.", python_dir.display());
         String::new()
