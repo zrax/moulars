@@ -1,0 +1,56 @@
+## OPTIONAL: The path to the data server root.  See README.md for details
+## on how to populate it and generate manifests.
+#data_root = "./data"
+
+## OPTIONAL: The Build ID that clients should use to connect to this server.
+#build_id = 918
+
+## OPTIONAL: Set to true to restrict logins to only Admins and Beta Testers
+#restrict_logins = false
+
+[server]
+## OPTIONAL: The local address to listen on for Lobby server connections.
+## NOTE: To listen on any available external network, set this to "0.0.0.0".
+## The default value of "127.0.0.1" will ONLY allow connections from
+## localhost, which is not very useful for a public-facing server.
+#listen_address = "127.0.0.1"
+
+## OPTIONAL: The port to listen on for Lobby server connections.
+## Unless you've modified the client to use a different port, or are doing
+## some creative routing, you should probably leave this at the default.
+#listen_port = 14617
+
+## OPTIONAL: The external-facing addresses of the file/auth/game servers.
+## These will be sent to the client, so they need to be resolvable outside
+## the server's network.  Using the default localhost address is only useful
+## for testing with the client and server running on the same machine.
+#file_server_ip = "127.0.0.1"
+#auth_server_ip = "127.0.0.1"
+#game_server_ip = "127.0.0.1"
+
+[crypt_keys]
+## REQUIRED: The private and shared keys to use for encrypted server channels.
+## These values are big endian Base64-encoded 512 bit keys.
+## NOTE: These should be generated with "moulars --keygen".  They can also be
+## copied from an existing dirtsand.ini, although note the different setting
+## parameter names (e.g. "auth.n" vs "Key.Auth.N")
+auth.n = "..."
+auth.k = "..."
+game.n = "..."
+game.k = "..."
+gate.n = "..."
+gate.k = "..."
+
+[vault_db]
+## OPTIONAL: The database backend to use for the Vault.
+## "none" - Use an in-memory temporary backend.  This is only useful for
+##          testing and development, since it means vault and account data
+##          are not kept after the server shuts down or crashes.
+## "sqlite" - Use an SQLite file for data storage.  This allows for very
+##          simple server setup and maintenance, but probably won't scale
+##          as well for large servers and deployments.
+## "postgres" - Use a PostgreSQL database for data storage.  This is the
+##          option most compatible with DirtSand, and has the best performance
+##          and scalability, but it is also the most complex to set up and
+##          maintain.
+#db_type = "none"

@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use clap::{Command, Arg};
-use log::{error, warn};
+use log::error;
 use num_bigint::{BigUint, ToBigUint};
 use num_prime::RandPrime;
 
@@ -128,7 +128,7 @@ fn main() {
             ("Game", CRYPT_BASE_GAME, &config.game_k_key, &config.game_n_key),
             ("Gate", CRYPT_BASE_GATE_KEEPER, &config.gate_k_key, &config.gate_n_key)]
         {
-            let key_x = key_g.to_biguint().unwrap().modpow(&key_k, &key_n);
+            let key_x = key_g.to_biguint().unwrap().modpow(key_k, key_n);
             let bytes_n = key_n.to_bytes_be();
             let bytes_x = key_x.to_bytes_be();
             println!("Server.{}.N \"{}\"", stype, base64::encode(bytes_n));
@@ -172,11 +172,11 @@ fn load_config() -> Arc<ServerConfig> {
     #[cfg(not(windows))]
     try_paths.push(Path::new("/etc/moulars.toml").to_owned());
 
-    for path in try_paths {
+    for path in &try_paths {
         if !path.exists() {
             continue;
         }
-        match ServerConfig::from_file(&path) {
+        match ServerConfig::from_file(path) {
             Ok(config) => return config,
             Err(err) => {
                 error!("Failed to load config file {}: {}", path.display(), err);
@@ -185,8 +185,12 @@ fn load_config() -> Arc<ServerConfig> {
         }
     }
 
-    warn!("Could not find a moulars.toml config file.  Using dummy defaults.");
-    ServerConfig::dummy_config()
+    error!("Could not find a moulars.toml config file in any of the following locations:{}",
+           try_paths.iter().fold(String::new(), |list, path| {
+                list + format!("\n * {}", path.display()).as_str()
+           }));
+    error!("Please refer to moulars.toml.example for reference on configuring moulars.");
+    std::process::exit(1);
 }
 
 #[tokio::main]
