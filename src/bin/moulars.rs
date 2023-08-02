@@ -55,6 +55,9 @@ fn main() {
         .arg(Arg::new("keygen").long("keygen")
             .action(clap::ArgAction::SetTrue).exclusive(true)
             .help("Generate a set of Rc4 keys for client/server communication"))
+        .arg(Arg::new("show-keys").long("show-keys")
+            .action(clap::ArgAction::SetTrue).exclusive(true)
+            .help("Show the client Rc4 keys associated with the configured server keys"))
         .get_matches();
 
     if args.get_flag("keygen") {
@@ -111,6 +114,25 @@ fn main() {
         println!("----------------------------");
         for line in client_lines {
             println!("{}", line);
+        }
+
+        std::process::exit(0);
+    } else if args.get_flag("show-keys") {
+        let config = load_config();
+
+        println!("\n----------------------------");
+        println!("Client keys: (server.ini)");
+        println!("----------------------------");
+        for (stype, key_g, key_k, key_n) in [
+            ("Auth", CRYPT_BASE_AUTH, &config.auth_k_key, &config.auth_n_key),
+            ("Game", CRYPT_BASE_GAME, &config.game_k_key, &config.game_n_key),
+            ("Gate", CRYPT_BASE_GATE_KEEPER, &config.gate_k_key, &config.gate_n_key)]
+        {
+            let key_x = key_g.to_biguint().unwrap().modpow(&key_k, &key_n);
+            let bytes_n = key_n.to_bytes_be();
+            let bytes_x = key_x.to_bytes_be();
+            println!("Server.{}.N \"{}\"", stype, base64::encode(bytes_n));
+            println!("Server.{}.X \"{}\"", stype, base64::encode(bytes_x))
         }
 
         std::process::exit(0);
