@@ -18,7 +18,6 @@ mod db_interface;
 mod db_memory;
 
 pub mod messages;
-pub use messages::VaultMessage;
 
 mod node_ref;
 pub use node_ref::NodeRef;

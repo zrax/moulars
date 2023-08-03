@@ -21,6 +21,7 @@ use unicase::UniCase;
 use uuid::Uuid;
 
 use crate::auth_srv::auth_hash::create_pass_hash;
+use crate::netcli::{NetResult, NetResultCode};
 use super::db_interface::{DbInterface, AccountInfo, PlayerInfo};
 
 // An ephemeral vault backend that vanishes once the server exits.
@@ -39,17 +40,14 @@ impl DbMemory {
 }
 
 impl DbInterface for DbMemory {
-    fn get_account(&mut self, account_name: &str) -> Option<AccountInfo> {
+    fn get_account(&mut self, account_name: &str) -> NetResult<Option<AccountInfo>> {
         // In this backend, account logins always succeed.  The password is
         // assumed to be blank, and any attempt to log into an account that
         // isn't already created will automatically create a new account.
-        let pass_hash = match create_pass_hash(account_name, "") {
-            Ok(hash) => hash,
-            Err(err) => {
-                warn!("Failed to create a password hash: {}", err);
-                return None;
-            }
-        };
+        let pass_hash = create_pass_hash(account_name, "").map_err(|err| {
+                            warn!("Failed to create password hash: {}", err);
+                            NetResultCode::NetInternalError
+                        })?;
         let account = self.accounts.entry(UniCase::new(account_name.to_string()))
                         .or_insert(AccountInfo {
                             account_name: account_name.to_string(),
@@ -58,14 +56,14 @@ impl DbInterface for DbMemory {
                             account_flags: 0,
                             billing_type: 1,
                         });
-        Some(account.clone())
+        Ok(Some(account.clone()))
     }
 
-    fn get_players(&mut self, account_id: &Uuid) -> Vec<PlayerInfo> {
+    fn get_players(&mut self, account_id: &Uuid) -> NetResult<Vec<PlayerInfo>> {
         if let Some(players) = self.players.get(account_id) {
-            players.clone()
+            Ok(players.clone())
         } else {
-            Vec::new()
+            Ok(Vec::new())
         }
     }
 }

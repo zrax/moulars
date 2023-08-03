@@ -17,15 +17,16 @@
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
+use crate::netcli::NetResult;
 use super::db_interface::{AccountInfo, PlayerInfo};
 
-pub enum VaultMessage {
+pub(super) enum VaultMessage {
     GetAccount {
         account_name: String,
-        response_send: oneshot::Sender<Option<AccountInfo>>,
+        response_send: oneshot::Sender<NetResult<Option<AccountInfo>>>,
     },
     GetPlayers {
         account_id: Uuid,
-        response_send: oneshot::Sender<Vec<PlayerInfo>>,
+        response_send: oneshot::Sender<NetResult<Vec<PlayerInfo>>>,
     },
 }

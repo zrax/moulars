@@ -16,11 +16,13 @@
 
 use std::sync::Arc;
 
-use log::error;
-use tokio::sync::mpsc;
+use log::{warn, error};
+use tokio::sync::{mpsc, oneshot};
+use uuid::Uuid;
 
 use crate::config::{ServerConfig, VaultDbBackend};
-use super::db_interface::DbInterface;
+use crate::netcli::{NetResult, NetResultCode};
+use super::db_interface::{DbInterface, AccountInfo, PlayerInfo};
 use super::db_memory::DbMemory;
 use super::messages::VaultMessage;
 
@@ -28,15 +30,23 @@ pub struct VaultServer {
     msg_send: mpsc::Sender<VaultMessage>,
 }
 
+fn check_send<T>(sender: oneshot::Sender<NetResult<T>>, reply: NetResult<T>)
+{
+    match sender.send(reply) {
+        Ok(()) => (),
+        Err(_) => warn!("Failed to send vault reply to client"),
+    }
+}
+
 fn process_vault_message(msg: VaultMessage, db: &mut Box<dyn DbInterface>) {
     match msg {
         VaultMessage::GetAccount { account_name, response_send } => {
             let reply = db.get_account(&account_name);
-            let _ = response_send.send(reply);
+            check_send(response_send, reply);
         }
         VaultMessage::GetPlayers { account_id, response_send } => {
             let reply = db.get_players(&account_id);
-            let _ = response_send.send(reply);
+            check_send(response_send, reply);
         }
     }
 }
@@ -59,10 +69,38 @@ impl VaultServer {
         Arc::new(VaultServer { msg_send })
     }
 
-    pub async fn send(&self, msg: VaultMessage) {
+    async fn request<T>(&self, msg: VaultMessage, recv: oneshot::Receiver<NetResult<T>>)
+        -> NetResult<T>
+    {
         if let Err(err) = self.msg_send.send(msg).await {
             error!("Failed to send message to vault: {}", err);
             std::process::exit(1);
         }
+
+        match recv.await {
+            Ok(response) => response,
+            Err(err) => {
+                warn!("Failed to recieve response from Vault: {}", err);
+                Err(NetResultCode::NetInternalError)
+            }
+        }
+    }
+
+    pub async fn get_account(&self, account_name: &str) -> NetResult<Option<AccountInfo>> {
+        let (response_send, response_recv) = oneshot::channel();
+        let request = VaultMessage::GetAccount {
+            account_name: account_name.to_string(),
+            response_send
+        };
+        self.request(request, response_recv).await
+    }
+
+    pub async fn get_players(&self, account_id: &Uuid) -> NetResult<Vec<PlayerInfo>> {
+        let (response_send, response_recv) = oneshot::channel();
+        let request = VaultMessage::GetPlayers {
+            account_id: *account_id,
+            response_send
+        };
+        self.request(request, response_recv).await
     }
 }

@@ -17,10 +17,11 @@
 use uuid::Uuid;
 
 use crate::hashes::ShaDigest;
+use crate::netcli::NetResult;
 
 pub trait DbInterface: Sync + Send {
-    fn get_account(&mut self, account_name: &str) -> Option<AccountInfo>;
-    fn get_players(&mut self, account_id: &Uuid) -> Vec<PlayerInfo>;
+    fn get_account(&mut self, account_name: &str) -> NetResult<Option<AccountInfo>>;
+    fn get_players(&mut self, account_id: &Uuid) -> NetResult<Vec<PlayerInfo>>;
 }
 
 #[derive(Clone)]

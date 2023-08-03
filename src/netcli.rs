@@ -14,7 +14,11 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+
+pub type NetResult<T> = Result<T, NetResultCode>;
+
 #[repr(i32)]
+#[derive(Eq, PartialEq)]
 pub enum NetResultCode
 {
     NetPending = -1,

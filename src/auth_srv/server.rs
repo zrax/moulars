@@ -22,7 +22,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use log::{error, warn, info, debug};
 use rand::Rng;
 use tokio::io::{AsyncReadExt, BufReader};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio::net::TcpStream;
 use uuid::Uuid;
 
@@ -33,7 +33,7 @@ use crate::net_crypt::CryptTcpStream;
 use crate::netcli::NetResultCode;
 use crate::path_utils;
 use crate::plasma::{StreamRead, StreamWrite, BitVector};
-use crate::vault::{VaultMessage, VaultServer};
+use crate::vault::VaultServer;
 use super::auth_hash::{hash_password_challenge, use_email_auth};
 use super::manifest::Manifest;
 use super::messages::{CliToAuth, AuthToCli};
@@ -74,16 +74,6 @@ async fn send_message(stream: &mut CryptTcpStream, reply: AuthToCli) -> bool {
         false
     } else {
         true
-    }
-}
-
-async fn vault_recv<T>(recv: oneshot::Receiver<T>) -> Option<T> {
-    match recv.await {
-        Ok(response) => Some(response),
-        Err(err) => {
-            warn!("Failed to recieve response from Vault: {}", err);
-            None
-        }
     }
 }
 
@@ -245,136 +235,135 @@ async fn do_download(stream: &mut CryptTcpStream, trans_id: u32, filename: &str,
 
 #[allow(clippy::too_many_arguments)]
 async fn do_login_request(stream: &mut CryptTcpStream, trans_id: u32,
-                          client_challenge: u32, server_challenge: u32,
-                          account_name: &str, pass_hash: ShaDigest,
+                          client_challenge: u32, account_name: &str,
+                          pass_hash: ShaDigest, state: &mut ClientState,
                           server_config: &ServerConfig, vault: &VaultServer) -> bool
 {
-    let (response_send, response_recv) = oneshot::channel();
-    let request = VaultMessage::GetAccount {
-        account_name: account_name.to_string(),
-        response_send
+    let account = match vault.get_account(account_name).await {
+        Ok(Some(account)) => account,
+        Ok(None) => {
+            info!("{}: Account {} was not found",
+                  stream.peer_addr().unwrap(), account_name);
+
+            // Don't leak to the client that the account doesn't exist...
+            let reply = AuthToCli::login_error(trans_id,
+                            NetResultCode::NetAuthenticationFailed);
+            return send_message(stream, reply).await;
+        }
+        Err(err) => {
+            let reply = AuthToCli::login_error(trans_id, err);
+            return send_message(stream, reply).await;
+        }
     };
-    vault.send(request).await;
 
-    if let Some(response) = vault_recv(response_recv).await {
-        let account = match response {
-            Some(account) => account,
-            None => {
-                info!("{}: Account {} was not found",
-                      stream.peer_addr().unwrap(), account_name);
-
-                // Don't leak to the client that the account doesn't exist...
-                let reply = AuthToCli::login_error(trans_id,
-                                NetResultCode::NetAuthenticationFailed);
-                return send_message(stream, reply).await;
-            }
-        };
-
-        // NOTE: Neither of these is good or secure, but they are what the
-        // client expects.  To fix these, we'd have to break compatibility
-        // with older clients.
-        if use_email_auth(account_name) {
-            // Use broken LE Sha0 hash mechanism
-            let challenge_hash = match hash_password_challenge(
-                        client_challenge, server_challenge, account.pass_hash)
-            {
-                Ok(digest) => digest,
-                Err(err) => {
-                    warn!("Failed to generate challenge hash: {}", err);
-                    let reply = AuthToCli::login_error(trans_id,
-                                    NetResultCode::NetInternalError);
-                    return send_message(stream, reply).await;
-                }
-            };
-            if challenge_hash != pass_hash {
-                info!("{}: Login failure for account {}",
-                      stream.peer_addr().unwrap(), account_name);
-                let reply = AuthToCli::login_error(trans_id,
-                                NetResultCode::NetAuthenticationFailed);
-                return send_message(stream, reply).await;
-            }
-        } else {
-            // Directly compare the BE Sha1 hash
-            // NOTE: The client sends its hash as Little Endian...
-            if account.pass_hash != pass_hash.endian_swap() {
-                info!("{}: Login failure for account {}",
-                      stream.peer_addr().unwrap(), account_name);
-                let reply = AuthToCli::login_error(trans_id,
-                                NetResultCode::NetAuthenticationFailed);
-                return send_message(stream, reply).await;
-            }
-        }
-
-        if account.is_banned() {
-            info!("{}: Account {} is banned", stream.peer_addr().unwrap(), account_name);
-            let reply = AuthToCli::login_error(trans_id, NetResultCode::NetAccountBanned);
-            return send_message(stream, reply).await;
-        }
-        if server_config.restrict_logins && !account.can_login_restricted() {
-            info!("{}: Account {} login is restricted", stream.peer_addr().unwrap(),
-                  account_name);
-            let reply = AuthToCli::login_error(trans_id, NetResultCode::NetLoginDenied);
-            return send_message(stream, reply).await;
-        }
-
-        let ntd_key = match server_config.get_ntd_key() {
-            Ok(key) => key,
+    // NOTE: Neither of these is good or secure, but they are what the
+    // client expects.  To fix these, we'd have to break compatibility
+    // with older clients.
+    if use_email_auth(account_name) {
+        // Use broken LE Sha0 hash mechanism
+        let challenge_hash = match hash_password_challenge(
+                    client_challenge, state.server_challenge,
+                    account.pass_hash)
+        {
+            Ok(digest) => digest,
             Err(err) => {
-                warn!("Failed to get encryption key: {}", err);
-                let reply = AuthToCli::login_error(trans_id, NetResultCode::NetInternalError);
+                warn!("Failed to generate challenge hash: {}", err);
+                let reply = AuthToCli::login_error(trans_id,
+                                NetResultCode::NetInternalError);
                 return send_message(stream, reply).await;
             }
         };
-
-        info!("{}: Logged in as {} {}", stream.peer_addr().unwrap(),
-              account_name, account.account_id);
-
-        if !fetch_account_players(stream, trans_id, &account.account_id, vault).await {
-            return false;
+        if challenge_hash != pass_hash {
+            info!("{}: Login failure for account {}",
+                  stream.peer_addr().unwrap(), account_name);
+            let reply = AuthToCli::login_error(trans_id,
+                            NetResultCode::NetAuthenticationFailed);
+            return send_message(stream, reply).await;
         }
-
-        // Send the final reply after all players are sent
-        let reply = AuthToCli::AcctLoginReply {
-            trans_id,
-            result: NetResultCode::NetSuccess as i32,
-            account_id: account.account_id,
-            account_flags: account.account_flags,
-            billing_type: account.billing_type,
-            encryption_key: ntd_key,
-        };
-        send_message(stream, reply).await
     } else {
-        false
+        // Directly compare the BE Sha1 hash
+        // NOTE: The client sends its hash as Little Endian...
+        if account.pass_hash != pass_hash.endian_swap() {
+            info!("{}: Login failure for account {}",
+                  stream.peer_addr().unwrap(), account_name);
+            let reply = AuthToCli::login_error(trans_id,
+                            NetResultCode::NetAuthenticationFailed);
+            return send_message(stream, reply).await;
+        }
     }
+
+    if account.is_banned() {
+        info!("{}: Account {} is banned", stream.peer_addr().unwrap(), account_name);
+        let reply = AuthToCli::login_error(trans_id, NetResultCode::NetAccountBanned);
+        return send_message(stream, reply).await;
+    }
+    if server_config.restrict_logins && !account.can_login_restricted() {
+        info!("{}: Account {} login is restricted", stream.peer_addr().unwrap(),
+              account_name);
+        let reply = AuthToCli::login_error(trans_id, NetResultCode::NetLoginDenied);
+        return send_message(stream, reply).await;
+    }
+
+    let ntd_key = match server_config.get_ntd_key() {
+        Ok(key) => key,
+        Err(err) => {
+            warn!("Failed to get encryption key: {}", err);
+            let reply = AuthToCli::login_error(trans_id, NetResultCode::NetInternalError);
+            return send_message(stream, reply).await;
+        }
+    };
+
+    info!("{}: Logged in as {} {}", stream.peer_addr().unwrap(),
+          account_name, account.account_id);
+    state.account_id = Some(account.account_id);
+
+    match fetch_account_players(stream, trans_id, &account.account_id, vault).await {
+        Some(result) if result == NetResultCode::NetSuccess => (),
+        Some(err) => {
+            let reply = AuthToCli::login_error(trans_id, err);
+            return send_message(stream, reply).await;
+        }
+        None => return false,
+    }
+
+    // Send the final reply after all players are sent
+    let reply = AuthToCli::AcctLoginReply {
+        trans_id,
+        result: NetResultCode::NetSuccess as i32,
+        account_id: account.account_id,
+        account_flags: account.account_flags,
+        billing_type: account.billing_type,
+        encryption_key: ntd_key,
+    };
+    send_message(stream, reply).await
 }
 
 async fn fetch_account_players(stream: &mut CryptTcpStream, trans_id: u32,
-                               account_id: &Uuid, vault: &VaultServer) -> bool
+                               account_id: &Uuid, vault: &VaultServer)
+    -> Option<NetResultCode>
 {
-    let (response_send, response_recv) = oneshot::channel();
-    let request = VaultMessage::GetPlayers {
-        account_id: *account_id,
-        response_send
+    let players = match vault.get_players(account_id).await {
+        Ok(players) => players,
+        Err(err) => return Some(err),
     };
-    vault.send(request).await;
-
-    if let Some(response) = vault_recv(response_recv).await {
-        for player in response {
-            let msg = AuthToCli::AcctPlayerInfo {
-                trans_id,
-                player_id: player.player_id,
-                player_name: player.player_name,
-                avatar_shape: player.avatar_shape,
-                explorer: player.explorer,
-            };
-            if !send_message(stream, msg).await {
-                return false;
-            }
+    for player in players {
+        let msg = AuthToCli::AcctPlayerInfo {
+            trans_id,
+            player_id: player.player_id,
+            player_name: player.player_name,
+            avatar_shape: player.avatar_shape,
+            explorer: player.explorer,
+        };
+        if !send_message(stream, msg).await {
+            return None;
         }
-        true
-    } else {
-        false
     }
+    Some(NetResultCode::NetSuccess)
+}
+
+struct ClientState {
+    server_challenge: u32,
+    account_id: Option<Uuid>,
 }
 
 async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
@@ -388,7 +377,10 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
         }
     };
 
-    let server_challenge = rand::thread_rng().gen::<u32>();
+    let mut state = ClientState {
+        server_challenge: rand::thread_rng().gen::<u32>(),
+        account_id: None,
+    };
 
     loop {
         match CliToAuth::read(&mut stream).await {
@@ -409,7 +401,9 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
                     // so we can't notify them that their build is invalid...
                     return;
                 }
-                let reply = AuthToCli::ClientRegisterReply { server_challenge };
+                let reply = AuthToCli::ClientRegisterReply {
+                    server_challenge: state.server_challenge,
+                };
                 if !send_message(stream.get_mut(), reply).await {
                     return;
                 }
@@ -423,7 +417,7 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
                 debug!("Login Request U:{} P:{} T:{} O:{}", account_name,
                        pass_hash.as_hex(), auth_token, os);
                 if !do_login_request(stream.get_mut(), trans_id, client_challenge,
-                                     server_challenge, &account_name, pass_hash,
+                                     &account_name, pass_hash, &mut state,
                                      server_config.as_ref(), vault.as_ref()).await
                 {
                     return;
