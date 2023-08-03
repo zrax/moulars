@@ -21,8 +21,9 @@ use std::sync::Arc;
 use byteorder::{LittleEndian, ReadBytesExt};
 
 use crate::general_error;
-use crate::plasma::{Creatable, StreamRead, StringFormat, read_safe_str};
+use crate::plasma::{Creatable, StreamRead};
 use crate::plasma::key::{Uoid, Location};
+use crate::plasma::safe_string::{read_safe_str, StringFormat};
 
 // We don't need to do any processing on these, but we do need to be able to
 // extract some objects (e.g. Sound Buffers) in order to determine the correct

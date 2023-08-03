@@ -19,8 +19,8 @@ use std::io::{BufRead, Result, Write};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::plasma::{Key, Creatable, StreamRead, StreamWrite};
-use crate::plasma::{read_safe_str, write_safe_str, StringFormat};
 use crate::plasma::creatable::ClassID;
+use crate::plasma::safe_string::{read_safe_str, write_safe_str, StringFormat};
 
 pub struct SoundBuffer {
     key: Key,

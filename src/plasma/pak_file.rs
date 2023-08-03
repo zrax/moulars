@@ -22,8 +22,8 @@ use std::path::Path;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::general_error;
-use crate::plasma::{StreamRead, StreamWrite, StringFormat,
-                    read_safe_str, write_safe_str};
+use crate::plasma::{StreamRead, StreamWrite};
+use crate::plasma::safe_string::{read_safe_str, write_safe_str, StringFormat};
 
 pub struct FileInfo {
     name: String,

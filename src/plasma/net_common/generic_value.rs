@@ -22,8 +22,8 @@ use num_traits::FromPrimitive;
 
 use crate::general_error;
 use crate::plasma::{Creatable, StreamRead, StreamWrite};
-use crate::plasma::{read_safe_str, write_safe_str, StringFormat};
 use crate::plasma::creatable::ClassID;
+use crate::plasma::safe_string::{read_safe_str, write_safe_str, StringFormat};
 
 pub enum GenericType {
     Int(i32),
