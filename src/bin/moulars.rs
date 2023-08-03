@@ -138,8 +138,12 @@ fn main() {
         std::process::exit(0);
     }
 
-    let config = load_config();
-    server_main(config);
+    let server_config = load_config();
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+                            .enable_all().build().unwrap();
+    runtime.block_on(async {
+        LobbyServer::start(server_config).await;
+    });
 }
 
 fn load_config() -> Arc<ServerConfig> {
@@ -191,9 +195,4 @@ fn load_config() -> Arc<ServerConfig> {
            }));
     error!("Please refer to moulars.toml.example for reference on configuring moulars.");
     std::process::exit(1);
-}
-
-#[tokio::main]
-async fn server_main(server_config: Arc<ServerConfig>) {
-    LobbyServer::start(server_config).await;
 }
