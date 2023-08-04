@@ -146,7 +146,7 @@ pub fn cache_clients(data_root: &Path, python_exe: Option<&Path>) -> Result<()> 
                 let mut prp_stream = BufReader::new(File::open(page_path)?);
                 let page = PageFile::read(&mut prp_stream)?;
                 for key in page.get_keys(ClassID::SoundBuffer as u16) {
-                    let obj = page.read_object::<_, SoundBuffer>(&mut prp_stream, key.as_ref())?;
+                    let obj = page.read_object::<_, SoundBuffer>(&mut prp_stream, key)?;
                     let sfx_path = data_root.join("sfx").join(obj.file_name());
                     sfx_flags.entry(sfx_path.clone()).or_insert_with(|| FileInfo::ogg_flags(&obj));
                     expected_files.insert(sfx_path.clone());

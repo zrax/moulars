@@ -15,7 +15,6 @@
  */
 
 use std::io::{BufRead, Write, Result};
-use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
@@ -23,10 +22,10 @@ use crate::plasma::{StreamRead, StreamWrite};
 use crate::plasma::safe_string::{read_safe_str, write_safe_str, StringFormat};
 
 pub struct Key {
-    data: Option<Arc<Uoid>>
+    data: Option<Uoid>
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Uoid {
     location: Location,
     load_mask: u8,
@@ -37,7 +36,7 @@ pub struct Uoid {
     clone_player_id: u32,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct Location {
     sequence: u32,
     flags: u16,
@@ -48,7 +47,7 @@ impl StreamRead for Key {
         where S: BufRead
     {
         if stream.read_u8()? != 0 {
-            Ok(Key { data: Some(Arc::new(Uoid::stream_read(stream)?)) })
+            Ok(Key { data: Some(Uoid::stream_read(stream)?) })
         } else {
             Ok(Key { data: None })
         }
@@ -70,6 +69,18 @@ impl StreamWrite for Key {
 impl Uoid {
     const HAS_CLONE_IDS: u8 = 1 << 0;
     const HAS_LOAD_MASK: u8 = 1 << 1;
+
+    pub fn invalid() -> Self {
+        Self {
+            location: Location::invalid(),
+            load_mask: 0xff,
+            obj_type: 0,
+            obj_name: String::new(),
+            obj_id: 0,
+            clone_id: 0,
+            clone_player_id: 0,
+        }
+    }
 
     pub fn obj_type(&self) -> u16 { self.obj_type }
 }
@@ -136,6 +147,10 @@ impl StreamWrite for Uoid {
 impl Location {
     pub fn new(sequence: u32, flags: u16) -> Self {
         Self { sequence, flags }
+    }
+
+    pub fn invalid() -> Self {
+        Self { sequence: 0xFFFFFFFF, flags: 0}
     }
 
     pub fn make(prefix: i32, page: i32, flags: u16) -> Self {

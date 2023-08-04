@@ -20,6 +20,7 @@ use std::io::{BufRead, Result};
 use std::str::FromStr;
 
 use crate::general_error;
+use crate::plasma::UnifiedTime;
 use crate::plasma::color::{Color32, ColorRGBA};
 use crate::plasma::geometry::{Vector3, Quaternion};
 use super::{VarType, VarDefault, VarDescriptor, StateDescriptor};
@@ -279,7 +280,7 @@ impl<S: BufRead> Parser<S> {
             match &token {
                 Token::Identifier(ident) => match ident.as_ref() {
                     KW_DEFAULT => {
-                        default = Some(self.parse_default(&var_type)?);
+                        default = self.parse_default(&var_type)?;
                     }
                     KW_DEFAULTOPTION => {
                         // Ignored for now
@@ -309,23 +310,26 @@ impl<S: BufRead> Parser<S> {
         Err(general_error!("Unexpected EOF while parsing VAR"))
     }
 
-    fn parse_default(&mut self, var_type: &VarType) -> Result<VarDefault> {
+    fn parse_default(&mut self, var_type: &VarType) -> Result<Option<VarDefault>> {
         self.expect_token(Token::CharToken('='), KW_DEFAULT)?;
         match var_type {
-            VarType::Bool => Ok(VarDefault::Bool(self.expect_bool(true, KW_DEFAULT)?)),
-            VarType::Byte => Ok(VarDefault::Byte(self.expect_number::<u8>(true, KW_DEFAULT)?)),
-            VarType::Double => Ok(VarDefault::Double(self.expect_number::<f64>(true, KW_DEFAULT)?)),
-            VarType::Float => Ok(VarDefault::Float(self.expect_number::<f32>(true, KW_DEFAULT)?)),
-            VarType::Int => Ok(VarDefault::Int(self.expect_number::<i32>(true, KW_DEFAULT)?)),
-            VarType::Short => Ok(VarDefault::Short(self.expect_number::<i16>(true, KW_DEFAULT)?)),
-            VarType::Time => Ok(VarDefault::Time(self.expect_number::<u32>(true, KW_DEFAULT)?)),
-            VarType::String32 => Ok(VarDefault::String32(self.expect_string_literal(KW_DEFAULT)?)),
+            VarType::Bool => Ok(Some(VarDefault::Bool(self.expect_bool(true, KW_DEFAULT)?))),
+            VarType::Byte => Ok(Some(VarDefault::Byte(self.expect_number::<u8>(true, KW_DEFAULT)?))),
+            VarType::Double => Ok(Some(VarDefault::Double(self.expect_number::<f64>(true, KW_DEFAULT)?))),
+            VarType::Float => Ok(Some(VarDefault::Float(self.expect_number::<f32>(true, KW_DEFAULT)?))),
+            VarType::Int => Ok(Some(VarDefault::Int(self.expect_number::<i32>(true, KW_DEFAULT)?))),
+            VarType::Short => Ok(Some(VarDefault::Short(self.expect_number::<i16>(true, KW_DEFAULT)?))),
+            VarType::String32 => Ok(Some(VarDefault::String32(self.expect_string_literal(KW_DEFAULT)?))),
+            VarType::Time => {
+                let secs = self.expect_number::<u32>(true, KW_DEFAULT)?;
+                Ok(Some(VarDefault::Time(UnifiedTime::from_secs(secs))))
+            }
             VarType::Key => {
                 // "nil" is the only supported default value for keys
                 match self.next_token()? {
                     Some((Token::Identifier(ident), location)) => {
                         match ident.as_ref() {
-                            "nil" => Ok(VarDefault::Null),
+                            "nil" => Ok(None),
                             _ => Err(general_error!("Unexpected plKey value '{}' at {}", ident, location))
                         }
                     }
@@ -342,7 +346,7 @@ impl<S: BufRead> Parser<S> {
                                location));
                 }
                 let vector = Vector3 { x: values[0], y: values[1], z: values[2] };
-                Ok(VarDefault::Vector3(vector))
+                Ok(Some(VarDefault::Vector3(vector)))
             }
             VarType::Quat => {
                 let (values, location) = self.expect_sequence::<f32>(KW_DEFAULT)?;
@@ -351,7 +355,7 @@ impl<S: BufRead> Parser<S> {
                                location));
                 }
                 let quat = Quaternion { x: values[0], y: values[1], z: values[2], w: values[3] };
-                Ok(VarDefault::Quat(quat))
+                Ok(Some(VarDefault::Quat(quat)))
             }
             VarType::Rgb => {
                 let (values, location) = self.expect_sequence::<f32>(KW_DEFAULT)?;
@@ -360,7 +364,7 @@ impl<S: BufRead> Parser<S> {
                                location));
                 }
                 let color = ColorRGBA { r: values[0], g: values[1], b: values[2], a: 1.0 };
-                Ok(VarDefault::Rgba(color))
+                Ok(Some(VarDefault::Rgba(color)))
             }
             VarType::Rgb8 => {
                 let (values, location) = self.expect_sequence::<u8>(KW_DEFAULT)?;
@@ -369,7 +373,7 @@ impl<S: BufRead> Parser<S> {
                                location));
                 }
                 let color = Color32 { r: values[0], g: values[1], b: values[2], a: 255 };
-                Ok(VarDefault::Rgba8(color))
+                Ok(Some(VarDefault::Rgba8(color)))
             }
             VarType::Rgba => {
                 let (values, location) = self.expect_sequence::<f32>(KW_DEFAULT)?;
@@ -378,7 +382,7 @@ impl<S: BufRead> Parser<S> {
                                location));
                 }
                 let color = ColorRGBA { r: values[0], g: values[1], b: values[2], a: values[3] };
-                Ok(VarDefault::Rgba(color))
+                Ok(Some(VarDefault::Rgba(color)))
             }
             VarType::Rgba8 => {
                 let (values, location) = self.expect_sequence::<u8>(KW_DEFAULT)?;
@@ -387,7 +391,7 @@ impl<S: BufRead> Parser<S> {
                                location));
                 }
                 let color = Color32 { r: values[0], g: values[1], b: values[2], a: values[3] };
-                Ok(VarDefault::Rgba8(color))
+                Ok(Some(VarDefault::Rgba8(color)))
             }
             VarType::AgeTimeOfDay => {
                 Err(general_error!("AgeTimeOfDay variables cannot have a default"))

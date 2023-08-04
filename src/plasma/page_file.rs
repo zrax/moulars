@@ -16,7 +16,6 @@
 
 use std::collections::HashMap;
 use std::io::{BufRead, Seek, SeekFrom, Cursor, Result};
-use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
@@ -37,7 +36,7 @@ pub struct PageFile {
 }
 
 struct IndexKey {
-    uoid: Arc<Uoid>,
+    uoid: Uoid,
     offset: u32,
     size: u32,
 }
@@ -90,9 +89,9 @@ impl PageFile {
         }
     }
 
-    pub fn get_keys(&self, class_id: u16) -> Vec<Arc<Uoid>> {
+    pub fn get_keys(&self, class_id: u16) -> Vec<&Uoid> {
         match self.key_index.get(&class_id) {
-            Some(keys) => keys.iter().map(|key| key.uoid.clone()).collect(),
+            Some(keys) => keys.iter().map(|key| &key.uoid).collect(),
             None => Vec::new(),
         }
     }
@@ -104,7 +103,7 @@ impl PageFile {
         assert_eq!(ObType::static_class_id(), uoid.obj_type());
 
         if let Some(keys) = self.key_index.get(&uoid.obj_type()) {
-            if let Some(index_key) = keys.iter().find(|k| k.uoid.as_ref() == uoid) {
+            if let Some(index_key) = keys.iter().find(|k| k.uoid == *uoid) {
                 let _ = stream.seek(SeekFrom::Start(index_key.offset as u64))?;
 
                 // Ensure the object is streamed from within the bounds of the stored data
@@ -131,6 +130,6 @@ impl StreamRead for IndexKey {
         let uoid = Uoid::stream_read(stream)?;
         let offset = stream.read_u32::<LittleEndian>()?;
         let size = stream.read_u32::<LittleEndian>()?;
-        Ok(Self { uoid: Arc::new(uoid), offset, size })
+        Ok(Self { uoid, offset, size })
     }
 }

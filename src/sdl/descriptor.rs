@@ -14,6 +14,9 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+use std::sync::Arc;
+
+use crate::plasma::UnifiedTime;
 use crate::plasma::color::{Color32, ColorRGBA};
 use crate::plasma::geometry::{Quaternion, Vector3};
 
@@ -26,15 +29,14 @@ pub enum VarType {
 
 #[derive(PartialEq, Debug)]
 pub enum VarDefault {
-    Null,
     Bool(bool),
     Byte(u8),
     Short(i16),
     Int(i32),
-    Time(u32),
     Float(f32),
     Double(f64),
     String32(String),
+    Time(UnifiedTime),
     Quat(Quaternion),
     Vector3(Vector3),
     Rgba(ColorRGBA),
@@ -53,7 +55,7 @@ pub struct VarDescriptor {
 pub struct StateDescriptor {
     name: String,
     version: u32,
-    vars: Vec<VarDescriptor>,
+    vars: Vec<Arc<VarDescriptor>>,
 }
 
 impl VarDescriptor {
@@ -71,10 +73,14 @@ impl VarDescriptor {
 
 impl StateDescriptor {
     pub fn new(name: String, version: u32, vars: Vec<VarDescriptor>) -> Self {
-        Self { name, version, vars }
+        Self {
+            name,
+            version,
+            vars: vars.into_iter().map(Arc::new).collect()
+        }
     }
 
     pub fn name(&self) -> &String { &self.name }
     pub fn version(&self) -> u32 { self.version }
-    pub fn vars(&self) -> &Vec<VarDescriptor> { &self.vars }
+    pub fn vars(&self) -> &Vec<Arc<VarDescriptor>> { &self.vars }
 }

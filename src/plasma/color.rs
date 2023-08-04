@@ -14,7 +14,7 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Copy, Clone, Debug)]
 pub struct Color32 {
     pub b: u8,
     pub g: u8,
@@ -22,10 +22,22 @@ pub struct Color32 {
     pub a: u8,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Copy, Clone, Debug)]
 pub struct ColorRGBA {
     pub r: f32,
     pub g: f32,
     pub b: f32,
     pub a: f32,
+}
+
+impl Default for Color32 {
+    fn default() -> Self {
+        Self { b: 0, g: 0, r: 0, a: 255 }
+    }
+}
+
+impl Default for ColorRGBA {
+    fn default() -> Self {
+        Self { r: 0_f32, g: 0_f32, b: 0_f32, a: 1_f32 }
+    }
 }

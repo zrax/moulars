@@ -19,6 +19,7 @@ use std::ffi::OsStr;
 use std::fs::File;
 use std::io::{BufReader, Result};
 use std::path::Path;
+use std::sync::Arc;
 
 use log::warn;
 use unicase::UniCase;
@@ -26,7 +27,7 @@ use unicase::UniCase;
 use crate::plasma::file_crypt::EncryptedReader;
 use super::{StateDescriptor, Parser};
 
-type DescriptorMap = HashMap<UniCase<String>, BTreeMap<u32, StateDescriptor>>;
+type DescriptorMap = HashMap<UniCase<String>, BTreeMap<u32, Arc<StateDescriptor>>>;
 
 pub struct DescriptorDb {
     descriptors: DescriptorMap,
@@ -39,7 +40,7 @@ fn merge_descriptors(db: &mut DescriptorMap, descriptors: Vec<StateDescriptor>) 
             .entry(desc.version())
             .and_modify(|_| warn!("Duplicate descriptor found for {} version {}",
                                   desc.name(), desc.version()))
-            .or_insert(desc);
+            .or_insert(Arc::new(desc));
     }
 }
 
@@ -60,17 +61,17 @@ impl DescriptorDb {
         Ok(Self { descriptors })
     }
 
-    pub fn get_version(&self, name: &str, version: u32) -> Option<&StateDescriptor> {
+    pub fn get_version(&self, name: &str, version: u32) -> Option<Arc<StateDescriptor>> {
         if let Some(ver_map) = self.descriptors.get(&UniCase::new(name.to_string())) {
-            ver_map.get(&version)
+            ver_map.get(&version).cloned()
         } else {
             None
         }
     }
 
-    pub fn get_latest(&self, name: &str) -> Option<&StateDescriptor> {
+    pub fn get_latest(&self, name: &str) -> Option<Arc<StateDescriptor>> {
         if let Some(ver_map) = self.descriptors.get(&UniCase::new(name.to_string())) {
-            ver_map.iter().next_back().map(|(_, desc)| desc)
+            ver_map.iter().next_back().map(|(_, desc)| desc).cloned()
         } else {
             None
         }

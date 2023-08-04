@@ -31,10 +31,17 @@ impl Factory {
     pub fn read_creatable<S>(stream: &mut S) -> Result<Option<Box<dyn Creatable>>>
         where S: BufRead
     {
+        let class_id = stream.read_u16::<LittleEndian>()?;
+        Self::read_creatable_as(stream, class_id)
+    }
+
+    pub fn read_creatable_as<S>(stream: &mut S, class_id: u16)
+            -> Result<Option<Box<dyn Creatable>>>
+        where S: BufRead
+    {
         use super::net_common::CreatableGenericValue;
         use super::messages::MessageWithCallbacks;
 
-        let class_id = stream.read_u16::<LittleEndian>()?;
         match ClassID::from_u16(class_id) {
             Some(ClassID::SoundBuffer) =>
                 Err(general_error!("SoundBuffer only supported for Manifest generation")),

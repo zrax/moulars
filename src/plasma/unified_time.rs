@@ -15,12 +15,13 @@
  */
 
 use std::io::{BufRead, Result, Write};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::plasma::{StreamRead, StreamWrite};
 
-#[derive(Debug, Default)]
+#[derive(Eq, PartialEq, Copy, Clone, Debug, Default)]
 pub struct UnifiedTime {
     secs: u32,
     micros: u32,
@@ -33,6 +34,13 @@ impl UnifiedTime {
 
     pub fn from_secs(secs: u32) -> Self {
         Self { secs, micros: 0 }
+    }
+
+    pub fn now() -> Self {
+        let now = SystemTime::now().duration_since(UNIX_EPOCH)
+                    .expect("Current time is before the Unix Epoch");
+        // Warning: This will fail in Feb 2106
+        Self { secs: now.as_secs() as u32, micros: now.subsec_micros() }
     }
 }
 

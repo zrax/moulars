@@ -22,3 +22,19 @@ pub use descriptor_db::DescriptorDb;
 
 mod parser;
 pub use parser::Parser;
+
+mod state;
+pub use state::State;
+
+mod state_variable;
+pub use state_variable::Variable;
+
+// Read/Write flags
+const HAS_UOID: u16             = 1 << 0;
+const VAR_LENGTH_IO: u16        = 1 << 15;
+
+const HAS_NOTIFICATION_INFO: u8 = 1 << 1;
+const HAS_TIMESTAMP: u8         = 1 << 2;
+const SAME_AS_DEFAULT: u8       = 1 << 3;
+const HAS_DIRTY_FLAG: u8        = 1 << 4;
+const WANT_TIMESTAMP: u8        = 1 << 5;
