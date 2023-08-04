@@ -20,7 +20,9 @@ use std::io::{BufRead, Result};
 use std::str::FromStr;
 
 use crate::general_error;
-use super::{VarType, VarValue, VarDescriptor, StateDescriptor};
+use crate::plasma::color::{Color32, ColorRGBA};
+use crate::plasma::geometry::{Vector3, Quaternion};
+use super::{VarType, VarDefault, VarDescriptor, StateDescriptor};
 
 #[derive(Eq, PartialEq, Debug)]
 enum Token {
@@ -307,23 +309,23 @@ impl<S: BufRead> Parser<S> {
         Err(general_error!("Unexpected EOF while parsing VAR"))
     }
 
-    fn parse_default(&mut self, var_type: &VarType) -> Result<VarValue> {
+    fn parse_default(&mut self, var_type: &VarType) -> Result<VarDefault> {
         self.expect_token(Token::CharToken('='), KW_DEFAULT)?;
         match var_type {
-            VarType::Bool => Ok(VarValue::Bool(self.expect_bool(true, KW_DEFAULT)?)),
-            VarType::Byte => Ok(VarValue::Byte(self.expect_number::<u8>(true, KW_DEFAULT)?)),
-            VarType::Double => Ok(VarValue::Double(self.expect_number::<f64>(true, KW_DEFAULT)?)),
-            VarType::Float => Ok(VarValue::Float(self.expect_number::<f32>(true, KW_DEFAULT)?)),
-            VarType::Int => Ok(VarValue::Int(self.expect_number::<i32>(true, KW_DEFAULT)?)),
-            VarType::Short => Ok(VarValue::Short(self.expect_number::<i16>(true, KW_DEFAULT)?)),
-            VarType::Time => Ok(VarValue::Time(self.expect_number::<u32>(true, KW_DEFAULT)?)),
-            VarType::String32 => Ok(VarValue::String32(self.expect_string_literal(KW_DEFAULT)?)),
+            VarType::Bool => Ok(VarDefault::Bool(self.expect_bool(true, KW_DEFAULT)?)),
+            VarType::Byte => Ok(VarDefault::Byte(self.expect_number::<u8>(true, KW_DEFAULT)?)),
+            VarType::Double => Ok(VarDefault::Double(self.expect_number::<f64>(true, KW_DEFAULT)?)),
+            VarType::Float => Ok(VarDefault::Float(self.expect_number::<f32>(true, KW_DEFAULT)?)),
+            VarType::Int => Ok(VarDefault::Int(self.expect_number::<i32>(true, KW_DEFAULT)?)),
+            VarType::Short => Ok(VarDefault::Short(self.expect_number::<i16>(true, KW_DEFAULT)?)),
+            VarType::Time => Ok(VarDefault::Time(self.expect_number::<u32>(true, KW_DEFAULT)?)),
+            VarType::String32 => Ok(VarDefault::String32(self.expect_string_literal(KW_DEFAULT)?)),
             VarType::Key => {
                 // "nil" is the only supported default value for keys
                 match self.next_token()? {
                     Some((Token::Identifier(ident), location)) => {
                         match ident.as_ref() {
-                            "nil" => Ok(VarValue::Key(None)),
+                            "nil" => Ok(VarDefault::Null),
                             _ => Err(general_error!("Unexpected plKey value '{}' at {}", ident, location))
                         }
                     }
@@ -333,21 +335,14 @@ impl<S: BufRead> Parser<S> {
                     None => Err(general_error!("Unexpected EOF while parsing DEFAULT"))
                 }
             }
-            VarType::Point3 => {
+            VarType::Point3 | VarType::Vector3 => {
                 let (values, location) = self.expect_sequence::<f32>(KW_DEFAULT)?;
                 if values.len() != 3 {
                     return Err(general_error!("Incorrect number of elements for Point3 at {}",
                                location));
                 }
-                Ok(VarValue::Point3(values[0], values[1], values[2]))
-            }
-            VarType::Vector3 => {
-                let (values, location) = self.expect_sequence::<f32>(KW_DEFAULT)?;
-                if values.len() != 3 {
-                    return Err(general_error!("Incorrect number of elements for Vector3 at {}",
-                               location));
-                }
-                Ok(VarValue::Vector3(values[0], values[1], values[2]))
+                let vector = Vector3 { x: values[0], y: values[1], z: values[2] };
+                Ok(VarDefault::Vector3(vector))
             }
             VarType::Quat => {
                 let (values, location) = self.expect_sequence::<f32>(KW_DEFAULT)?;
@@ -355,7 +350,8 @@ impl<S: BufRead> Parser<S> {
                     return Err(general_error!("Incorrect number of elements for Quaternion at {}",
                                location));
                 }
-                Ok(VarValue::Quat(values[0], values[1], values[2], values[3]))
+                let quat = Quaternion { x: values[0], y: values[1], z: values[2], w: values[3] };
+                Ok(VarDefault::Quat(quat))
             }
             VarType::Rgb => {
                 let (values, location) = self.expect_sequence::<f32>(KW_DEFAULT)?;
@@ -363,7 +359,8 @@ impl<S: BufRead> Parser<S> {
                     return Err(general_error!("Incorrect number of elements for RGB at {}",
                                location));
                 }
-                Ok(VarValue::Rgb(values[0], values[1], values[2]))
+                let color = ColorRGBA { r: values[0], g: values[1], b: values[2], a: 1.0 };
+                Ok(VarDefault::Rgba(color))
             }
             VarType::Rgb8 => {
                 let (values, location) = self.expect_sequence::<u8>(KW_DEFAULT)?;
@@ -371,7 +368,8 @@ impl<S: BufRead> Parser<S> {
                     return Err(general_error!("Incorrect number of elements for RGB8 at {}",
                                location));
                 }
-                Ok(VarValue::Rgb8(values[0], values[1], values[2]))
+                let color = Color32 { r: values[0], g: values[1], b: values[2], a: 255 };
+                Ok(VarDefault::Rgba8(color))
             }
             VarType::Rgba => {
                 let (values, location) = self.expect_sequence::<f32>(KW_DEFAULT)?;
@@ -379,7 +377,8 @@ impl<S: BufRead> Parser<S> {
                     return Err(general_error!("Incorrect number of elements for RGBA at {}",
                                location));
                 }
-                Ok(VarValue::Rgba(values[0], values[1], values[2], values[3]))
+                let color = ColorRGBA { r: values[0], g: values[1], b: values[2], a: values[3] };
+                Ok(VarDefault::Rgba(color))
             }
             VarType::Rgba8 => {
                 let (values, location) = self.expect_sequence::<u8>(KW_DEFAULT)?;
@@ -387,7 +386,8 @@ impl<S: BufRead> Parser<S> {
                     return Err(general_error!("Incorrect number of elements for RGBA8 at {}",
                                location));
                 }
-                Ok(VarValue::Rgba8(values[0], values[1], values[2], values[3]))
+                let color = Color32 { r: values[0], g: values[1], b: values[2], a: values[3] };
+                Ok(VarDefault::Rgba8(color))
             }
             VarType::AgeTimeOfDay => {
                 Err(general_error!("AgeTimeOfDay variables cannot have a default"))
@@ -726,7 +726,7 @@ fn test_parser() {
         let vars = descs[0].vars();
         assert_eq!(vars.len(), 1);
         assert_eq!(vars[0].var_type(), &VarType::Int);
-        assert!(matches!(vars[0].default(), Some(&VarValue::Int(42))));
+        assert_eq!(vars[0].default(), Some(&VarDefault::Int(42)));
     }
 
     {
@@ -738,7 +738,7 @@ fn test_parser() {
         let vars = descs[0].vars();
         assert_eq!(vars.len(), 1);
         assert_eq!(vars[0].var_type(), &VarType::Rgb8);
-        assert!(matches!(vars[0].default(), Some(&VarValue::Rgb8(255, 127, 7))));
+        assert_eq!(vars[0].default(), Some(&VarDefault::Rgba8(Color32 { r: 255, g: 127, b: 7, a: 255 })));
     }
 
     {
@@ -750,7 +750,7 @@ fn test_parser() {
         let vars = descs[0].vars();
         assert_eq!(vars.len(), 1);
         assert_eq!(vars[0].var_type(), &VarType::Bool);
-        assert!(matches!(vars[0].default(), Some(&VarValue::Bool(true))));
+        assert_eq!(vars[0].default(), Some(&VarDefault::Bool(true)));
     }
 
     {
@@ -762,7 +762,7 @@ fn test_parser() {
         let vars = descs[0].vars();
         assert_eq!(vars.len(), 1);
         assert_eq!(vars[0].var_type(), &VarType::Bool);
-        assert!(matches!(vars[0].default(), Some(&VarValue::Bool(false))));
+        assert_eq!(vars[0].default(), Some(&VarDefault::Bool(false)));
     }
 
     {
@@ -802,8 +802,8 @@ fn test_parser() {
         let vars = descs[0].vars();
         assert_eq!(vars.len(), 1);
         assert_eq!(vars[0].var_type(), &VarType::String32);
-        assert!(matches!(vars[0].default(), Some(&VarValue::String32(ref value))
-                                            if value.as_str() == "String Value"));
+        let expect_default = VarDefault::String32("String Value".to_string());
+        assert_eq!(vars[0].default(), Some(&expect_default));
     }
 
     {
@@ -815,8 +815,8 @@ fn test_parser() {
         let vars = descs[0].vars();
         assert_eq!(vars.len(), 1);
         assert_eq!(vars[0].var_type(), &VarType::String32);
-        assert!(matches!(vars[0].default(), Some(&VarValue::String32(ref value))
-                                            if value.as_str() == "empty"));
+        let expect_default = VarDefault::String32("empty".to_string());
+        assert_eq!(vars[0].default(), Some(&expect_default));
     }
 
     {

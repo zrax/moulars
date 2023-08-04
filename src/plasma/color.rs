@@ -14,44 +14,18 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-mod age_info;
-pub use age_info::AgeInfo;
+#[derive(Eq, PartialEq, Debug)]
+pub struct Color32 {
+    pub b: u8,
+    pub g: u8,
+    pub r: u8,
+    pub a: u8,
+}
 
-mod bit_vector;
-pub use bit_vector::BitVector;
-
-pub mod color;
-
-pub mod creatable;
-pub use creatable::Creatable;
-
-pub mod factory;
-pub use factory::Factory;
-
-pub mod file_crypt;
-
-pub mod geometry;
-
-mod key;
-pub use key::{Key, Uoid};
-
-pub mod net_io;
-
-mod page_file;
-pub use page_file::PageFile;
-
-mod pak_file;
-pub use pak_file::PakFile;
-
-pub mod safe_string;
-
-mod streamable;
-pub use streamable::{StreamRead, StreamWrite};
-
-mod unified_time;
-pub use unified_time::UnifiedTime;
-
-pub mod audio;
-pub mod messages;
-pub mod net_common;
-pub mod net_messages;
+#[derive(PartialEq, Debug)]
+pub struct ColorRGBA {
+    pub r: f32,
+    pub g: f32,
+    pub b: f32,
+    pub a: f32,
+}

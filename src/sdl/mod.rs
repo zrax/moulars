@@ -15,7 +15,7 @@
  */
 
 mod descriptor;
-pub use descriptor::{VarType, VarValue, VarDescriptor, StateDescriptor};
+pub use descriptor::{VarType, VarDefault, VarDescriptor, StateDescriptor};
 
 mod descriptor_db;
 pub use descriptor_db::DescriptorDb;

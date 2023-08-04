@@ -14,36 +14,31 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use crate::plasma::{Uoid, Creatable};
+use crate::plasma::color::{Color32, ColorRGBA};
+use crate::plasma::geometry::{Quaternion, Vector3};
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum VarType {
     AgeTimeOfDay, Bool, Byte, Creatable, Double, Float, Int, Key, Point3,
     Quat, Rgb, Rgb8, Rgba, Rgba8, Short, String32, Time, Vector3,
     StateDesc(String),
 }
 
-#[derive(Debug)]
-pub enum VarValue {
-    AgeTimeOfDay,       // No stored value
+#[derive(PartialEq, Debug)]
+pub enum VarDefault {
+    Null,
     Bool(bool),
     Byte(u8),
-    Creatable(Option<Box<dyn Creatable>>),
-    Double(f64),
-    Float(f32),
-    Int(i32),
-    Key(Option<Uoid>),
-    Point3(f32, f32, f32),
-    Quat(f32, f32, f32, f32),
-    Rgb(f32, f32, f32),
-    Rgb8(u8, u8, u8),
-    Rgba(f32, f32, f32, f32),
-    Rgba8(u8, u8, u8, u8),
     Short(i16),
-    String32(String),
+    Int(i32),
     Time(u32),
-    Vector3(f32, f32, f32),
-    //StateDesc(...),
+    Float(f32),
+    Double(f64),
+    String32(String),
+    Quat(Quaternion),
+    Vector3(Vector3),
+    Rgba(ColorRGBA),
+    Rgba8(Color32),
 }
 
 #[derive(Debug)]
@@ -51,7 +46,7 @@ pub struct VarDescriptor {
     name: String,
     var_type: VarType,
     count: Option<usize>,
-    default: Option<VarValue>,
+    default: Option<VarDefault>,
 }
 
 #[derive(Debug)]
@@ -63,7 +58,7 @@ pub struct StateDescriptor {
 
 impl VarDescriptor {
     pub fn new(name: String, var_type: VarType, count: Option<usize>,
-               default: Option<VarValue>) -> Self
+               default: Option<VarDefault>) -> Self
     {
         Self { name, var_type, count, default }
     }
@@ -71,7 +66,7 @@ impl VarDescriptor {
     pub fn name(&self) -> &String { &self.name }
     pub fn var_type(&self) -> &VarType { &self.var_type }
     pub fn count(&self) -> Option<usize> { self.count }
-    pub fn default(&self) -> Option<&VarValue> { self.default.as_ref() }
+    pub fn default(&self) -> Option<&VarDefault> { self.default.as_ref() }
 }
 
 impl StateDescriptor {
