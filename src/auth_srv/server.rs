@@ -37,6 +37,7 @@ use crate::vault::VaultServer;
 use super::auth_hash::{hash_password_challenge, use_email_auth};
 use super::manifest::Manifest;
 use super::messages::{CliToAuth, AuthToCli};
+use super::vault_helpers::create_player_nodes;
 
 pub struct AuthServer {
     incoming_send: mpsc::Sender<TcpStream>,
@@ -393,7 +394,10 @@ async fn player_create(stream: &mut CryptTcpStream, trans_id: u32,
         }
     };
 
-    todo!("Initialize various player vault nodes...");
+    if let Err(err) = create_player_nodes(&account_id, &player_info, vault).await {
+        let reply = AuthToCli::player_create_error(trans_id, err);
+        return send_message(stream, reply).await;
+    }
 
     let reply = AuthToCli::PlayerCreateReply {
         trans_id,

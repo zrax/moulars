@@ -24,12 +24,14 @@ use uuid::Uuid;
 use crate::auth_srv::auth_hash::create_pass_hash;
 use crate::netcli::{NetResult, NetResultCode};
 use crate::vault::{VaultNode, NodeRef};
-use super::db_interface::{DbInterface, AccountInfo, PlayerInfo};
+use super::db_interface::{DbInterface, AccountInfo, PlayerInfo, GameServer};
 
 // An ephemeral vault backend that vanishes once the server exits.
 pub struct DbMemory {
     accounts: HashMap<UniCase<String>, AccountInfo>,
     players: HashMap<Uuid, Vec<PlayerInfo>>,
+    game_servers: HashMap<u32, GameServer>,
+    game_index: AtomicU32,
     vault: HashMap<u32, VaultNode>,
     node_refs: HashSet<NodeRef>,
     node_index: AtomicU32,
@@ -40,6 +42,8 @@ impl DbMemory {
         Self {
             accounts: HashMap::new(),
             players: HashMap::new(),
+            game_servers: HashMap::new(),
+            game_index: AtomicU32::new(1),
             vault: HashMap::new(),
             node_refs: HashSet::new(),
             node_index: AtomicU32::new(1000),
@@ -101,9 +105,19 @@ impl DbInterface for DbMemory {
         Ok(())
     }
 
-    fn create_node(&mut self, node: VaultNode) -> NetResult<u32> {
+    fn add_game_server(&mut self, server: GameServer) -> NetResult<()> {
+        let server_id = self.game_index.fetch_add(1, Ordering::Relaxed);
+        if self.game_servers.insert(server_id, server).is_some() {
+            warn!("Created duplicate game server ID {}!", server_id);
+            Err(NetResultCode::NetInternalError)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn create_node(&mut self, node: Box<VaultNode>) -> NetResult<u32> {
         let node_id = self.node_index.fetch_add(1, Ordering::Relaxed);
-        if self.vault.insert(node_id, node).is_some() {
+        if self.vault.insert(node_id, *node).is_some() {
             warn!("Created duplicate node ID {}!", node_id);
             Err(NetResultCode::NetInternalError)
         } else {

@@ -25,3 +25,5 @@ mod messages;
 
 mod server;
 pub use server::AuthServer;
+
+mod vault_helpers;

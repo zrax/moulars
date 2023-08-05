@@ -30,6 +30,7 @@ use crate::auth_srv::AuthServer;
 use crate::gate_keeper::GateKeeper;
 use crate::file_srv::FileServer;
 use crate::plasma::StreamRead;
+use crate::sdl::DescriptorDb;
 use crate::vault::VaultServer;
 
 struct ConnectionHeader {
@@ -101,8 +102,6 @@ pub struct LobbyServer {
 
 impl LobbyServer {
     pub async fn start(server_config: Arc<ServerConfig>) {
-        info!("Starting lobby server on {}", server_config.listen_address);
-
         let (shutdown_send, mut shutdown_recv) = mpsc::channel(1);
         tokio::spawn(async move {
             match tokio::signal::ctrl_c().await {
@@ -124,12 +123,32 @@ impl LobbyServer {
             }
         };
 
-        let vault = VaultServer::start(server_config.clone());
+        let ntd_key = match server_config.get_ntd_key() {
+            Ok(key) => key,
+            Err(err) => {
+                // This is not a fatal error, because the SDL files can still
+                // be loaded successfully if they are not encrypted.
+                warn!("Failed to get encryption key: {}", err);
+                [0; 4]
+            }
+        };
+
+        let sdl_path = server_config.data_root.join("SDL");
+        let sdl_db = match DescriptorDb::from_dir(&sdl_path, &ntd_key) {
+            Ok(database) => database,
+            Err(err) => {
+                warn!("Failed to load SDL descriptors from {}: {}", sdl_path.display(), err);
+                DescriptorDb::empty()
+            }
+        };
+
+        let vault = VaultServer::start(server_config.clone(), sdl_db);
         let auth_server = AuthServer::start(server_config.clone(), vault.clone());
         let file_server = FileServer::start(server_config.clone());
         let gate_keeper = GateKeeper::start(server_config.clone());
         let mut lobby = Self { auth_server, file_server, gate_keeper };
 
+        info!("Starting lobby server on {}", server_config.listen_address);
         loop {
             tokio::select! {
                 _ = async {

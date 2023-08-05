@@ -225,6 +225,117 @@ impl VaultNode {
         node.set_istring64_1(player_name);
         node
     }
+
+    pub fn new_age(age_uuid: &Uuid, parent_uuid: Option<&Uuid>,
+                   age_filename: &str) -> Self
+    {
+        let mut node = Self::default();
+        node.set_node_type(NodeType::Age as i32);
+        node.set_creator_uuid(age_uuid);
+        node.set_uuid_1(age_uuid);
+        if let Some(uuid) = parent_uuid {
+            node.set_uuid_2(uuid);
+        }
+        node.set_string64_1(age_filename);
+        node
+    }
+
+    pub fn new_folder(creator_uuid: &Uuid, creator_id: u32,
+                      folder_type: StandardNode) -> Self
+    {
+        let mut node = Self::default();
+        node.set_node_type(NodeType::Folder as i32);
+        node.set_creator_uuid(creator_uuid);
+        node.set_creator_id(creator_id);
+        node.set_int32_1(folder_type as i32);
+        node
+    }
+
+    pub fn new_player_info(creator_id: &Uuid, player_id: u32, player_name: &str) -> Self {
+        let mut node = Self::default();
+        node.set_node_type(NodeType::PlayerInfo as i32);
+        node.set_creator_uuid(creator_id);
+        node.set_creator_id(player_id);
+        node.set_uint32_1(player_id);
+        node.set_istring64_1(player_name);
+        node
+    }
+
+    pub fn new_sdl(creator_uuid: &Uuid, creator_id: u32, sdl_name: &str,
+                   sdl_blob: &[u8]) -> Self
+    {
+        let mut node = Self::default();
+        node.set_node_type(NodeType::SDL as i32);
+        node.set_creator_uuid(creator_uuid);
+        node.set_creator_id(creator_id);
+        node.set_string64_1(sdl_name);
+        node.set_blob_1(sdl_blob);
+        node
+    }
+
+    pub fn new_age_link(creator_uuid: &Uuid, creator_id: u32, link: &str) -> Self {
+        let mut node = Self::default();
+        node.set_node_type(NodeType::AgeLink as i32);
+        node.set_creator_uuid(creator_uuid);
+        node.set_creator_id(creator_id);
+        node.set_blob_1(link.as_bytes());
+        node
+    }
+
+    pub fn new_player_info_list(creator_uuid: &Uuid, creator_id: u32,
+                                folder_type: StandardNode) -> Self
+    {
+        let mut node = Self::default();
+        node.set_node_type(NodeType::PlayerInfoList as i32);
+        node.set_creator_uuid(creator_uuid);
+        node.set_creator_id(creator_id);
+        node.set_int32_1(folder_type as i32);
+        node
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_age_info(creator_uuid: &Uuid, age_id: u32, seq_number: i32,
+                        public: bool, language: i32, parent_uuid: Option<&Uuid>,
+                        age_filename: &str, instance_name: &str, user_name: &str,
+                        description: &str) -> Self
+    {
+        let mut node = Self::default();
+        node.set_node_type(NodeType::AgeInfo as i32);
+        node.set_creator_uuid(creator_uuid);
+        node.set_creator_id(age_id);
+        node.set_int32_1(seq_number);
+        node.set_int32_2(if public { 1 } else { 0 });
+        node.set_int32_3(language);
+        node.set_uint32_1(age_id);
+        node.set_uint32_2(0);   // Czar ID
+        node.set_uint32_3(0);   // Flags
+        node.set_uuid_1(creator_uuid);
+        if let Some(uuid) = parent_uuid {
+            node.set_uuid_2(uuid);
+        }
+        node.set_string64_2(age_filename);
+        if !instance_name.is_empty() {
+            node.set_string64_3(instance_name);
+        }
+        if !user_name.is_empty() {
+            node.set_string64_4(user_name);
+        }
+        if !description.is_empty() {
+            node.set_text_1(description);
+        }
+        node
+    }
+
+    pub fn new_age_info_list(creator_uuid: &Uuid, creator_id: u32,
+                             folder_type: StandardNode) -> Self
+    {
+        let mut node = Self::default();
+        node.set_node_type(NodeType::AgeInfoList as i32);
+        node.set_creator_uuid(creator_uuid);
+        node.set_creator_id(creator_id);
+        node.set_int32_1(folder_type as i32);
+        node
+    }
 }
 
 const FIELD_NODE_IDX: u64           = 1 << 0;

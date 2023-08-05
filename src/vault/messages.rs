@@ -18,7 +18,8 @@ use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use crate::netcli::NetResult;
-use super::db_interface::{AccountInfo, PlayerInfo};
+use super::db_interface::{AccountInfo, PlayerInfo, GameServer};
+use super::VaultNode;
 
 pub(super) enum VaultMessage {
     GetAccount {
@@ -34,5 +35,19 @@ pub(super) enum VaultMessage {
         player_name: String,
         avatar_shape: String,
         response_send: oneshot::Sender<NetResult<PlayerInfo>>,
-    }
+    },
+    AddGameServer {
+        game_server: GameServer,
+        response_send: oneshot::Sender<NetResult<()>>,
+    },
+    CreateNode {
+        node: Box<VaultNode>,
+        response_send: oneshot::Sender<NetResult<u32>>,
+    },
+    RefNode {
+        parent: u32,
+        child: u32,
+        owner: u32,
+        response_send: oneshot::Sender<NetResult<()>>,
+    },
 }

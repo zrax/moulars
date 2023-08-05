@@ -45,6 +45,10 @@ fn merge_descriptors(db: &mut DescriptorMap, descriptors: Vec<StateDescriptor>) 
 }
 
 impl DescriptorDb {
+    pub fn empty() -> Self {
+        Self { descriptors: HashMap::new() }
+    }
+
     pub fn from_dir(path: &Path, key: &[u32; 4]) -> Result<Self> {
         let mut descriptors = DescriptorMap::new();
         for entry in path.read_dir()? {

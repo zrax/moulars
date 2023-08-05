@@ -22,13 +22,15 @@ use uuid::Uuid;
 
 use crate::config::{ServerConfig, VaultDbBackend};
 use crate::netcli::{NetResult, NetResultCode};
-use super::db_interface::{DbInterface, AccountInfo, PlayerInfo};
+use crate::sdl::DescriptorDb;
+use super::db_interface::{DbInterface, AccountInfo, PlayerInfo, GameServer};
 use super::db_memory::DbMemory;
 use super::messages::VaultMessage;
 use super::VaultNode;
 
 pub struct VaultServer {
     msg_send: mpsc::Sender<VaultMessage>,
+    sdl_db: DescriptorDb,
 }
 
 const MAX_PLAYERS: u64 = 5;
@@ -68,7 +70,7 @@ fn process_vault_message(msg: VaultMessage, db: &mut Box<dyn DbInterface>) {
             }
 
             let node = VaultNode::new_player(&account_id, &player_name, &avatar_shape, 1);
-            let player_id = match db.create_node(node) {
+            let player_id = match db.create_node(Box::new(node)) {
                 Ok(node_id) => node_id,
                 Err(err) => return check_send(response_send, Err(err)),
             };
@@ -87,11 +89,25 @@ fn process_vault_message(msg: VaultMessage, db: &mut Box<dyn DbInterface>) {
             }
             check_send(response_send, Ok(player));
         }
+        VaultMessage::AddGameServer { game_server, response_send } => {
+            let reply = db.add_game_server(game_server);
+            check_send(response_send, reply);
+        }
+        VaultMessage::CreateNode { node, response_send } => {
+            let reply = db.create_node(node);
+            check_send(response_send, reply);
+        }
+        VaultMessage::RefNode { parent, child, owner, response_send } => {
+            let reply = db.ref_node(parent, child, owner);
+            check_send(response_send, reply);
+        }
     }
 }
 
 impl VaultServer {
-    pub fn start(server_config: Arc<ServerConfig>) -> Arc<VaultServer> {
+    pub fn start(server_config: Arc<ServerConfig>, sdl_db: DescriptorDb)
+            -> Arc<VaultServer>
+    {
         let (msg_send, mut msg_recv) = mpsc::channel(20);
 
         tokio::spawn(async move {
@@ -105,8 +121,10 @@ impl VaultServer {
                 process_vault_message(msg, &mut db);
             }
         });
-        Arc::new(VaultServer { msg_send })
+        Arc::new(VaultServer { msg_send, sdl_db })
     }
+
+    pub fn sdl_db(&self) -> &DescriptorDb { &self.sdl_db }
 
     async fn request<T>(&self, msg: VaultMessage, recv: oneshot::Receiver<NetResult<T>>)
         -> NetResult<T>
@@ -153,6 +171,27 @@ impl VaultServer {
             avatar_shape: avatar_shape.to_string(),
             response_send
         };
+        self.request(request, response_recv).await
+    }
+
+    pub async fn add_game_server(&self, game_server: GameServer) -> NetResult<()> {
+        let (response_send, response_recv) = oneshot::channel();
+        let request = VaultMessage::AddGameServer { game_server, response_send };
+        self.request(request, response_recv).await
+    }
+
+    pub async fn create_node(&self, node: VaultNode) -> NetResult<u32> {
+        let (response_send, response_recv) = oneshot::channel();
+        let request = VaultMessage::CreateNode {
+            node: Box::new(node),
+            response_send
+        };
+        self.request(request, response_recv).await
+    }
+
+    pub async fn ref_node(&self, parent: u32, child: u32, owner: u32) -> NetResult<()> {
+        let (response_send, response_recv) = oneshot::channel();
+        let request = VaultMessage::RefNode { parent, child, owner, response_send };
         self.request(request, response_recv).await
     }
 }
