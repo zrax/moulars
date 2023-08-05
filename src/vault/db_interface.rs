@@ -18,10 +18,17 @@ use uuid::Uuid;
 
 use crate::hashes::ShaDigest;
 use crate::netcli::NetResult;
+use super::VaultNode;
 
 pub trait DbInterface: Sync + Send {
     fn get_account(&mut self, account_name: &str) -> NetResult<Option<AccountInfo>>;
     fn get_players(&mut self, account_id: &Uuid) -> NetResult<Vec<PlayerInfo>>;
+    fn count_players(&mut self, account_id: &Uuid) -> NetResult<u64>;
+    fn get_player_by_name(&mut self, player_name: &str) -> NetResult<Option<PlayerInfo>>;
+    fn create_player(&mut self, account_id: &Uuid, player: PlayerInfo) -> NetResult<()>;
+
+    fn create_node(&mut self, node: VaultNode) -> NetResult<u32>;
+    fn ref_node(&mut self, parent: u32, child: u32, owner: u32) -> NetResult<()>;
 }
 
 #[derive(Clone)]
@@ -51,5 +58,5 @@ pub struct PlayerInfo {
     pub player_id: u32,
     pub player_name: String,
     pub avatar_shape: String,
-    pub explorer: u32,
+    pub explorer: i32,
 }

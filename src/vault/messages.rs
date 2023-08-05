@@ -29,4 +29,10 @@ pub(super) enum VaultMessage {
         account_id: Uuid,
         response_send: oneshot::Sender<NetResult<Vec<PlayerInfo>>>,
     },
+    CreatePlayer {
+        account_id: Uuid,
+        player_name: String,
+        avatar_shape: String,
+        response_send: oneshot::Sender<NetResult<PlayerInfo>>,
+    }
 }

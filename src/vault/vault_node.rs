@@ -23,6 +23,28 @@ use uuid::Uuid;
 use crate::general_error;
 use crate::plasma::{StreamRead, StreamWrite};
 
+#[repr(i32)]
+pub enum NodeType {
+    Invalid,
+    VNodeMgrLow, Player, Age,
+    VNodeMgrHigh = 21,
+    Folder, PlayerInfo, System, Image, TextNote, SDL, AgeLink, Chronicle,
+    PlayerInfoList, _Unused01, _Unused02, AgeInfo, AgeInfoList, MarkerGame,
+}
+
+#[repr(i32)]
+pub enum StandardNode {
+    UserDefined, InboxFolder, BuddyListFolder, IgnoreListFolder,
+    PeopleIKnowAboutFolder, VaultMgrGlobalDataFolder, ChronicleFolder,
+    AvatarOutfitFolder, AgeTypeJournalFolder, SubAgesFolder, DeviceInboxFolder,
+    HoodMembersFolder, AllPlayersFolder, AgeMembersFolder, AgeJournalsFolder,
+    AgeDevicesFolder, AgeInstanceSDLNode, AgeGlobalSDLNode, CanVisitFolder,
+    AgeOwnersFolder, AllAgeGlobalSDLNodesFolder, PlayerInfoNode,
+    PublicAgesFolder, AgesIOwnFolder, AgesICanVisitFolder, AvatarClosetFolder,
+    AgeInfoNode, SystemNode, PlayerInviteFolder, CCRPlayersFolder,
+    GlobalInboxFolder, ChildAgesFolder, GameScoresFolder,
+}
+
 #[derive(Debug, Default)]
 pub struct VaultNode {
     fields: u64,
@@ -62,8 +84,146 @@ pub struct VaultNode {
 }
 
 impl VaultNode {
-    pub fn new() -> Self {
-        Self { .. Default::default() }
+    pub fn set_node_id(&mut self, value: u32) {
+        self.fields |= FIELD_NODE_IDX;
+        self.node_id = value;
+    }
+    pub fn set_create_time(&mut self, value: u32) {
+        self.fields |= FIELD_CREATE_TIME;
+        self.create_time = value;
+    }
+    pub fn set_modify_time(&mut self, value: u32) {
+        self.fields |= FIELD_MODIFY_TIME;
+        self.modify_time = value;
+    }
+    pub fn set_create_age_name(&mut self, value: &str) {
+        self.fields |= FIELD_CREATE_AGE_NAME;
+        self.create_age_name = value.to_string();
+    }
+    pub fn set_create_age_uuid(&mut self, value: &Uuid) {
+        self.fields |= FIELD_CREATE_AGE_UUID;
+        self.create_age_uuid = *value;
+    }
+    pub fn set_creator_uuid(&mut self, value: &Uuid) {
+        self.fields |= FIELD_CREATOR_UUID;
+        self.creator_uuid = *value;
+    }
+    pub fn set_creator_id(&mut self, value: u32) {
+        self.fields |= FIELD_CREATOR_IDX;
+        self.creator_id = value;
+    }
+    pub fn set_node_type(&mut self, value: i32) {
+        self.fields |= FIELD_NODE_TYPE;
+        self.node_type = value;
+    }
+    pub fn set_int32_1(&mut self, value: i32) {
+        self.fields |= FIELD_INT32_1;
+        self.int32_1 = value;
+    }
+    pub fn set_int32_2(&mut self, value: i32) {
+        self.fields |= FIELD_INT32_2;
+        self.int32_2 = value;
+    }
+    pub fn set_int32_3(&mut self, value: i32) {
+        self.fields |= FIELD_INT32_3;
+        self.int32_3 = value;
+    }
+    pub fn set_int32_4(&mut self, value: i32) {
+        self.fields |= FIELD_INT32_4;
+        self.int32_4 = value;
+    }
+    pub fn set_uint32_1(&mut self, value: u32) {
+        self.fields |= FIELD_UINT32_1;
+        self.uint32_1 = value;
+    }
+    pub fn set_uint32_2(&mut self, value: u32) {
+        self.fields |= FIELD_UINT32_2;
+        self.uint32_2 = value;
+    }
+    pub fn set_uint32_3(&mut self, value: u32) {
+        self.fields |= FIELD_UINT32_3;
+        self.uint32_3 = value;
+    }
+    pub fn set_uint32_4(&mut self, value: u32) {
+        self.fields |= FIELD_UINT32_4;
+        self.uint32_4 = value;
+    }
+    pub fn set_uuid_1(&mut self, value: &Uuid) {
+        self.fields |= FIELD_UUID_1;
+        self.uuid_1 = *value;
+    }
+    pub fn set_uuid_2(&mut self, value: &Uuid) {
+        self.fields |= FIELD_UUID_2;
+        self.uuid_2 = *value;
+    }
+    pub fn set_uuid_3(&mut self, value: &Uuid) {
+        self.fields |= FIELD_UUID_3;
+        self.uuid_3 = *value;
+    }
+    pub fn set_uuid_4(&mut self, value: &Uuid) {
+        self.fields |= FIELD_UUID_4;
+        self.uuid_4 = *value;
+    }
+    pub fn set_string64_1(&mut self, value: &str) {
+        self.fields |= FIELD_STRING64_1;
+        self.string64_1 = value.to_string();
+    }
+    pub fn set_string64_2(&mut self, value: &str) {
+        self.fields |= FIELD_STRING64_2;
+        self.string64_2 = value.to_string();
+    }
+    pub fn set_string64_3(&mut self, value: &str) {
+        self.fields |= FIELD_STRING64_3;
+        self.string64_3 = value.to_string();
+    }
+    pub fn set_string64_4(&mut self, value: &str) {
+        self.fields |= FIELD_STRING64_4;
+        self.string64_4 = value.to_string();
+    }
+    pub fn set_string64_5(&mut self, value: &str) {
+        self.fields |= FIELD_STRING64_5;
+        self.string64_5 = value.to_string();
+    }
+    pub fn set_string64_6(&mut self, value: &str) {
+        self.fields |= FIELD_STRING64_6;
+        self.string64_6 = value.to_string();
+    }
+    pub fn set_istring64_1(&mut self, value: &str) {
+        self.fields |= FIELD_ISTRING64_1;
+        self.istring64_1 = value.to_string();
+    }
+    pub fn set_istring64_2(&mut self, value: &str) {
+        self.fields |= FIELD_ISTRING64_2;
+        self.istring64_2 = value.to_string();
+    }
+    pub fn set_text_1(&mut self, value: &str) {
+        self.fields |= FIELD_TEXT_1;
+        self.text_1 = value.to_string();
+    }
+    pub fn set_text_2(&mut self, value: &str) {
+        self.fields |= FIELD_TEXT_2;
+        self.text_2 = value.to_string();
+    }
+    pub fn set_blob_1(&mut self, value: &[u8]) {
+        self.fields |= FIELD_BLOB_1;
+        self.blob_1 = value.to_vec();
+    }
+    pub fn set_blob_2(&mut self, value: &[u8]) {
+        self.fields |= FIELD_BLOB_2;
+        self.blob_2 = value.to_vec();
+    }
+
+    pub fn new_player(account_id: &Uuid, player_name: &str, avatar_shape: &str,
+                      explorer: i32) -> Self
+    {
+        let mut node = Self::default();
+        node.set_node_type(NodeType::Player as i32);
+        node.set_creator_uuid(account_id);
+        node.set_int32_2(explorer);
+        node.set_uuid_1(account_id);
+        node.set_string64_1(avatar_shape);
+        node.set_istring64_1(player_name);
+        node
     }
 }
 

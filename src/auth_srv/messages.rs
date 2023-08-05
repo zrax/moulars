@@ -300,7 +300,7 @@ pub enum AuthToCli {
         player_id: u32,
         player_name: String,
         avatar_shape: String,
-        explorer: u32,
+        explorer: i32,
     },
     AcctSetPlayerReply {
         trans_id: u32,
@@ -337,7 +337,7 @@ pub enum AuthToCli {
         trans_id: u32,
         result: i32,
         player_id: u32,
-        explorer: u32,
+        explorer: i32,
         player_name: String,
         avatar_shape: String,
     },
@@ -1009,6 +1009,17 @@ impl AuthToCli {
             encryption_key: [0; 4]
         }
     }
+
+    pub fn player_create_error(trans_id: u32, result: NetResultCode) -> Self {
+        Self::PlayerCreateReply {
+            trans_id,
+            result: result as i32,
+            player_id: 0,
+            explorer: 0,
+            player_name: String::new(),
+            avatar_shape: String::new(),
+        }
+    }
 }
 
 impl StreamWrite for AuthToCli {
@@ -1052,7 +1063,7 @@ impl StreamWrite for AuthToCli {
                 stream.write_u32::<LittleEndian>(*player_id)?;
                 net_io::write_utf16_str(stream, player_name)?;
                 net_io::write_utf16_str(stream, avatar_shape)?;
-                stream.write_u32::<LittleEndian>(*explorer)?;
+                stream.write_i32::<LittleEndian>(*explorer)?;
             }
             AuthToCli::AcctSetPlayerReply { trans_id, result } => {
                 stream.write_u16::<LittleEndian>(ServerMsgId::AcctSetPlayerReply as u16)?;
@@ -1099,7 +1110,7 @@ impl StreamWrite for AuthToCli {
                 stream.write_u32::<LittleEndian>(*trans_id)?;
                 stream.write_i32::<LittleEndian>(*result)?;
                 stream.write_u32::<LittleEndian>(*player_id)?;
-                stream.write_u32::<LittleEndian>(*explorer)?;
+                stream.write_i32::<LittleEndian>(*explorer)?;
                 net_io::write_utf16_str(stream, player_name)?;
                 net_io::write_utf16_str(stream, avatar_shape)?;
             }

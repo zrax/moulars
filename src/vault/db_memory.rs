@@ -14,7 +14,8 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use log::warn;
 use unicase::UniCase;
@@ -22,12 +23,16 @@ use uuid::Uuid;
 
 use crate::auth_srv::auth_hash::create_pass_hash;
 use crate::netcli::{NetResult, NetResultCode};
+use crate::vault::{VaultNode, NodeRef};
 use super::db_interface::{DbInterface, AccountInfo, PlayerInfo};
 
 // An ephemeral vault backend that vanishes once the server exits.
 pub struct DbMemory {
     accounts: HashMap<UniCase<String>, AccountInfo>,
     players: HashMap<Uuid, Vec<PlayerInfo>>,
+    vault: HashMap<u32, VaultNode>,
+    node_refs: HashSet<NodeRef>,
+    node_index: AtomicU32,
 }
 
 impl DbMemory {
@@ -35,6 +40,9 @@ impl DbMemory {
         Self {
             accounts: HashMap::new(),
             players: HashMap::new(),
+            vault: HashMap::new(),
+            node_refs: HashSet::new(),
+            node_index: AtomicU32::new(1000),
         }
     }
 }
@@ -65,5 +73,46 @@ impl DbInterface for DbMemory {
         } else {
             Ok(Vec::new())
         }
+    }
+
+    fn count_players(&mut self, account_id: &Uuid) -> NetResult<u64> {
+        if let Some(players) = self.players.get(account_id) {
+            Ok(players.len() as u64)
+        } else {
+            Ok(0)
+        }
+    }
+
+    fn get_player_by_name(&mut self, player_name: &str) -> NetResult<Option<PlayerInfo>> {
+        for player_list in self.players.values() {
+            for player in player_list {
+                if player.player_name == player_name {
+                    return Ok(Some(player.clone()));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    fn create_player(&mut self, account_id: &Uuid, player: PlayerInfo) -> NetResult<()> {
+        self.players.entry(*account_id)
+                .or_insert(Vec::new())
+                .push(player);
+        Ok(())
+    }
+
+    fn create_node(&mut self, node: VaultNode) -> NetResult<u32> {
+        let node_id = self.node_index.fetch_add(1, Ordering::Relaxed);
+        if self.vault.insert(node_id, node).is_some() {
+            warn!("Created duplicate node ID {}!", node_id);
+            Err(NetResultCode::NetInternalError)
+        } else {
+            Ok(node_id)
+        }
+    }
+
+    fn ref_node(&mut self, parent: u32, child: u32, owner: u32) -> NetResult<()> {
+        self.node_refs.insert(NodeRef::new(parent, child, owner));
+        Ok(())
     }
 }

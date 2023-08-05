@@ -20,6 +20,7 @@ use byteorder::{LittleEndian, WriteBytesExt};
 
 use crate::plasma::StreamWrite;
 
+#[derive(Eq, PartialEq, Hash)]
 pub struct NodeRef {
     parent_id: u32,
     child_id: u32,

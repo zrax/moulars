@@ -361,6 +361,51 @@ async fn fetch_account_players(stream: &mut CryptTcpStream, trans_id: u32,
     Some(NetResultCode::NetSuccess)
 }
 
+async fn player_create(stream: &mut CryptTcpStream, trans_id: u32,
+                       player_name: &str, avatar_shape: &str,
+                       state: &ClientState, vault: &VaultServer) -> bool
+{
+    let account_id = match state.account_id {
+        Some(uuid) => uuid,
+        None => {
+            warn!("{} cannot create player: Not logged in", stream.peer_addr().unwrap());
+            let reply = AuthToCli::player_create_error(trans_id,
+                                        NetResultCode::NetAuthenticationFailed);
+            return send_message(stream, reply).await;
+        }
+    };
+
+    // Disallow arbitrary choices of avatar shape...  Special models can
+    // be set by admins when appropriate.
+    if avatar_shape != "male" && avatar_shape != "female" {
+        warn!("Client {} attempted to use avatar shape '{}'",
+              stream.peer_addr().unwrap(), avatar_shape);
+        let reply = AuthToCli::player_create_error(trans_id,
+                                    NetResultCode::NetInvalidParameter);
+        return send_message(stream, reply).await;
+    }
+
+    let player_info = match vault.create_player(&account_id, player_name, avatar_shape).await {
+        Ok(player_info) => player_info,
+        Err(result) => {
+            let reply = AuthToCli::player_create_error(trans_id, result);
+            return send_message(stream, reply).await;
+        }
+    };
+
+    todo!("Initialize various player vault nodes...");
+
+    let reply = AuthToCli::PlayerCreateReply {
+        trans_id,
+        result: NetResultCode::NetSuccess as i32,
+        player_id: player_info.player_id,
+        explorer: player_info.explorer,
+        player_name: player_info.player_name,
+        avatar_shape: player_info.avatar_shape,
+    };
+    send_message(stream, reply).await
+}
+
 struct ClientState {
     server_challenge: u32,
     account_id: Option<Uuid>,
@@ -497,8 +542,11 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
             Ok(CliToAuth::PlayerDeleteRequest { .. }) => {
                 todo!()
             }
-            Ok(CliToAuth::PlayerCreateRequest { .. }) => {
-                todo!()
+            Ok(CliToAuth::PlayerCreateRequest { trans_id, player_name, avatar_shape, .. }) => {
+                if !player_create(stream.get_mut(), trans_id, &player_name,
+                                  &avatar_shape, &state, vault.as_ref()).await {
+                    return;
+                }
             }
             Ok(CliToAuth::UpgradeVisitorRequest { trans_id, .. }) => {
                 let reply = AuthToCli::UpgradeVisitorReply {

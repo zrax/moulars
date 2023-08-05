@@ -26,4 +26,4 @@ mod server;
 pub use server::VaultServer;
 
 mod vault_node;
-pub use vault_node::VaultNode;
+pub use vault_node::{VaultNode, NodeType, StandardNode};

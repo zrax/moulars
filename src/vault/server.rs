@@ -25,13 +25,15 @@ use crate::netcli::{NetResult, NetResultCode};
 use super::db_interface::{DbInterface, AccountInfo, PlayerInfo};
 use super::db_memory::DbMemory;
 use super::messages::VaultMessage;
+use super::VaultNode;
 
 pub struct VaultServer {
     msg_send: mpsc::Sender<VaultMessage>,
 }
 
-fn check_send<T>(sender: oneshot::Sender<NetResult<T>>, reply: NetResult<T>)
-{
+const MAX_PLAYERS: u64 = 5;
+
+fn check_send<T>(sender: oneshot::Sender<NetResult<T>>, reply: NetResult<T>) {
     match sender.send(reply) {
         Ok(()) => (),
         Err(_) => warn!("Failed to send vault reply to client"),
@@ -47,6 +49,43 @@ fn process_vault_message(msg: VaultMessage, db: &mut Box<dyn DbInterface>) {
         VaultMessage::GetPlayers { account_id, response_send } => {
             let reply = db.get_players(&account_id);
             check_send(response_send, reply);
+        }
+        VaultMessage::CreatePlayer { account_id, player_name, avatar_shape,
+                                     response_send } => {
+            match db.get_player_by_name(&player_name) {
+                Ok(None) => (),
+                Ok(Some(_)) => {
+                    return check_send(response_send, Err(NetResultCode::NetPlayerAlreadyExists));
+                }
+                Err(err) => return check_send(response_send, Err(err)),
+            }
+            match db.count_players(&account_id) {
+                Ok(count) if count >= MAX_PLAYERS => {
+                    return check_send(response_send, Err(NetResultCode::NetMaxPlayersOnAcct));
+                }
+                Ok(_) => (),
+                Err(err) => return check_send(response_send, Err(err)),
+            }
+
+            let node = VaultNode::new_player(&account_id, &player_name, &avatar_shape, 1);
+            let player_id = match db.create_node(node) {
+                Ok(node_id) => node_id,
+                Err(err) => return check_send(response_send, Err(err)),
+            };
+
+            // The rest of the player initialization is handled by the Auth
+            // client task, so we don't hold off the Vault task too long.
+
+            let player = PlayerInfo {
+                player_id,
+                player_name,
+                avatar_shape,
+                explorer: 1
+            };
+            if let Err(err) = db.create_player(&account_id, player.clone()) {
+                return check_send(response_send, Err(err));
+            }
+            check_send(response_send, Ok(player));
         }
     }
 }
@@ -99,6 +138,19 @@ impl VaultServer {
         let (response_send, response_recv) = oneshot::channel();
         let request = VaultMessage::GetPlayers {
             account_id: *account_id,
+            response_send
+        };
+        self.request(request, response_recv).await
+    }
+
+    pub async fn create_player(&self, account_id: &Uuid, player_name: &str,
+                               avatar_shape: &str) -> NetResult<PlayerInfo>
+    {
+        let (response_send, response_recv) = oneshot::channel();
+        let request = VaultMessage::CreatePlayer {
+            account_id: *account_id,
+            player_name: player_name.to_string(),
+            avatar_shape: avatar_shape.to_string(),
             response_send
         };
         self.request(request, response_recv).await
