@@ -18,6 +18,7 @@ use std::io::{BufRead, Write, Result};
 use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use paste::paste;
 use uuid::Uuid;
 
 use crate::general_error;
@@ -83,135 +84,86 @@ pub struct VaultNode {
     blob_2: Vec<u8>,
 }
 
+macro_rules! node_field {
+    ($field_name:ident, String) => {
+        paste! {
+            pub fn $field_name(&self) -> &String {
+                &self.$field_name
+            }
+            pub fn [<set_ $field_name>](&mut self, value: &str) {
+                self.fields |= [<FIELD_ $field_name:upper>];
+                self.$field_name = value.to_string();
+            }
+        }
+    };
+    ($field_name:ident, Uuid) => {
+        paste! {
+            pub fn $field_name(&self) -> &Uuid {
+                &self.$field_name
+            }
+            pub fn [<set_ $field_name>](&mut self, value: &Uuid) {
+                self.fields |= [<FIELD_ $field_name:upper>];
+                self.$field_name = *value;
+            }
+        }
+    };
+    ($field_name:ident, Vec<u8>) => {
+        paste! {
+            pub fn $field_name(&self) -> &Vec<u8> {
+                &self.$field_name
+            }
+            pub fn [<set_ $field_name>](&mut self, value: &[u8]) {
+                self.fields |= [<FIELD_ $field_name:upper>];
+                self.$field_name = value.to_vec();
+            }
+        }
+    };
+    ($field_name:ident, $value_type:ty) => {
+        paste! {
+            pub fn $field_name(&self) -> $value_type {
+                self.$field_name
+            }
+            pub fn [<set_ $field_name>](&mut self, value: $value_type) {
+                self.fields |= [<FIELD_ $field_name:upper>];
+                self.$field_name = value;
+            }
+        }
+    };
+}
+
 impl VaultNode {
-    pub fn set_node_id(&mut self, value: u32) {
-        self.fields |= FIELD_NODE_IDX;
-        self.node_id = value;
-    }
-    pub fn set_create_time(&mut self, value: u32) {
-        self.fields |= FIELD_CREATE_TIME;
-        self.create_time = value;
-    }
-    pub fn set_modify_time(&mut self, value: u32) {
-        self.fields |= FIELD_MODIFY_TIME;
-        self.modify_time = value;
-    }
-    pub fn set_create_age_name(&mut self, value: &str) {
-        self.fields |= FIELD_CREATE_AGE_NAME;
-        self.create_age_name = value.to_string();
-    }
-    pub fn set_create_age_uuid(&mut self, value: &Uuid) {
-        self.fields |= FIELD_CREATE_AGE_UUID;
-        self.create_age_uuid = *value;
-    }
-    pub fn set_creator_uuid(&mut self, value: &Uuid) {
-        self.fields |= FIELD_CREATOR_UUID;
-        self.creator_uuid = *value;
-    }
-    pub fn set_creator_id(&mut self, value: u32) {
-        self.fields |= FIELD_CREATOR_IDX;
-        self.creator_id = value;
-    }
-    pub fn set_node_type(&mut self, value: i32) {
-        self.fields |= FIELD_NODE_TYPE;
-        self.node_type = value;
-    }
-    pub fn set_int32_1(&mut self, value: i32) {
-        self.fields |= FIELD_INT32_1;
-        self.int32_1 = value;
-    }
-    pub fn set_int32_2(&mut self, value: i32) {
-        self.fields |= FIELD_INT32_2;
-        self.int32_2 = value;
-    }
-    pub fn set_int32_3(&mut self, value: i32) {
-        self.fields |= FIELD_INT32_3;
-        self.int32_3 = value;
-    }
-    pub fn set_int32_4(&mut self, value: i32) {
-        self.fields |= FIELD_INT32_4;
-        self.int32_4 = value;
-    }
-    pub fn set_uint32_1(&mut self, value: u32) {
-        self.fields |= FIELD_UINT32_1;
-        self.uint32_1 = value;
-    }
-    pub fn set_uint32_2(&mut self, value: u32) {
-        self.fields |= FIELD_UINT32_2;
-        self.uint32_2 = value;
-    }
-    pub fn set_uint32_3(&mut self, value: u32) {
-        self.fields |= FIELD_UINT32_3;
-        self.uint32_3 = value;
-    }
-    pub fn set_uint32_4(&mut self, value: u32) {
-        self.fields |= FIELD_UINT32_4;
-        self.uint32_4 = value;
-    }
-    pub fn set_uuid_1(&mut self, value: &Uuid) {
-        self.fields |= FIELD_UUID_1;
-        self.uuid_1 = *value;
-    }
-    pub fn set_uuid_2(&mut self, value: &Uuid) {
-        self.fields |= FIELD_UUID_2;
-        self.uuid_2 = *value;
-    }
-    pub fn set_uuid_3(&mut self, value: &Uuid) {
-        self.fields |= FIELD_UUID_3;
-        self.uuid_3 = *value;
-    }
-    pub fn set_uuid_4(&mut self, value: &Uuid) {
-        self.fields |= FIELD_UUID_4;
-        self.uuid_4 = *value;
-    }
-    pub fn set_string64_1(&mut self, value: &str) {
-        self.fields |= FIELD_STRING64_1;
-        self.string64_1 = value.to_string();
-    }
-    pub fn set_string64_2(&mut self, value: &str) {
-        self.fields |= FIELD_STRING64_2;
-        self.string64_2 = value.to_string();
-    }
-    pub fn set_string64_3(&mut self, value: &str) {
-        self.fields |= FIELD_STRING64_3;
-        self.string64_3 = value.to_string();
-    }
-    pub fn set_string64_4(&mut self, value: &str) {
-        self.fields |= FIELD_STRING64_4;
-        self.string64_4 = value.to_string();
-    }
-    pub fn set_string64_5(&mut self, value: &str) {
-        self.fields |= FIELD_STRING64_5;
-        self.string64_5 = value.to_string();
-    }
-    pub fn set_string64_6(&mut self, value: &str) {
-        self.fields |= FIELD_STRING64_6;
-        self.string64_6 = value.to_string();
-    }
-    pub fn set_istring64_1(&mut self, value: &str) {
-        self.fields |= FIELD_ISTRING64_1;
-        self.istring64_1 = value.to_string();
-    }
-    pub fn set_istring64_2(&mut self, value: &str) {
-        self.fields |= FIELD_ISTRING64_2;
-        self.istring64_2 = value.to_string();
-    }
-    pub fn set_text_1(&mut self, value: &str) {
-        self.fields |= FIELD_TEXT_1;
-        self.text_1 = value.to_string();
-    }
-    pub fn set_text_2(&mut self, value: &str) {
-        self.fields |= FIELD_TEXT_2;
-        self.text_2 = value.to_string();
-    }
-    pub fn set_blob_1(&mut self, value: &[u8]) {
-        self.fields |= FIELD_BLOB_1;
-        self.blob_1 = value.to_vec();
-    }
-    pub fn set_blob_2(&mut self, value: &[u8]) {
-        self.fields |= FIELD_BLOB_2;
-        self.blob_2 = value.to_vec();
-    }
+    node_field!(node_id, u32);
+    node_field!(create_time, u32);
+    node_field!(modify_time, u32);
+    node_field!(create_age_name, String);
+    node_field!(create_age_uuid, Uuid);
+    node_field!(creator_uuid, Uuid);
+    node_field!(creator_id, u32);
+    node_field!(node_type, i32);
+    node_field!(int32_1, i32);
+    node_field!(int32_2, i32);
+    node_field!(int32_3, i32);
+    node_field!(int32_4, i32);
+    node_field!(uint32_1, u32);
+    node_field!(uint32_2, u32);
+    node_field!(uint32_3, u32);
+    node_field!(uint32_4, u32);
+    node_field!(uuid_1, Uuid);
+    node_field!(uuid_2, Uuid);
+    node_field!(uuid_3, Uuid);
+    node_field!(uuid_4, Uuid);
+    node_field!(string64_1, String);
+    node_field!(string64_2, String);
+    node_field!(string64_3, String);
+    node_field!(string64_4, String);
+    node_field!(string64_5, String);
+    node_field!(string64_6, String);
+    node_field!(istring64_1, String);
+    node_field!(istring64_2, String);
+    node_field!(text_1, String);
+    node_field!(text_2, String);
+    node_field!(blob_1, Vec<u8>);
+    node_field!(blob_2, Vec<u8>);
 
     pub fn new_player(account_id: &Uuid, player_name: &str, avatar_shape: &str,
                       explorer: i32) -> Self
@@ -258,6 +210,12 @@ impl VaultNode {
         node.set_creator_id(player_id);
         node.set_uint32_1(player_id);
         node.set_istring64_1(player_name);
+        node
+    }
+
+    pub fn new_system() -> Self {
+        let mut node = Self::default();
+        node.set_node_type(NodeType::System as i32);
         node
     }
 
@@ -338,13 +296,13 @@ impl VaultNode {
     }
 }
 
-const FIELD_NODE_IDX: u64           = 1 << 0;
+const FIELD_NODE_ID: u64            = 1 << 0;
 const FIELD_CREATE_TIME: u64        = 1 << 1;
 const FIELD_MODIFY_TIME: u64        = 1 << 2;
 const FIELD_CREATE_AGE_NAME: u64    = 1 << 3;
 const FIELD_CREATE_AGE_UUID: u64    = 1 << 4;
 const FIELD_CREATOR_UUID: u64       = 1 << 5;
-const FIELD_CREATOR_IDX: u64        = 1 << 6;
+const FIELD_CREATOR_ID: u64         = 1 << 6;
 const FIELD_NODE_TYPE: u64          = 1 << 7;
 const FIELD_INT32_1: u64            = 1 << 8;
 const FIELD_INT32_2: u64            = 1 << 9;
@@ -457,13 +415,13 @@ impl StreamRead for VaultNode {
     {
         let fields = stream.read_u64::<LittleEndian>()?;
 
-        let node_id = f_read_u32!(stream, fields, FIELD_NODE_IDX);
+        let node_id = f_read_u32!(stream, fields, FIELD_NODE_ID);
         let create_time = f_read_u32!(stream, fields, FIELD_CREATE_TIME);
         let modify_time = f_read_u32!(stream, fields, FIELD_MODIFY_TIME);
         let create_age_name = f_read_string!(stream, fields, FIELD_CREATE_AGE_NAME);
         let create_age_uuid = f_read_uuid!(stream, fields, FIELD_CREATE_AGE_UUID);
         let creator_uuid = f_read_uuid!(stream, fields, FIELD_CREATOR_UUID);
-        let creator_id = f_read_u32!(stream, fields, FIELD_CREATOR_IDX);
+        let creator_id = f_read_u32!(stream, fields, FIELD_CREATOR_ID);
         let node_type = f_read_i32!(stream, fields, FIELD_NODE_TYPE);
         let int32_1 = f_read_i32!(stream, fields, FIELD_INT32_1);
         let int32_2 = f_read_i32!(stream, fields, FIELD_INT32_2);
@@ -552,13 +510,13 @@ impl StreamWrite for VaultNode {
     fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         stream.write_u64::<LittleEndian>(self.fields)?;
 
-        f_write_u32!(stream, self.fields, FIELD_NODE_IDX, self.node_id);
+        f_write_u32!(stream, self.fields, FIELD_NODE_ID, self.node_id);
         f_write_u32!(stream, self.fields, FIELD_CREATE_TIME, self.create_time);
         f_write_u32!(stream, self.fields, FIELD_MODIFY_TIME, self.modify_time);
         f_write_string!(stream, self.fields, FIELD_CREATE_AGE_NAME, self.create_age_name);
         f_write_uuid!(stream, self.fields, FIELD_CREATE_AGE_UUID, self.create_age_uuid);
         f_write_uuid!(stream, self.fields, FIELD_CREATOR_UUID, self.creator_uuid);
-        f_write_u32!(stream, self.fields, FIELD_CREATOR_IDX, self.creator_id);
+        f_write_u32!(stream, self.fields, FIELD_CREATOR_ID, self.creator_id);
         f_write_i32!(stream, self.fields, FIELD_NODE_TYPE, self.node_type);
         f_write_i32!(stream, self.fields, FIELD_INT32_1, self.int32_1);
         f_write_i32!(stream, self.fields, FIELD_INT32_2, self.int32_2);

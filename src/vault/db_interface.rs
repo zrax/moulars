@@ -31,6 +31,7 @@ pub trait DbInterface: Sync + Send {
     fn add_game_server(&mut self, server: GameServer) -> NetResult<()>;
 
     fn create_node(&mut self, node: Box<VaultNode>) -> NetResult<u32>;
+    fn get_system_node(&mut self) -> NetResult<u32>;
     fn ref_node(&mut self, parent: u32, child: u32, owner: u32) -> NetResult<()>;
 }
 

@@ -92,7 +92,8 @@ pub async fn create_player_nodes(account_id: &Uuid, player: &PlayerInfo,
     // TODO: Add the new player to a 'Hood
     // TODO: Get the public city age
 
-    /* TODO: vault.ref_node(age_id, system_node, 0).await?; */
+    let system_node = vault.get_system_node().await?;
+    vault.ref_node(player.player_id, system_node, 0).await?;
     vault.ref_node(player.player_id, player_info, 0).await?;
     vault.ref_node(player.player_id, buddy_list, 0).await?;
     vault.ref_node(player.player_id, ignore_list, 0).await?;
@@ -170,7 +171,8 @@ pub async fn create_age_nodes(age_uuid: &Uuid, parent_uuid: Option<&Uuid>,
                                             StandardNode::ChildAgesFolder);
     let child_ages = vault.create_node(node).await?;
 
-    /* TODO: vault.ref_node(age_id, system_node, 0).await?; */
+    let system_node = vault.get_system_node().await?;
+    vault.ref_node(age_id, system_node, 0).await?;
     vault.ref_node(age_id, chronicle_folder, 0).await?;
     vault.ref_node(age_id, people_list, 0).await?;
     vault.ref_node(age_id, sub_ages, 0).await?;

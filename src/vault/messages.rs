@@ -41,7 +41,12 @@ pub(super) enum VaultMessage {
         response_send: oneshot::Sender<NetResult<()>>,
     },
     CreateNode {
+        // VaultNode structs are huge, so we put this on the heap to avoid
+        // bloating the whole VaultMessage enum.
         node: Box<VaultNode>,
+        response_send: oneshot::Sender<NetResult<u32>>,
+    },
+    GetSystemNode {
         response_send: oneshot::Sender<NetResult<u32>>,
     },
     RefNode {

@@ -16,7 +16,7 @@
 
 use std::sync::Arc;
 
-use log::{warn, error};
+use log::{info, warn, error};
 use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
@@ -26,7 +26,7 @@ use crate::sdl::DescriptorDb;
 use super::db_interface::{DbInterface, AccountInfo, PlayerInfo, GameServer};
 use super::db_memory::DbMemory;
 use super::messages::VaultMessage;
-use super::VaultNode;
+use super::{VaultNode, StandardNode};
 
 pub struct VaultServer {
     msg_send: mpsc::Sender<VaultMessage>,
@@ -97,6 +97,10 @@ fn process_vault_message(msg: VaultMessage, db: &mut Box<dyn DbInterface>) {
             let reply = db.create_node(node);
             check_send(response_send, reply);
         }
+        VaultMessage::GetSystemNode { response_send } => {
+            let reply = db.get_system_node();
+            check_send(response_send, reply);
+        }
         VaultMessage::RefNode { parent, child, owner, response_send } => {
             let reply = db.ref_node(parent, child, owner);
             check_send(response_send, reply);
@@ -116,6 +120,14 @@ impl VaultServer {
                 VaultDbBackend::Sqlite => todo!(),
                 VaultDbBackend::Postgres => todo!(),
             };
+
+            if init_vault(&mut db).is_err() {
+                error!("Failed to initialize vault.");
+                std::process::exit(1);
+            }
+
+            // TODO: Check and update Global SDL
+            // TODO: Check and initialize static ages
 
             while let Some(msg) = msg_recv.recv().await {
                 process_vault_message(msg, &mut db);
@@ -189,9 +201,39 @@ impl VaultServer {
         self.request(request, response_recv).await
     }
 
+    pub async fn get_system_node(&self) -> NetResult<u32> {
+        let (response_send, response_recv) = oneshot::channel();
+        let request = VaultMessage::GetSystemNode { response_send };
+        self.request(request, response_recv).await
+    }
+
     pub async fn ref_node(&self, parent: u32, child: u32, owner: u32) -> NetResult<()> {
         let (response_send, response_recv) = oneshot::channel();
         let request = VaultMessage::RefNode { parent, child, owner, response_send };
         self.request(request, response_recv).await
     }
+}
+
+fn init_vault(db: &mut Box<dyn DbInterface>) -> NetResult<()> {
+    if let Err(err) = db.get_system_node() {
+        if err != NetResultCode::NetVaultNodeNotFound {
+            warn!("Failed to fetch system node");
+            return Err(err);
+        }
+
+        info!("Initializing empty Vault database");
+
+        let node = VaultNode::new_system();
+        let system_node = db.create_node(Box::new(node))?;
+
+        let node = VaultNode::new_folder(&Uuid::nil(), 0, StandardNode::GlobalInboxFolder);
+        let global_inbox = db.create_node(Box::new(node))?;
+        db.ref_node(system_node, global_inbox, 0)?;
+
+        let node = VaultNode::new_player_info_list(&Uuid::nil(), 0,
+                        StandardNode::AllPlayersFolder);
+        let _ = db.create_node(Box::new(node))?;
+    }
+
+    Ok(())
 }

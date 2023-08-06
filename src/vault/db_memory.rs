@@ -23,7 +23,7 @@ use uuid::Uuid;
 
 use crate::auth_srv::auth_hash::create_pass_hash;
 use crate::netcli::{NetResult, NetResultCode};
-use crate::vault::{VaultNode, NodeRef};
+use crate::vault::{VaultNode, NodeType, NodeRef};
 use super::db_interface::{DbInterface, AccountInfo, PlayerInfo, GameServer};
 
 // An ephemeral vault backend that vanishes once the server exits.
@@ -123,6 +123,15 @@ impl DbInterface for DbMemory {
         } else {
             Ok(node_id)
         }
+    }
+
+    fn get_system_node(&mut self) -> NetResult<u32> {
+        for (node_id, node) in &self.vault {
+            if node.node_type() == NodeType::System as i32 {
+                return Ok(*node_id);
+            }
+        }
+        Err(NetResultCode::NetVaultNodeNotFound)
     }
 
     fn ref_node(&mut self, parent: u32, child: u32, owner: u32) -> NetResult<()> {
