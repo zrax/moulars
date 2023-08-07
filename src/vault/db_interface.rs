@@ -27,7 +27,7 @@ pub trait DbInterface: Sync + Send {
 
     fn get_players(&self, account_id: &Uuid) -> NetResult<Vec<PlayerInfo>>;
     fn count_players(&self, account_id: &Uuid) -> NetResult<u64>;
-    fn get_player_by_name(&self, player_name: &str) -> NetResult<Option<PlayerInfo>>;
+    fn player_exists(&self, player_name: &str) -> NetResult<bool>;
     fn create_player(&mut self, account_id: &Uuid, player: PlayerInfo) -> NetResult<()>;
 
     fn add_game_server(&mut self, server: GameServer) -> NetResult<()>;

@@ -88,15 +88,13 @@ impl DbInterface for DbMemory {
         }
     }
 
-    fn get_player_by_name(&self, player_name: &str) -> NetResult<Option<PlayerInfo>> {
-        for player_list in self.players.values() {
-            for player in player_list {
-                if player.player_name == player_name {
-                    return Ok(Some(player.clone()));
-                }
-            }
-        }
-        Ok(None)
+    fn player_exists(&self, player_name: &str) -> NetResult<bool> {
+        let player_name_ci = UniCase::new(player_name);
+        Ok(self.players.iter().any(|(_, player_list)| {
+            player_list.iter().any(|player| {
+                UniCase::new(&player.player_name) == player_name_ci
+            })
+        }))
     }
 
     fn create_player(&mut self, account_id: &Uuid, player: PlayerInfo) -> NetResult<()> {

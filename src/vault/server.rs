@@ -54,9 +54,9 @@ fn process_vault_message(msg: VaultMessage, db: &mut Box<dyn DbInterface>) {
         }
         VaultMessage::CreatePlayer { account_id, player_name, avatar_shape,
                                      response_send } => {
-            match db.get_player_by_name(&player_name) {
-                Ok(None) => (),
-                Ok(Some(_)) => {
+            match db.player_exists(&player_name) {
+                Ok(false) => (),
+                Ok(true) => {
                     return check_send(response_send, Err(NetResultCode::NetPlayerAlreadyExists));
                 }
                 Err(err) => return check_send(response_send, Err(err)),
