@@ -69,24 +69,11 @@ fn process_vault_message(msg: VaultMessage, db: &mut Box<dyn DbInterface>) {
                 Err(err) => return check_send(response_send, Err(err)),
             }
 
-            let all_players = match db.get_all_players_node() {
-                Ok(node_id) => node_id,
-                Err(err) => {
-                    warn!("Failed to get All Players Folder");
-                    return check_send(response_send, Err(err));
-                }
-            };
-
             let node = VaultNode::new_player(&account_id, &player_name, &avatar_shape, 1);
             let player_id = match db.create_node(Arc::new(node)) {
                 Ok(node_id) => node_id,
                 Err(err) => return check_send(response_send, Err(err)),
             };
-
-            // Add the player to the All Players folder
-            if let Err(err) = db.ref_node(all_players, player_id, 0) {
-                return check_send(response_send, Err(err));
-            }
 
             // The rest of the player initialization is handled by the Auth
             // client task, so we don't hold off the Vault task too long.
@@ -116,6 +103,10 @@ fn process_vault_message(msg: VaultMessage, db: &mut Box<dyn DbInterface>) {
         }
         VaultMessage::GetSystemNode { response_send } => {
             let reply = db.get_system_node();
+            check_send(response_send, reply);
+        }
+        VaultMessage::GetAllPlayersNode { response_send } => {
+            let reply = db.get_all_players_node();
             check_send(response_send, reply);
         }
         VaultMessage::RefNode { parent, child, owner, response_send } => {
@@ -227,6 +218,12 @@ impl VaultServer {
     pub async fn get_system_node(&self) -> NetResult<u32> {
         let (response_send, response_recv) = oneshot::channel();
         let request = VaultMessage::GetSystemNode { response_send };
+        self.request(request, response_recv).await
+    }
+
+    pub async fn get_all_players_node(&self) -> NetResult<u32> {
+        let (response_send, response_recv) = oneshot::channel();
+        let request = VaultMessage::GetAllPlayersNode { response_send };
         self.request(request, response_recv).await
     }
 

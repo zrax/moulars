@@ -114,6 +114,10 @@ pub async fn create_player_nodes(account_id: &Uuid, player: &PlayerInfo,
     /* TODO vault.ref_node(city_link, city_info, 0).await?; */
     vault.ref_node(relto_id, owned_ages, 0).await?;
 
+    // Add the player to the All Players folder
+    let all_players = vault.get_all_players_node().await?;
+    vault.ref_node(all_players, player_info, 0).await?;
+
     Ok(())
 }
 

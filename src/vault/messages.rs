@@ -53,6 +53,9 @@ pub(super) enum VaultMessage {
     GetSystemNode {
         response_send: oneshot::Sender<NetResult<u32>>,
     },
+    GetAllPlayersNode {
+        response_send: oneshot::Sender<NetResult<u32>>,
+    },
     RefNode {
         parent: u32,
         child: u32,

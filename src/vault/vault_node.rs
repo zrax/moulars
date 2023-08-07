@@ -46,7 +46,7 @@ pub enum StandardNode {
     GlobalInboxFolder, ChildAgesFolder, GameScoresFolder,
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct VaultNode {
     fields: u64,
 

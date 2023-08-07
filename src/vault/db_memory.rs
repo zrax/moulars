@@ -118,7 +118,9 @@ impl DbInterface for DbMemory {
 
     fn create_node(&mut self, node: Arc<VaultNode>) -> NetResult<u32> {
         let node_id = self.node_index.fetch_add(1, Ordering::Relaxed);
-        if self.vault.insert(node_id, node).is_some() {
+        let mut node = (*node).clone();
+        node.set_node_id(node_id);
+        if self.vault.insert(node_id, Arc::new(node)).is_some() {
             warn!("Created duplicate node ID {}!", node_id);
             Err(NetResultCode::NetInternalError)
         } else {
