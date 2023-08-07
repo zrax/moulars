@@ -69,11 +69,24 @@ fn process_vault_message(msg: VaultMessage, db: &mut Box<dyn DbInterface>) {
                 Err(err) => return check_send(response_send, Err(err)),
             }
 
+            let all_players = match db.get_all_players_node() {
+                Ok(node_id) => node_id,
+                Err(err) => {
+                    warn!("Failed to get All Players Folder");
+                    return check_send(response_send, Err(err));
+                }
+            };
+
             let node = VaultNode::new_player(&account_id, &player_name, &avatar_shape, 1);
-            let player_id = match db.create_node(Box::new(node)) {
+            let player_id = match db.create_node(Arc::new(node)) {
                 Ok(node_id) => node_id,
                 Err(err) => return check_send(response_send, Err(err)),
             };
+
+            // Add the player to the All Players folder
+            if let Err(err) = db.ref_node(all_players, player_id, 0) {
+                return check_send(response_send, Err(err));
+            }
 
             // The rest of the player initialization is handled by the Auth
             // client task, so we don't hold off the Vault task too long.
@@ -95,6 +108,10 @@ fn process_vault_message(msg: VaultMessage, db: &mut Box<dyn DbInterface>) {
         }
         VaultMessage::CreateNode { node, response_send } => {
             let reply = db.create_node(node);
+            check_send(response_send, reply);
+        }
+        VaultMessage::FetchNode { node_id, response_send } => {
+            let reply = db.fetch_node(node_id);
             check_send(response_send, reply);
         }
         VaultMessage::GetSystemNode { response_send } => {
@@ -195,9 +212,15 @@ impl VaultServer {
     pub async fn create_node(&self, node: VaultNode) -> NetResult<u32> {
         let (response_send, response_recv) = oneshot::channel();
         let request = VaultMessage::CreateNode {
-            node: Box::new(node),
+            node: Arc::new(node),
             response_send
         };
+        self.request(request, response_recv).await
+    }
+
+    pub async fn fetch_node(&self, node_id: u32) -> NetResult<Arc<VaultNode>> {
+        let (response_send, response_recv) = oneshot::channel();
+        let request = VaultMessage::FetchNode { node_id, response_send };
         self.request(request, response_recv).await
     }
 
@@ -224,15 +247,15 @@ fn init_vault(db: &mut Box<dyn DbInterface>) -> NetResult<()> {
         info!("Initializing empty Vault database");
 
         let node = VaultNode::new_system();
-        let system_node = db.create_node(Box::new(node))?;
+        let system_node = db.create_node(Arc::new(node))?;
 
         let node = VaultNode::new_folder(&Uuid::nil(), 0, StandardNode::GlobalInboxFolder);
-        let global_inbox = db.create_node(Box::new(node))?;
+        let global_inbox = db.create_node(Arc::new(node))?;
         db.ref_node(system_node, global_inbox, 0)?;
 
         let node = VaultNode::new_player_info_list(&Uuid::nil(), 0,
                         StandardNode::AllPlayersFolder);
-        let _ = db.create_node(Box::new(node))?;
+        let _ = db.create_node(Arc::new(node))?;
     }
 
     Ok(())

@@ -16,6 +16,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 
 use log::warn;
 use unicase::UniCase;
@@ -23,7 +24,7 @@ use uuid::Uuid;
 
 use crate::auth_srv::auth_hash::create_pass_hash;
 use crate::netcli::{NetResult, NetResultCode};
-use crate::vault::{VaultNode, NodeType, NodeRef};
+use crate::vault::{VaultNode, NodeType, StandardNode, NodeRef};
 use super::db_interface::{DbInterface, AccountInfo, PlayerInfo, GameServer};
 
 // An ephemeral vault backend that vanishes once the server exits.
@@ -32,7 +33,7 @@ pub struct DbMemory {
     players: HashMap<Uuid, Vec<PlayerInfo>>,
     game_servers: HashMap<u32, GameServer>,
     game_index: AtomicU32,
-    vault: HashMap<u32, VaultNode>,
+    vault: HashMap<u32, Arc<VaultNode>>,
     node_refs: HashSet<NodeRef>,
     node_index: AtomicU32,
 }
@@ -71,7 +72,7 @@ impl DbInterface for DbMemory {
         Ok(Some(account.clone()))
     }
 
-    fn get_players(&mut self, account_id: &Uuid) -> NetResult<Vec<PlayerInfo>> {
+    fn get_players(&self, account_id: &Uuid) -> NetResult<Vec<PlayerInfo>> {
         if let Some(players) = self.players.get(account_id) {
             Ok(players.clone())
         } else {
@@ -79,7 +80,7 @@ impl DbInterface for DbMemory {
         }
     }
 
-    fn count_players(&mut self, account_id: &Uuid) -> NetResult<u64> {
+    fn count_players(&self, account_id: &Uuid) -> NetResult<u64> {
         if let Some(players) = self.players.get(account_id) {
             Ok(players.len() as u64)
         } else {
@@ -87,7 +88,7 @@ impl DbInterface for DbMemory {
         }
     }
 
-    fn get_player_by_name(&mut self, player_name: &str) -> NetResult<Option<PlayerInfo>> {
+    fn get_player_by_name(&self, player_name: &str) -> NetResult<Option<PlayerInfo>> {
         for player_list in self.players.values() {
             for player in player_list {
                 if player.player_name == player_name {
@@ -115,9 +116,9 @@ impl DbInterface for DbMemory {
         }
     }
 
-    fn create_node(&mut self, node: Box<VaultNode>) -> NetResult<u32> {
+    fn create_node(&mut self, node: Arc<VaultNode>) -> NetResult<u32> {
         let node_id = self.node_index.fetch_add(1, Ordering::Relaxed);
-        if self.vault.insert(node_id, *node).is_some() {
+        if self.vault.insert(node_id, node).is_some() {
             warn!("Created duplicate node ID {}!", node_id);
             Err(NetResultCode::NetInternalError)
         } else {
@@ -125,9 +126,27 @@ impl DbInterface for DbMemory {
         }
     }
 
-    fn get_system_node(&mut self) -> NetResult<u32> {
+    fn fetch_node(&self, node_id: u32) -> NetResult<Arc<VaultNode>> {
+        match self.vault.get(&node_id) {
+            Some(node) => Ok(node.clone()),
+            None => Err(NetResultCode::NetVaultNodeNotFound),
+        }
+    }
+
+    fn get_system_node(&self) -> NetResult<u32> {
         for (node_id, node) in &self.vault {
             if node.node_type() == NodeType::System as i32 {
+                return Ok(*node_id);
+            }
+        }
+        Err(NetResultCode::NetVaultNodeNotFound)
+    }
+
+    fn get_all_players_node(&self) -> NetResult<u32> {
+        for (node_id, node) in &self.vault {
+            if node.node_type() == NodeType::PlayerInfoList as i32
+                    && node.int32_1() == StandardNode::AllPlayersFolder as i32
+            {
                 return Ok(*node_id);
             }
         }
@@ -137,5 +156,18 @@ impl DbInterface for DbMemory {
     fn ref_node(&mut self, parent: u32, child: u32, owner: u32) -> NetResult<()> {
         self.node_refs.insert(NodeRef::new(parent, child, owner));
         Ok(())
+    }
+
+    fn get_children(&self, parent: u32, recursive: bool) -> NetResult<Vec<NodeRef>> {
+        let mut children = Vec::new();
+        for node_ref in &self.node_refs {
+            if node_ref.parent() == parent {
+                children.push(*node_ref);
+                if recursive {
+                    children.extend_from_slice(&self.get_children(node_ref.child(), true)?);
+                }
+            }
+        }
+        Ok(children)
     }
 }

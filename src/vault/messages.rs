@@ -14,6 +14,8 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+use std::sync::Arc;
+
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
@@ -41,10 +43,12 @@ pub(super) enum VaultMessage {
         response_send: oneshot::Sender<NetResult<()>>,
     },
     CreateNode {
-        // VaultNode structs are huge, so we put this on the heap to avoid
-        // bloating the whole VaultMessage enum.
-        node: Box<VaultNode>,
+        node: Arc<VaultNode>,
         response_send: oneshot::Sender<NetResult<u32>>,
+    },
+    FetchNode {
+        node_id: u32,
+        response_send: oneshot::Sender<NetResult<Arc<VaultNode>>>,
     },
     GetSystemNode {
         response_send: oneshot::Sender<NetResult<u32>>,

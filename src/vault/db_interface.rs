@@ -14,25 +14,30 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+use std::sync::Arc;
+
 use uuid::Uuid;
 
 use crate::hashes::ShaDigest;
 use crate::netcli::NetResult;
-use super::VaultNode;
+use super::{VaultNode, NodeRef};
 
 pub trait DbInterface: Sync + Send {
     fn get_account(&mut self, account_name: &str) -> NetResult<Option<AccountInfo>>;
 
-    fn get_players(&mut self, account_id: &Uuid) -> NetResult<Vec<PlayerInfo>>;
-    fn count_players(&mut self, account_id: &Uuid) -> NetResult<u64>;
-    fn get_player_by_name(&mut self, player_name: &str) -> NetResult<Option<PlayerInfo>>;
+    fn get_players(&self, account_id: &Uuid) -> NetResult<Vec<PlayerInfo>>;
+    fn count_players(&self, account_id: &Uuid) -> NetResult<u64>;
+    fn get_player_by_name(&self, player_name: &str) -> NetResult<Option<PlayerInfo>>;
     fn create_player(&mut self, account_id: &Uuid, player: PlayerInfo) -> NetResult<()>;
 
     fn add_game_server(&mut self, server: GameServer) -> NetResult<()>;
 
-    fn create_node(&mut self, node: Box<VaultNode>) -> NetResult<u32>;
-    fn get_system_node(&mut self) -> NetResult<u32>;
+    fn create_node(&mut self, node: Arc<VaultNode>) -> NetResult<u32>;
+    fn fetch_node(&self, node_id: u32) -> NetResult<Arc<VaultNode>>;
+    fn get_system_node(&self) -> NetResult<u32>;
+    fn get_all_players_node(&self) -> NetResult<u32>;
     fn ref_node(&mut self, parent: u32, child: u32, owner: u32) -> NetResult<()>;
+    fn get_children(&self, parent: u32, recursive: bool) -> NetResult<Vec<NodeRef>>;
 }
 
 #[derive(Clone)]

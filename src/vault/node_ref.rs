@@ -20,7 +20,7 @@ use byteorder::{LittleEndian, WriteBytesExt};
 
 use crate::plasma::StreamWrite;
 
-#[derive(Eq, PartialEq, Hash)]
+#[derive(Eq, PartialEq, Hash, Copy, Clone)]
 pub struct NodeRef {
     parent_id: u32,
     child_id: u32,
@@ -31,6 +31,10 @@ impl NodeRef {
     pub fn new(parent_id: u32, child_id: u32, owner_id: u32) -> Self {
         Self { parent_id, child_id, owner_id }
     }
+
+    pub fn parent(&self) -> u32 { self.parent_id }
+    pub fn child(&self) -> u32 { self.child_id }
+    pub fn owner(&self) -> u32 { self.owner_id }
 }
 
 impl StreamWrite for NodeRef {
