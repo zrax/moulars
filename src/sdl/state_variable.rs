@@ -768,25 +768,41 @@ impl Variable {
         Ok(())
     }
 
-    pub fn upgrade_from(&mut self, other: &Variable, db: &DescriptorDb) -> Result<()> {
-        if self.descriptor.var_type() != other.descriptor.var_type() {
-            return Err(general_error!("Type conversion (from {:?} to {:?}) is not supported",
-                        self.descriptor.var_type(), other.descriptor.var_type()));
+    pub fn upgrade_from(&mut self, old_var: &Variable, db: &DescriptorDb) {
+        if old_var.is_default() {
+            if old_var.descriptor.default() != self.descriptor.default() {
+                warn!("{}: Default changed from {:?} to {:?}", self.descriptor.name(),
+                      old_var.descriptor.default(), self.descriptor.default());
+            }
+            // Automatically use the new default value.  This assumes we were
+            // created in a default state as well.
+            debug_assert!(self.is_default());
+            return;
         }
-        if self.descriptor.count() != other.descriptor.count() {
-            return Err(general_error!("Variable resizing (from {:?} to {:?}) is not supported",
-                       self.descriptor.count(), other.descriptor.count()));
+        if self.descriptor.var_type() != old_var.descriptor.var_type() {
+            // TODO: Support some type conversions where they make sense
+            // (e.g. Byte -> Int)
+            warn!("Type conversion (from {:?} to {:?}) is not supported.  \
+                  Reverting to defaults.",
+                  old_var.descriptor.var_type(), self.descriptor.var_type());
+            return;
+        }
+        if self.descriptor.count() != old_var.descriptor.count() {
+            // TODO: It should be allowable to resize during and upgrade, but
+            // so far no descriptors actually do this.
+            warn!("Variable resizing (from {:?} to {:?}) is not supported.  \
+                  Reverting to defaults.",
+                  old_var.descriptor.count(), self.descriptor.count());
+            return;
         }
 
-        self.values = other.values.clone();
+        self.values = old_var.values.clone();
         if let VarValues::StateDesc(values) = &mut self.values {
             for state in values {
-                if let Some(upgraded) = state.upgrade(db)? {
+                if let Some(upgraded) = state.upgrade(db) {
                     *state = upgraded;
                 }
             }
         }
-
-        Ok(())
     }
 }

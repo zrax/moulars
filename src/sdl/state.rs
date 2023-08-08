@@ -193,28 +193,28 @@ impl State {
                 .find(|var| var.descriptor().name() == var_name)
     }
 
-    pub fn upgrade(&self, db: &DescriptorDb) -> Result<Option<Self>> {
+    pub fn upgrade(&self, db: &DescriptorDb) -> Option<Self> {
         let new_desc = if let Some(desc) = db.get_latest(self.descriptor.name()) {
             desc
         } else {
             // This can't happen unless the descriptor db provided here is
             // different from the one we originally constructed this state with.
-            return Err(general_error!("Descriptor database is missing descriptors for {}",
-                       self.descriptor.name()));
+            panic!("Descriptor database is missing descriptors for {}",
+                   self.descriptor.name());
         };
         if Arc::ptr_eq(&new_desc, &self.descriptor) {
             // Already at the latest version
-            return Ok(None);
+            return None;
         }
 
         let mut new_state = Self::from_defaults(new_desc, db);
-        for simple_var in self.simple_vars.iter().chain(self.statedesc_vars.iter()) {
-            if let Some(new_var) = new_state.get_var_mut(simple_var.descriptor().name()) {
-                new_var.upgrade_from(simple_var, db)?;
+        for old_var in self.simple_vars.iter().chain(self.statedesc_vars.iter()) {
+            if let Some(new_var) = new_state.get_var_mut(old_var.descriptor().name()) {
+                new_var.upgrade_from(old_var, db);
             }
         }
 
-        Ok(Some(new_state))
+        Some(new_state)
     }
 }
 
@@ -269,7 +269,8 @@ fn setup_test_state(db: &DescriptorDb) -> Result<State> {
 fn test_blob_round_trip() -> Result<()> {
     use super::descriptor_db::TEST_DESCRIPTORS;
 
-    let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Debug).try_init();
+    let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Debug)
+                .format_timestamp(None).format_target(false).try_init();
 
     let db = DescriptorDb::from_string(TEST_DESCRIPTORS)?;
     let orig_state = setup_test_state(&db)?;
@@ -285,7 +286,8 @@ fn test_blob_round_trip() -> Result<()> {
 fn test_sdl_upgrade() -> Result<()> {
     use super::descriptor_db::TEST_DESCRIPTORS;
 
-    let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Debug).try_init();
+    let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Debug)
+                .format_timestamp(None).format_target(false).try_init();
 
     let db = DescriptorDb::from_string(TEST_DESCRIPTORS)?;
     let orig_state = setup_test_state(&db)?;
@@ -298,7 +300,7 @@ fn test_sdl_upgrade() -> Result<()> {
     assert!(!orig_var3.is_default());
     assert!(orig_var4.is_default());
 
-    let new_state = orig_state.upgrade(&db)?.expect("Upgrade didn't find a new version");
+    let new_state = orig_state.upgrade(&db).expect("Upgrade didn't find a new version");
     let new_var1 = new_state.get_var("bTestVar1").expect("Failed to get bTestVar1 variable");
     let new_var2 = new_state.get_var("bTestVar2").expect("Failed to get bTestVar2 variable");
     let new_var3 = new_state.get_var("iTestVar3").expect("Failed to get iTestVar3 variable");

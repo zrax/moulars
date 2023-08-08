@@ -140,7 +140,8 @@ macro_rules! check_var_descriptor {
 fn test_descriptors() -> Result<()> {
     use super::{VarType, VarDefault};
 
-    let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Debug).try_init();
+    let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Debug)
+                .format_timestamp(None).format_target(false).try_init();
 
     let db = DescriptorDb::from_string(TEST_DESCRIPTORS)?;
     let v1 = db.get_version("Test", 1).expect("Could not get StateDesc Test v1");
