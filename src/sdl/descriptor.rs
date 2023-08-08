@@ -83,4 +83,8 @@ impl StateDescriptor {
     pub fn name(&self) -> &String { &self.name }
     pub fn version(&self) -> u32 { self.version }
     pub fn vars(&self) -> &Vec<Arc<VarDescriptor>> { &self.vars }
+
+    pub fn get_var(&self, name: &str) -> Option<Arc<VarDescriptor>> {
+        self.vars.iter().find(|var| var.name == name).cloned()
+    }
 }

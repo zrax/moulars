@@ -26,7 +26,7 @@ use crate::plasma::safe_string::{read_safe_str, write_safe_str, StringFormat};
 use super::{DescriptorDb, StateDescriptor, VarType, Variable};
 use super::{HAS_UOID, VAR_LENGTH_IO};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct State {
     descriptor: Arc<StateDescriptor>,
     simple_vars: Vec<Variable>,
@@ -51,6 +51,8 @@ impl State {
         }
         Self { descriptor, simple_vars, statedesc_vars, object: None, flags: 0 }
     }
+
+    pub fn descriptor(&self) -> &StateDescriptor { &self.descriptor }
 
     pub fn is_default(&self) -> bool {
         self.simple_vars.iter().all(|var| var.is_default())
@@ -180,6 +182,40 @@ impl State {
 
         Ok(stream.into_inner())
     }
+
+    pub fn get_var(&self, var_name: &str) -> Option<&Variable> {
+        self.simple_vars.iter().chain(self.statedesc_vars.iter())
+                .find(|var| var.descriptor().name() == var_name)
+    }
+
+    pub fn get_var_mut(&mut self, var_name: &str) -> Option<&mut Variable> {
+        self.simple_vars.iter_mut().chain(self.statedesc_vars.iter_mut())
+                .find(|var| var.descriptor().name() == var_name)
+    }
+
+    pub fn upgrade(&self, db: &DescriptorDb) -> Result<Option<Self>> {
+        let new_desc = if let Some(desc) = db.get_latest(self.descriptor.name()) {
+            desc
+        } else {
+            // This can't happen unless the descriptor db provided here is
+            // different from the one we originally constructed this state with.
+            return Err(general_error!("Descriptor database is missing descriptors for {}",
+                       self.descriptor.name()));
+        };
+        if Arc::ptr_eq(&new_desc, &self.descriptor) {
+            // Already at the latest version
+            return Ok(None);
+        }
+
+        let mut new_state = Self::from_defaults(new_desc, db);
+        for simple_var in self.simple_vars.iter().chain(self.statedesc_vars.iter()) {
+            if let Some(new_var) = new_state.get_var_mut(simple_var.descriptor().name()) {
+                new_var.upgrade_from(simple_var, db)?;
+            }
+        }
+
+        Ok(Some(new_state))
+    }
 }
 
 pub(super) fn read_compressed_size<S>(stream: &mut S, max_hint: usize) -> Result<usize>
@@ -207,4 +243,72 @@ pub(super) fn write_compressed_size(stream: &mut dyn Write, max_hint: usize, val
     } else {
         stream.write_u32::<LittleEndian>(value as u32)
     }
+}
+
+#[cfg(test)]
+fn setup_test_state(db: &DescriptorDb) -> Result<State> {
+    let desc = db.get_version("Test", 1).expect("Could not get StateDesc Test v1");
+    let mut state = State::from_defaults(desc, db);
+    assert!(state.is_default());
+    assert!(!state.is_dirty());
+
+    state.get_var_mut("bTestVar1")
+            .expect("Could not find variable bTestVar1 in SDL state")
+            .set_bool(0, true)?;
+    state.get_var_mut("iTestVar3")
+            .expect("Could not find variable iTestVar3 in SDL state")
+            .set_int(0, 6)?;
+
+    assert!(!state.is_default());
+    assert!(state.is_dirty());
+
+    Ok(state)
+}
+
+#[test]
+fn test_blob_round_trip() -> Result<()> {
+    use super::descriptor_db::TEST_DESCRIPTORS;
+
+    let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Debug).try_init();
+
+    let db = DescriptorDb::from_string(TEST_DESCRIPTORS)?;
+    let orig_state = setup_test_state(&db)?;
+    let orig_blob = orig_state.to_blob()?;
+    let new_state = State::from_blob(&orig_blob, &db)?;
+    let new_blob = new_state.to_blob()?;
+    assert_eq!(orig_blob, new_blob);
+
+    Ok(())
+}
+
+#[test]
+fn test_sdl_upgrade() -> Result<()> {
+    use super::descriptor_db::TEST_DESCRIPTORS;
+
+    let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Debug).try_init();
+
+    let db = DescriptorDb::from_string(TEST_DESCRIPTORS)?;
+    let orig_state = setup_test_state(&db)?;
+    let orig_var1 = orig_state.get_var("bTestVar1").expect("Failed to get bTestVar1 variable");
+    let orig_var2 = orig_state.get_var("bTestVar2").expect("Failed to get bTestVar2 variable");
+    let orig_var3 = orig_state.get_var("iTestVar3").expect("Failed to get iTestVar3 variable");
+    let orig_var4 = orig_state.get_var("iTestVar4").expect("Failed to get iTestVar4 variable");
+    assert!(!orig_var1.is_default());
+    assert!(orig_var2.is_default());
+    assert!(!orig_var3.is_default());
+    assert!(orig_var4.is_default());
+
+    let new_state = orig_state.upgrade(&db)?.expect("Upgrade didn't find a new version");
+    let new_var1 = new_state.get_var("bTestVar1").expect("Failed to get bTestVar1 variable");
+    let new_var2 = new_state.get_var("bTestVar2").expect("Failed to get bTestVar2 variable");
+    let new_var3 = new_state.get_var("iTestVar3").expect("Failed to get iTestVar3 variable");
+    let new_var4 = new_state.get_var("iTestVar4").expect("Failed to get iTestVar4 variable");
+    let new_var5 = new_state.get_var("bTestVar5").expect("Failed to get bTestVar5 variable");
+    assert_eq!(orig_var1.get_bool(0)?, new_var1.get_bool(0)?);
+    assert_eq!(orig_var2.get_bool(0)?, new_var2.get_bool(0)?);
+    assert_eq!(orig_var3.get_int(0)?, new_var3.get_int(0)?);
+    assert_eq!(orig_var4.get_int(0)?, new_var4.get_int(0)?);
+    assert!(new_var5.is_default());
+
+    Ok(())
 }

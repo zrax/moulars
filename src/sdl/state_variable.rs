@@ -19,6 +19,7 @@ use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use log::{warn, error};
+use paste::paste;
 
 use crate::general_error;
 use crate::plasma::{Uoid, Creatable, UnifiedTime, Factory, StreamRead, StreamWrite};
@@ -30,12 +31,12 @@ use super::state::{State, read_compressed_size, write_compressed_size};
 use super::{DescriptorDb, StateDescriptor, VarDescriptor, VarType, VarDefault};
 use super::{HAS_NOTIFICATION_INFO, HAS_TIMESTAMP, SAME_AS_DEFAULT, HAS_DIRTY_FLAG, WANT_TIMESTAMP};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum VarValues {
     AgeTimeOfDay(usize),    // No stored value
     Bool(Vec<bool>),
     Byte(Vec<u8>),
-    Creatable(Vec<Option<Box<dyn Creatable>>>),
+    Creatable(Vec<Option<Arc<dyn Creatable>>>),
     Double(Vec<f64>),
     Float(Vec<f32>),
     Int(Vec<i32>),
@@ -53,7 +54,7 @@ enum VarValues {
     StateDesc(Vec<State>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Variable {
     descriptor: Arc<VarDescriptor>,
     values: VarValues,
@@ -85,7 +86,42 @@ macro_rules! check_default {
         if let VarValues::$val_type(values) = $values {
             values.iter().all(|value| value == &$default_value)
         } else {
-            unreachable!()
+            unreachable!("Wrong VarValues type")
+        }
+    };
+}
+
+macro_rules! var_accessors {
+    ($type_name:ident, VarValues::$value_type:ident, $real_type:ty) => {
+        paste! {
+            pub fn [<get_ $type_name>](&self, index: usize) -> Result<$real_type> {
+                match &self.values {
+                    VarValues::$value_type(values) => {
+                        if let Some(element) = values.get(index) {
+                            Ok(*element)
+                        } else {
+                            Err(general_error!("Variable index {} out of range", index))
+                        }
+                    }
+                    _ => Err(general_error!("Cannot get {} from {:?} variable",
+                             stringify!($type_name), self.descriptor.var_type()))
+                }
+            }
+            pub fn [<set_ $type_name>](&mut self, index: usize, value: $real_type) -> Result<()> {
+                match &mut self.values {
+                    VarValues::$value_type(values) => {
+                        if let Some(element) = values.get_mut(index) {
+                            *element = value;
+                            self.dirty = true;
+                            Ok(())
+                        } else {
+                            Err(general_error!("Variable index {} out of range", index))
+                        }
+                    }
+                    _ => Err(general_error!("Cannot assign {} to {:?} variable",
+                             stringify!($type_name), self.descriptor.var_type()))
+                }
+            }
         }
     };
 }
@@ -277,7 +313,12 @@ impl Variable {
         }
     }
 
+    pub fn descriptor(&self) -> &VarDescriptor { &self.descriptor }
     pub fn is_dirty(&self) -> bool { self.dirty }
+
+    var_accessors!(bool, VarValues::Bool, bool);
+    var_accessors!(byte, VarValues::Byte, u8);
+    var_accessors!(int, VarValues::Int, i32);
 
     pub fn read<S>(&mut self, stream: &mut S, db: &DescriptorDb) -> Result<()>
         where S: BufRead
@@ -341,7 +382,7 @@ impl Variable {
                     VarValues::Bool(values)
                 }
                 VarType::Byte => {
-                    let mut values = Vec::with_capacity(total_count);
+                    let mut values = vec![0; total_count];
                     stream.read_exact(values.as_mut_slice())?;
                     VarValues::Byte(values)
                 }
@@ -353,17 +394,17 @@ impl Variable {
                     VarValues::Creatable(values)
                 }
                 VarType::Double => {
-                    let mut values = Vec::with_capacity(total_count);
+                    let mut values = vec![0_f64; total_count];
                     stream.read_f64_into::<LittleEndian>(values.as_mut_slice())?;
                     VarValues::Double(values)
                 }
                 VarType::Float => {
-                    let mut values = Vec::with_capacity(total_count);
+                    let mut values = vec![0_f32; total_count];
                     stream.read_f32_into::<LittleEndian>(values.as_mut_slice())?;
                     VarValues::Float(values)
                 }
                 VarType::Int => {
-                    let mut values = Vec::with_capacity(total_count);
+                    let mut values = vec![0; total_count];
                     stream.read_i32_into::<LittleEndian>(values.as_mut_slice())?;
                     VarValues::Int(values)
                 }
@@ -425,7 +466,7 @@ impl Variable {
                     VarValues::Rgba8(values)
                 }
                 VarType::Short => {
-                    let mut values = Vec::with_capacity(total_count);
+                    let mut values = vec![0; total_count];
                     stream.read_i16_into::<LittleEndian>(values.as_mut_slice())?;
                     VarValues::Short(values)
                 }
@@ -460,7 +501,7 @@ impl Variable {
         Ok(())
     }
 
-    fn read_creatable<S>(&mut self, stream: &mut S) -> Result<Option<Box<dyn Creatable>>>
+    fn read_creatable<S>(&mut self, stream: &mut S) -> Result<Option<Arc<dyn Creatable>>>
         where S: BufRead
     {
         let class_id = stream.read_u16::<LittleEndian>()?;
@@ -477,7 +518,7 @@ impl Variable {
             warn!("Creatable 0x{:04x} was not fully parsed in SDL blob ({} of {} bytes read)",
                   class_id, creatable_stream.position(), creatable_stream.get_ref().len());
         }
-        Ok(object)
+        Ok(object.map(Arc::from))
     }
 
     fn read_statedesc<S>(&mut self, stream: &mut S, db: &DescriptorDb,
@@ -708,7 +749,7 @@ impl Variable {
     }
 
     fn write_creatable(&self, stream: &mut dyn Write,
-                       creatable: &Option<Box<dyn Creatable>>) -> Result<()>
+                       creatable: &Option<Arc<dyn Creatable>>) -> Result<()>
     {
         if let Some(creatable) = creatable {
             stream.write_u16::<LittleEndian>(creatable.class_id())?;
@@ -722,6 +763,28 @@ impl Variable {
             stream.write_all(creatable_buf.as_slice())?;
         } else {
             stream.write_u16::<LittleEndian>(ClassID::Nil as u16)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn upgrade_from(&mut self, other: &Variable, db: &DescriptorDb) -> Result<()> {
+        if self.descriptor.var_type() != other.descriptor.var_type() {
+            return Err(general_error!("Type conversion (from {:?} to {:?}) is not supported",
+                        self.descriptor.var_type(), other.descriptor.var_type()));
+        }
+        if self.descriptor.count() != other.descriptor.count() {
+            return Err(general_error!("Variable resizing (from {:?} to {:?}) is not supported",
+                       self.descriptor.count(), other.descriptor.count()));
+        }
+
+        self.values = other.values.clone();
+        if let VarValues::StateDesc(values) = &mut self.values {
+            for state in values {
+                if let Some(upgraded) = state.upgrade(db)? {
+                    *state = upgraded;
+                }
+            }
         }
 
         Ok(())

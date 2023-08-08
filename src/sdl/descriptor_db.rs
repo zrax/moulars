@@ -40,7 +40,7 @@ fn merge_descriptors(db: &mut DescriptorMap, descriptors: Vec<StateDescriptor>) 
             .entry(desc.version())
             .and_modify(|_| warn!("Duplicate descriptor found for {} version {}",
                                   desc.name(), desc.version()))
-            .or_insert(Arc::new(desc));
+            .or_insert_with(|| Arc::new(desc));
     }
 }
 
@@ -65,6 +65,15 @@ impl DescriptorDb {
         Ok(Self { descriptors })
     }
 
+    #[cfg(test)]
+    pub fn from_string(input: &str) -> Result<Self> {
+        let mut descriptors = DescriptorMap::new();
+        let stream = std::io::Cursor::new(input);
+        let mut parser = Parser::new(stream);
+        merge_descriptors(&mut descriptors, parser.parse()?);
+        Ok(Self { descriptors })
+    }
+
     pub fn get_version(&self, name: &str, version: u32) -> Option<Arc<StateDescriptor>> {
         if let Some(ver_map) = self.descriptors.get(&UniCase::new(name.to_string())) {
             ver_map.get(&version).cloned()
@@ -84,4 +93,75 @@ impl DescriptorDb {
     pub fn descriptor_names(&self) -> Vec<&str> {
         self.descriptors.keys().map(|k| k.as_str()).collect()
     }
+}
+
+#[cfg(test)]
+pub(super) const TEST_DESCRIPTORS: &str = r#"
+    STATEDESC Test
+    {
+        VERSION 1
+
+        VAR BOOL    bTestVar1[1]    DEFAULT=0
+        VAR BOOL    bTestVar2[1]    DEFAULT=1    DEFAULTOPTION=VAULT
+        VAR INT     iTestVar3[1]    DEFAULT=0    DEFAULTOPTION=VAULT
+        VAR INT     iTestVar4[1]    DEFAULT=100
+    }
+
+    STATEDESC Test
+    {
+        VERSION 2
+
+        VAR BOOL    bTestVar1[1]    DEFAULT=0
+        VAR BOOL    bTestVar2[1]    DEFAULT=1    DEFAULTOPTION=VAULT
+        VAR INT     iTestVar3[1]    DEFAULT=0    DEFAULTOPTION=VAULT
+        VAR INT     iTestVar4[1]    DEFAULT=100
+
+        VAR BYTE    bTestVar5[1]    DEFAULT=50
+    }
+
+    STATEDESC Barney
+    {
+        VERSION 1
+    }
+"#;
+
+#[cfg(test)]
+macro_rules! check_var_descriptor {
+    ($statedesc:ident, $var_name:literal, $var_type:expr, $default:expr) => {
+        let var_desc = $statedesc.get_var($var_name)
+                .expect(concat!("Could not find variable ", $var_name, " in Descriptor"));
+        assert_eq!(var_desc.name(), $var_name);
+        assert_eq!(var_desc.var_type(), &$var_type);
+        assert_eq!(var_desc.default(), Some(&$default));
+    };
+}
+
+#[test]
+fn test_descriptors() -> Result<()> {
+    use super::{VarType, VarDefault};
+
+    let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Debug).try_init();
+
+    let db = DescriptorDb::from_string(TEST_DESCRIPTORS)?;
+    let v1 = db.get_version("Test", 1).expect("Could not get StateDesc Test v1");
+    let v2 = db.get_version("Test", 2).expect("Could not get StateDesc Test v2");
+
+    assert_eq!(v1.version(), 1);
+    assert_eq!(v1.name().as_str(), "Test");
+    assert_eq!(v1.vars().len(), 4);
+    check_var_descriptor!(v1, "bTestVar1", VarType::Bool, VarDefault::Bool(false));
+    check_var_descriptor!(v1, "bTestVar2", VarType::Bool, VarDefault::Bool(true));
+    check_var_descriptor!(v1, "iTestVar3", VarType::Int, VarDefault::Int(0));
+    check_var_descriptor!(v1, "iTestVar4", VarType::Int, VarDefault::Int(100));
+
+    assert_eq!(v2.version(), 2);
+    assert_eq!(v2.name().as_str(), "Test");
+    assert_eq!(v2.vars().len(), 5);
+    check_var_descriptor!(v2, "bTestVar1", VarType::Bool, VarDefault::Bool(false));
+    check_var_descriptor!(v2, "bTestVar2", VarType::Bool, VarDefault::Bool(true));
+    check_var_descriptor!(v2, "iTestVar3", VarType::Int, VarDefault::Int(0));
+    check_var_descriptor!(v2, "iTestVar4", VarType::Int, VarDefault::Int(100));
+    check_var_descriptor!(v2, "bTestVar5", VarType::Byte, VarDefault::Byte(50));
+
+    Ok(())
 }
