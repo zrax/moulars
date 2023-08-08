@@ -16,6 +16,7 @@
 
 use std::io::{BufRead, Write, Result};
 use std::mem::size_of;
+use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use paste::paste;
@@ -90,6 +91,9 @@ macro_rules! node_field {
             pub fn $field_name(&self) -> &String {
                 &self.$field_name
             }
+            pub fn [<has_ $field_name>](&self) -> bool {
+                (self.fields & [<FIELD_ $field_name:upper>]) != 0
+            }
             pub fn [<set_ $field_name>](&mut self, value: &str) {
                 self.fields |= [<FIELD_ $field_name:upper>];
                 self.$field_name = value.to_string();
@@ -100,6 +104,9 @@ macro_rules! node_field {
         paste! {
             pub fn $field_name(&self) -> &Uuid {
                 &self.$field_name
+            }
+            pub fn [<has_ $field_name>](&self) -> bool {
+                (self.fields & [<FIELD_ $field_name:upper>]) != 0
             }
             pub fn [<set_ $field_name>](&mut self, value: &Uuid) {
                 self.fields |= [<FIELD_ $field_name:upper>];
@@ -112,6 +119,9 @@ macro_rules! node_field {
             pub fn $field_name(&self) -> &Vec<u8> {
                 &self.$field_name
             }
+            pub fn [<has_ $field_name>](&self) -> bool {
+                (self.fields & [<FIELD_ $field_name:upper>]) != 0
+            }
             pub fn [<set_ $field_name>](&mut self, value: &[u8]) {
                 self.fields |= [<FIELD_ $field_name:upper>];
                 self.$field_name = value.to_vec();
@@ -122,6 +132,9 @@ macro_rules! node_field {
         paste! {
             pub fn $field_name(&self) -> $value_type {
                 self.$field_name
+            }
+            pub fn [<has_ $field_name>](&self) -> bool {
+                (self.fields & [<FIELD_ $field_name:upper>]) != 0
             }
             pub fn [<set_ $field_name>](&mut self, value: $value_type) {
                 self.fields |= [<FIELD_ $field_name:upper>];
@@ -178,6 +191,14 @@ impl VaultNode {
         node
     }
 
+    pub fn as_player_node(self: &Arc<Self>) -> Option<VaultPlayerNode> {
+        if self.node_type == NodeType::Player as i32 {
+            Some(VaultPlayerNode { node: self.clone() })
+        } else {
+            None
+        }
+    }
+
     pub fn new_age(age_uuid: &Uuid, parent_uuid: Option<&Uuid>,
                    age_filename: &str) -> Self
     {
@@ -203,14 +224,33 @@ impl VaultNode {
         node
     }
 
-    pub fn new_player_info(creator_id: &Uuid, player_id: u32, player_name: &str) -> Self {
+    pub fn new_player_info(creator_uuid: &Uuid, player_id: u32, player_name: &str) -> Self {
         let mut node = Self::default();
         node.set_node_type(NodeType::PlayerInfo as i32);
-        node.set_creator_uuid(creator_id);
+        node.set_creator_uuid(creator_uuid);
         node.set_creator_id(player_id);
         node.set_uint32_1(player_id);
         node.set_istring64_1(player_name);
         node
+    }
+
+    pub fn new_player_info_update(node_id: u32, online: i32, age_instance_name: &str,
+                                  age_instance_uuid: &Uuid) -> Self
+    {
+        let mut node = Self::default();
+        node.set_node_id(node_id);
+        node.set_int32_1(online);
+        node.set_string64_1(age_instance_name);
+        node.set_uuid_1(age_instance_uuid);
+        node
+    }
+
+    pub fn as_player_info_node(self: &Arc<Self>) -> Option<VaultPlayerInfoNode> {
+        if self.node_type == NodeType::PlayerInfo as i32 {
+            Some(VaultPlayerInfoNode { node: self.clone() })
+        } else {
+            None
+        }
     }
 
     pub fn new_system() -> Self {
@@ -545,4 +585,31 @@ impl StreamWrite for VaultNode {
 
         Ok(())
     }
+}
+
+pub struct VaultPlayerNode {
+    node: Arc<VaultNode>
+}
+impl VaultPlayerNode {
+    pub fn node_id(&self) -> u32 { self.node.node_id() }
+    pub fn player_name_ci(&self) -> &String { self.node.istring64_1() }
+    pub fn avatar_shape(&self) -> &String { self.node.string64_1() }
+    pub fn disabled(&self) -> i32 { self.node.int32_1() }
+    pub fn explorer(&self) -> i32 { self.node.int32_2() }
+    pub fn online_time(&self) -> u32 { self.node.uint32_1() }
+    pub fn account_id(&self) -> &Uuid { self.node.uuid_1() }
+    pub fn invite_uuid(&self) -> &Uuid { self.node.uuid_2() }
+}
+
+pub struct VaultPlayerInfoNode {
+    node: Arc<VaultNode>
+}
+impl VaultPlayerInfoNode {
+    pub fn node_id(&self) -> u32 { self.node.node_id() }
+    pub fn player_id(&self) -> u32 { self.node.uint32_1() }
+    pub fn player_name_ci(&self) -> &String { self.node.istring64_1() }
+    pub fn age_instance_name(&self) -> &String { self.node.string64_1() }
+    pub fn age_instance_uuid(&self) -> &Uuid { self.node.uuid_1() }
+    pub fn online(&self) -> i32 { self.node.int32_1() }
+    pub fn ccr_level(&self) -> i32 { self.node.int32_2() }
 }

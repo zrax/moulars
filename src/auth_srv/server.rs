@@ -33,7 +33,8 @@ use crate::net_crypt::CryptTcpStream;
 use crate::netcli::NetResultCode;
 use crate::path_utils;
 use crate::plasma::{StreamRead, StreamWrite, BitVector};
-use crate::vault::VaultServer;
+use crate::vault::{VaultServer, VaultNode};
+use crate::vault::messages::VaultBroadcast;
 use super::auth_hash::{hash_password_challenge, use_email_auth};
 use super::manifest::Manifest;
 use super::messages::{CliToAuth, AuthToCli};
@@ -399,6 +400,9 @@ async fn player_create(stream: &mut CryptTcpStream, trans_id: u32,
         return send_message(stream, reply).await;
     }
 
+    info!("{} created new player {} ({})", stream.peer_addr().unwrap(),
+          player_info.player_name, player_info.player_id);
+
     let reply = AuthToCli::PlayerCreateReply {
         trans_id,
         result: NetResultCode::NetSuccess as i32,
@@ -408,6 +412,82 @@ async fn player_create(stream: &mut CryptTcpStream, trans_id: u32,
         avatar_shape: player_info.avatar_shape,
     };
     send_message(stream, reply).await
+}
+
+async fn do_set_player(stream: &mut CryptTcpStream, trans_id: u32, player_id: u32,
+                       state: &mut ClientState, vault: &VaultServer) -> bool
+{
+    let account_id = match state.account_id {
+        Some(uuid) => uuid,
+        None => {
+            warn!("{} cannot set player: Not logged in", stream.peer_addr().unwrap());
+            let reply = AuthToCli::AcctSetPlayerReply {
+                trans_id, result: NetResultCode::NetAuthenticationFailed as i32
+            };
+            return send_message(stream, reply).await;
+        }
+    };
+
+    let player_node = match vault.fetch_node(player_id).await.map(|node| node.as_player_node()) {
+        Ok(Some(node)) => node,
+        Ok(None) => {
+            warn!("{} requested invalid Player ID {}", stream.peer_addr().unwrap(), player_id);
+            let reply = AuthToCli::AcctSetPlayerReply {
+                trans_id, result: NetResultCode::NetPlayerNotFound as i32
+            };
+            return send_message(stream, reply).await;
+        }
+        Err(err) => {
+            warn!("{}: Failed to fetch Player ID {}", stream.peer_addr().unwrap(), player_id);
+            let reply = AuthToCli::AcctSetPlayerReply {
+                trans_id, result: err as i32
+            };
+            return send_message(stream, reply).await;
+        }
+    };
+
+    if player_node.account_id() != &account_id {
+        warn!("{} requested Player {}, which belongs to a different account {}",
+              stream.peer_addr().unwrap(), player_id, player_node.account_id());
+        let reply = AuthToCli::AcctSetPlayerReply {
+            trans_id, result: NetResultCode::NetPlayerNotFound as i32
+        };
+        return send_message(stream, reply).await;
+    }
+
+    let player_info = match vault.get_player_info_node(player_id).await {
+        Ok(node) => node.as_player_info_node().unwrap(),
+        Err(err) => {
+            warn!("Failed to get Player Info node for Player {}", player_id);
+            let reply = AuthToCli::AcctSetPlayerReply {
+                trans_id, result: err as i32
+            };
+            return send_message(stream, reply).await;
+        }
+    };
+
+    if player_info.online() != 0 {
+        warn!("{} requested already-online player {}", stream.peer_addr().unwrap(),
+              player_id);
+        let reply = AuthToCli::AcctSetPlayerReply {
+            trans_id, result: NetResultCode::NetLoggedInElsewhere as i32
+        };
+        return send_message(stream, reply).await;
+    }
+
+    let update = VaultNode::new_player_info_update(player_info.node_id(), 1,
+                    "Lobby", &Uuid::nil());
+    if let Err(err) = vault.update_node(update).await {
+        warn!("Failed to set player {} online", player_id);
+        let reply = AuthToCli::AcctSetPlayerReply {
+            trans_id, result: err as i32
+        };
+        return send_message(stream, reply).await;
+    }
+
+    info!("{} signed in as {} ({})", stream.peer_addr().unwrap(),
+          player_node.player_name_ci(), player_id);
+    true
 }
 
 struct ClientState {
@@ -431,8 +511,41 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
         account_id: None,
     };
 
+    let mut bcast_recv = vault.subscribe();
+
     loop {
-        match CliToAuth::read(&mut stream).await {
+        let client_msg = tokio::select! {
+            biased;
+            bcast_msg = bcast_recv.recv() => {
+                match bcast_msg {
+                    Ok(VaultBroadcast::NodeChanged { node_id, revision_id }) => {
+                        // TODO: Only if we care about this node...
+                        let msg = AuthToCli::VaultNodeChanged {
+                            node_id, revision_id,
+                        };
+                        if !send_message(stream.get_mut(), msg).await {
+                            return;
+                        }
+                    }
+                    Ok(VaultBroadcast::NodeAdded { parent_id, child_id, owner_id }) => {
+                        // TODO: Only if we care about this node...
+                        let msg = AuthToCli::VaultNodeAdded {
+                            parent_id, child_id, owner_id
+                        };
+                        if !send_message(stream.get_mut(), msg).await {
+                            return;
+                        }
+                    }
+                    Err(err) => warn!("Failed to receive broadcast message: {}", err),
+                }
+
+                // Drain any broadcast messages first, to avoid the broadcast
+                // queue from filling up and starving.
+                continue;
+            }
+            client_msg = CliToAuth::read(&mut stream) => client_msg,
+        };
+        match client_msg {
             Ok(CliToAuth::PingRequest { trans_id, ping_time, payload }) => {
                 let reply = AuthToCli::PingReply {
                     trans_id, ping_time, payload
@@ -473,8 +586,8 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
                 }
             }
             Ok(CliToAuth::AcctSetPlayerRequest { trans_id, player_id }) => {
-                // Setting no player (player_id = 0) is always successful
                 if player_id == 0 {
+                    // Setting no player (player_id = 0) is always successful
                     let reply = AuthToCli::AcctSetPlayerReply {
                         trans_id,
                         result: NetResultCode::NetSuccess as i32,
@@ -482,8 +595,10 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
                     if !send_message(stream.get_mut(), reply).await {
                         return;
                     }
-                } else {
-                    todo!()
+                } else  if !do_set_player(stream.get_mut(), trans_id, player_id,
+                                          &mut state, vault.as_ref()).await
+                {
+                    return;
                 }
             }
             Ok(CliToAuth::AcctCreateRequest { trans_id, .. }) => {

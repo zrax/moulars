@@ -17,7 +17,7 @@
 use std::sync::Arc;
 
 use log::{info, warn, error};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, broadcast};
 use uuid::Uuid;
 
 use crate::config::{ServerConfig, VaultDbBackend};
@@ -25,11 +25,12 @@ use crate::netcli::{NetResult, NetResultCode};
 use crate::sdl::DescriptorDb;
 use super::db_interface::{DbInterface, AccountInfo, PlayerInfo, GameServer};
 use super::db_memory::DbMemory;
-use super::messages::VaultMessage;
-use super::{VaultNode, StandardNode};
+use super::messages::{VaultMessage, VaultBroadcast};
+use super::{VaultNode, StandardNode, NodeRef};
 
 pub struct VaultServer {
     msg_send: mpsc::Sender<VaultMessage>,
+    broadcast: broadcast::Sender<VaultBroadcast>,
     sdl_db: DescriptorDb,
 }
 
@@ -42,15 +43,22 @@ fn check_send<T>(sender: oneshot::Sender<NetResult<T>>, reply: NetResult<T>) {
     }
 }
 
-fn process_vault_message(msg: VaultMessage, db: &mut Box<dyn DbInterface>) {
+fn check_bcast(sender: &broadcast::Sender<VaultBroadcast>, msg: VaultBroadcast) {
+    match sender.send(msg) {
+        Ok(_) => (),
+        Err(err) => warn!("Failed to send broadcast: {:?}", err),
+    }
+}
+
+fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender<VaultBroadcast>,
+                         db: &mut Box<dyn DbInterface>)
+{
     match msg {
         VaultMessage::GetAccount { account_name, response_send } => {
-            let reply = db.get_account(&account_name);
-            check_send(response_send, reply);
+            check_send(response_send, db.get_account(&account_name));
         }
         VaultMessage::GetPlayers { account_id, response_send } => {
-            let reply = db.get_players(&account_id);
-            check_send(response_send, reply);
+            check_send(response_send, db.get_players(&account_id));
         }
         VaultMessage::CreatePlayer { account_id, player_name, avatar_shape,
                                      response_send } => {
@@ -90,27 +98,50 @@ fn process_vault_message(msg: VaultMessage, db: &mut Box<dyn DbInterface>) {
             check_send(response_send, Ok(player));
         }
         VaultMessage::AddGameServer { game_server, response_send } => {
-            let reply = db.add_game_server(game_server);
-            check_send(response_send, reply);
+            check_send(response_send, db.add_game_server(game_server));
         }
         VaultMessage::CreateNode { node, response_send } => {
-            let reply = db.create_node(node);
-            check_send(response_send, reply);
+            check_send(response_send, db.create_node(node));
         }
         VaultMessage::FetchNode { node_id, response_send } => {
-            let reply = db.fetch_node(node_id);
-            check_send(response_send, reply);
+            check_send(response_send, db.fetch_node(node_id));
+        }
+        VaultMessage::UpdateNode { node, response_send } => {
+            let updated = match db.update_node(node) {
+                Ok(nodes) => nodes,
+                Err(err) => return check_send(response_send, Err(err)),
+            };
+            for node_id in updated {
+                check_bcast(bcast_send, VaultBroadcast::NodeChanged {
+                    node_id,
+                    revision_id: Uuid::new_v4(),
+                });
+            }
+            check_send(response_send, Ok(()));
+        }
+        VaultMessage::FindNodes { template, response_send } => {
+            check_send(response_send, db.find_nodes(template));
         }
         VaultMessage::GetSystemNode { response_send } => {
-            let reply = db.get_system_node();
-            check_send(response_send, reply);
+            check_send(response_send, db.get_system_node());
         }
         VaultMessage::GetAllPlayersNode { response_send } => {
-            let reply = db.get_all_players_node();
-            check_send(response_send, reply);
+            check_send(response_send, db.get_all_players_node());
         }
-        VaultMessage::RefNode { parent, child, owner, response_send } => {
-            let reply = db.ref_node(parent, child, owner);
+        VaultMessage::GetPlayerInfoNode { player_id, response_send } => {
+            check_send(response_send, db.get_player_info_node(player_id));
+        }
+        VaultMessage::RefNode { parent_id, child_id, owner_id, response_send } => {
+            if let Err(err) = db.ref_node(parent_id, child_id, owner_id) {
+                return check_send(response_send, Err(err));
+            }
+            check_bcast(bcast_send, VaultBroadcast::NodeAdded {
+                parent_id, child_id, owner_id
+            });
+            check_send(response_send, Ok(()));
+        }
+        VaultMessage::FetchRefs { parent, recursive, response_send } => {
+            let reply = db.fetch_refs(parent, recursive);
             check_send(response_send, reply);
         }
     }
@@ -121,7 +152,9 @@ impl VaultServer {
             -> Arc<VaultServer>
     {
         let (msg_send, mut msg_recv) = mpsc::channel(20);
+        let (bcast_send, _) = broadcast::channel(20);
 
+        let broadcast = bcast_send.clone();
         tokio::spawn(async move {
             let mut db: Box<dyn DbInterface> =  match server_config.db_type {
                 VaultDbBackend::None => Box::new(DbMemory::new()),
@@ -134,17 +167,25 @@ impl VaultServer {
                 std::process::exit(1);
             }
 
+            if db.set_all_players_offline().is_err() {
+                warn!("Failed to set all players offline.");
+            }
+
             // TODO: Check and update Global SDL
             // TODO: Check and initialize static ages
 
             while let Some(msg) = msg_recv.recv().await {
-                process_vault_message(msg, &mut db);
+                process_vault_message(msg, &bcast_send, &mut db);
             }
         });
-        Arc::new(VaultServer { msg_send, sdl_db })
+        Arc::new(VaultServer { msg_send, broadcast, sdl_db })
     }
 
     pub fn sdl_db(&self) -> &DescriptorDb { &self.sdl_db }
+
+    pub fn subscribe(&self) -> broadcast::Receiver<VaultBroadcast> {
+        self.broadcast.subscribe()
+    }
 
     async fn request<T>(&self, msg: VaultMessage, recv: oneshot::Receiver<NetResult<T>>)
         -> NetResult<T>
@@ -215,6 +256,24 @@ impl VaultServer {
         self.request(request, response_recv).await
     }
 
+    pub async fn update_node(&self, node: VaultNode) -> NetResult<()> {
+        let (response_send, response_recv) = oneshot::channel();
+        let request = VaultMessage::UpdateNode {
+            node: Arc::new(node),
+            response_send
+        };
+        self.request(request, response_recv).await
+    }
+
+    pub async fn find_nodes(&self, template: VaultNode) -> NetResult<Vec<Arc<VaultNode>>> {
+        let (response_send, response_recv) = oneshot::channel();
+        let request = VaultMessage::FindNodes {
+            template: Arc::new(template),
+            response_send
+        };
+        self.request(request, response_recv).await
+    }
+
     pub async fn get_system_node(&self) -> NetResult<u32> {
         let (response_send, response_recv) = oneshot::channel();
         let request = VaultMessage::GetSystemNode { response_send };
@@ -227,9 +286,21 @@ impl VaultServer {
         self.request(request, response_recv).await
     }
 
-    pub async fn ref_node(&self, parent: u32, child: u32, owner: u32) -> NetResult<()> {
+    pub async fn get_player_info_node(&self, player_id: u32) -> NetResult<Arc<VaultNode>> {
         let (response_send, response_recv) = oneshot::channel();
-        let request = VaultMessage::RefNode { parent, child, owner, response_send };
+        let request = VaultMessage::GetPlayerInfoNode { player_id, response_send };
+        self.request(request, response_recv).await
+    }
+
+    pub async fn ref_node(&self, parent_id: u32, child_id: u32, owner_id: u32) -> NetResult<()> {
+        let (response_send, response_recv) = oneshot::channel();
+        let request = VaultMessage::RefNode { parent_id, child_id, owner_id, response_send };
+        self.request(request, response_recv).await
+    }
+
+    pub async fn fetch_refs(&self, parent: u32, recursive: bool) -> NetResult<Vec<NodeRef>> {
+        let (response_send, response_recv) = oneshot::channel();
+        let request = VaultMessage::FetchRefs { parent, recursive, response_send };
         self.request(request, response_recv).await
     }
 }

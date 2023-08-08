@@ -21,7 +21,7 @@ use uuid::Uuid;
 
 use crate::netcli::NetResult;
 use super::db_interface::{AccountInfo, PlayerInfo, GameServer};
-use super::VaultNode;
+use super::{VaultNode, NodeRef};
 
 pub(super) enum VaultMessage {
     GetAccount {
@@ -50,16 +50,46 @@ pub(super) enum VaultMessage {
         node_id: u32,
         response_send: oneshot::Sender<NetResult<Arc<VaultNode>>>,
     },
+    UpdateNode {
+        node: Arc<VaultNode>,
+        response_send: oneshot::Sender<NetResult<()>>,
+    },
+    FindNodes {
+        template: Arc<VaultNode>,
+        response_send: oneshot::Sender<NetResult<Vec<Arc<VaultNode>>>>
+    },
     GetSystemNode {
         response_send: oneshot::Sender<NetResult<u32>>,
     },
     GetAllPlayersNode {
         response_send: oneshot::Sender<NetResult<u32>>,
     },
+    GetPlayerInfoNode {
+        player_id: u32,
+        response_send: oneshot::Sender<NetResult<Arc<VaultNode>>>,
+    },
     RefNode {
-        parent: u32,
-        child: u32,
-        owner: u32,
+        parent_id: u32,
+        child_id: u32,
+        owner_id: u32,
         response_send: oneshot::Sender<NetResult<()>>,
+    },
+    FetchRefs {
+        parent: u32,
+        recursive: bool,
+        response_send: oneshot::Sender<NetResult<Vec<NodeRef>>>,
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum VaultBroadcast {
+    NodeChanged {
+        node_id: u32,
+        revision_id: Uuid,
+    },
+    NodeAdded {
+        parent_id: u32,
+        child_id: u32,
+        owner_id: u32,
     },
 }
