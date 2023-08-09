@@ -23,7 +23,7 @@ use std::process::Command;
 
 use log::{warn, info};
 use once_cell::sync::Lazy;
-use tempfile::NamedTempFile;
+use tempfile::{NamedTempFile, TempDir};
 
 use crate::{general_error, path_utils};
 use crate::config::load_or_create_ntd_key;
@@ -362,6 +362,8 @@ fn compyle_dir(python_dir: &Path, python_exe: &Path, pak_file: &mut PakFile)
     info!("Compiling {} Python sources from {}...", py_sources.len(),
           python_dir.display());
 
+    let compile_temp_dir = TempDir::new()?;
+
     // Spawning hundreds of Python processes is very slow, so we build a big
     // list and compile all sources in a single Python script instead
     let mut compyle_src = BufWriter::new(NamedTempFile::new()?);
@@ -373,7 +375,13 @@ fn compyle_dir(python_dir: &Path, python_exe: &Path, pak_file: &mut PakFile)
 
     for py_file in &py_sources {
         let dfile = py_file.strip_prefix(python_dir).unwrap();
-        let cfile = py_file.with_extension("pyc");
+        let cfile = compile_temp_dir.path().join(dfile.with_extension("pyc"));
+
+        if let Some(out_dir) = cfile.parent() {
+            if !out_dir.exists() {
+                std::fs::create_dir_all(out_dir)?;
+            }
+        }
 
         let (src_path, temp_src) = if glue_source.is_empty() {
             (py_file.clone(), None)
@@ -410,6 +418,10 @@ fn compyle_dir(python_dir: &Path, python_exe: &Path, pak_file: &mut PakFile)
         pak_file.add(&cfile, get_module_name(dfile, python_dir))?;
     }
 
+    // This is closed automatically on drop, but this way we can catch and
+    // report any errors that occur during the delete/close
+    compile_temp_dir.close()?;
+
     Ok(())
 }
 
@@ -419,6 +431,8 @@ fn process_python(python_dir: &Path, python_exe: &Path, python_pak: &Path,
     // Build a .pak from the source files
     let mut pak_file = PakFile::new();
 
+    // TODO: Get the system files from the specified python interpreter
+    // rather than requiring us to manually copy everything over
     for subdir in ["plasma", "system"] {
         let python_subdir = python_dir.join(subdir);
         if python_subdir.exists() {
