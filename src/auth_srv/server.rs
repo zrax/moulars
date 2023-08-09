@@ -697,11 +697,59 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
             Ok(CliToAuth::SendFriendInviteRequest { .. }) => {
                 todo!()
             }
-            Ok(CliToAuth::VaultNodeCreate { .. }) => {
-                todo!()
+            Ok(CliToAuth::VaultNodeCreate { trans_id, node_buffer }) => {
+                let reply = match VaultNode::from_blob(&node_buffer) {
+                    Ok(node) => match vault.create_node(node).await {
+                        Ok(node_id) => AuthToCli::VaultNodeCreated {
+                            trans_id,
+                            result: NetResultCode::NetSuccess as i32,
+                            node_id
+                        },
+                        Err(err) => AuthToCli::VaultNodeCreated {
+                            trans_id,
+                            result: err as i32,
+                            node_id: 0
+                        },
+                    }
+                    Err(err) => {
+                        warn!("Failed to read vault node from blob: {}", err);
+                        AuthToCli::VaultNodeCreated {
+                            trans_id,
+                            result: NetResultCode::NetInternalError as i32,
+                            node_id: 0
+                        }
+                    }
+                };
+                if !send_message(stream.get_mut(), reply).await {
+                    return;
+                }
             }
-            Ok(CliToAuth::VaultNodeFetch { .. }) => {
-                todo!()
+            Ok(CliToAuth::VaultNodeFetch { trans_id, node_id }) => {
+                let reply = match vault.fetch_node(node_id).await {
+                    Ok(node) => match node.to_blob() {
+                        Ok(node_buffer) => AuthToCli::VaultNodeFetched {
+                            trans_id,
+                            result: NetResultCode::NetSuccess as i32,
+                            node_buffer
+                        },
+                        Err(err) => {
+                            warn!("Failed to write vault node to blob: {}", err);
+                            AuthToCli::VaultNodeFetched {
+                                trans_id,
+                                result: NetResultCode::NetInternalError as i32,
+                                node_buffer: Vec::new()
+                            }
+                        }
+                    },
+                    Err(err) => AuthToCli::VaultNodeFetched {
+                        trans_id,
+                        result: err as i32,
+                        node_buffer: Vec::new()
+                    },
+                };
+                if !send_message(stream.get_mut(), reply).await {
+                    return;
+                }
             }
             Ok(CliToAuth::VaultNodeSave { .. }) => {
                 todo!()
@@ -709,14 +757,40 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
             Ok(CliToAuth::VaultNodeDelete { .. }) => {
                 todo!()
             }
-            Ok(CliToAuth::VaultNodeAdd { .. }) => {
-                todo!()
+            Ok(CliToAuth::VaultNodeAdd { trans_id, parent_id, child_id, owner_id }) => {
+                let reply = match vault.ref_node(parent_id, child_id, owner_id).await {
+                    Ok(()) => AuthToCli::VaultAddNodeReply {
+                        trans_id,
+                        result: NetResultCode::NetSuccess as i32
+                    },
+                    Err(err) => AuthToCli::VaultAddNodeReply {
+                        trans_id,
+                        result: err as i32
+                    },
+                };
+                if !send_message(stream.get_mut(), reply).await {
+                    return;
+                }
             }
             Ok(CliToAuth::VaultNodeRemove { .. }) => {
                 todo!()
             }
-            Ok(CliToAuth::VaultFetchNodeRefs { .. }) => {
-                todo!()
+            Ok(CliToAuth::VaultFetchNodeRefs { trans_id, node_id }) => {
+                let reply = match vault.fetch_refs(node_id, true).await {
+                    Ok(refs) => AuthToCli::VaultNodeRefsFetched {
+                        trans_id,
+                        result: NetResultCode::NetSuccess as i32,
+                        refs
+                    },
+                    Err(err) => AuthToCli::VaultNodeRefsFetched {
+                        trans_id,
+                        result: err as i32,
+                        refs: Vec::new()
+                    },
+                };
+                if !send_message(stream.get_mut(), reply).await {
+                    return;
+                }
             }
             Ok(CliToAuth::VaultInitAgeRequest { .. }) => {
                 todo!()

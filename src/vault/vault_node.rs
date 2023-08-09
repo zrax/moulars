@@ -14,7 +14,7 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Write, Result};
+use std::io::{BufRead, Write, Cursor, Result};
 use std::mem::size_of;
 use std::sync::Arc;
 
@@ -333,6 +333,17 @@ impl VaultNode {
         node.set_creator_id(creator_id);
         node.set_int32_1(folder_type as i32);
         node
+    }
+
+    pub fn from_blob(blob: &[u8]) -> Result<Self> {
+        let mut stream = Cursor::new(blob);
+        Self::stream_read(&mut stream)
+    }
+
+    pub fn to_blob(&self) -> Result<Vec<u8>> {
+        let mut stream = Cursor::new(Vec::new());
+        self.stream_write(&mut stream)?;
+        Ok(stream.into_inner())
     }
 }
 
