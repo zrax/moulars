@@ -14,7 +14,7 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::collections::{HashSet, HashMap, VecDeque};
+use std::collections::{HashSet, HashMap};
 use std::ffi::OsStr;
 use std::fs::File;
 use std::io::{Cursor, BufReader, BufWriter, Write, Result, ErrorKind};
@@ -48,18 +48,19 @@ pub fn scan_dir(path: &Path, file_set: &mut HashSet<PathBuf>) -> Result<()> {
     Ok(())
 }
 
-fn scan_python_dir(python_root: &Path) -> Result<HashSet<PathBuf>> {
+fn scan_python_dir(python_root: &Path, subdir_limit: Option<Vec<&OsStr>>)
+        -> Result<HashSet<PathBuf>>
+{
     let mut file_set = HashSet::new();
-    let mut scan_dirs = VecDeque::new();
-    scan_dirs.push_back(python_root.to_owned());
-    while let Some(dir) = scan_dirs.pop_front() {
-        for entry in dir.read_dir()? {
-            let entry = entry?;
-            let metadata = entry.metadata()?;
-            if metadata.is_file() && entry.path().extension() == Some(OsStr::new("py")) {
-                file_set.insert(entry.path());
-            } else if metadata.is_dir() {
-                scan_dirs.push_back(entry.path());
+    for entry in python_root.read_dir()? {
+        let entry = entry?;
+        let metadata = entry.metadata()?;
+        if metadata.is_file() && entry.path().extension() == Some(OsStr::new("py")) {
+            file_set.insert(entry.path());
+        } else if metadata.is_dir() {
+            let name_match = entry.file_name();
+            if subdir_limit.as_ref().map(|subdirs| subdirs.contains(&name_match.as_ref())).unwrap_or(true) {
+                file_set.extend(scan_python_dir(&entry.path(), None)?.into_iter());
             }
         }
     }
@@ -343,8 +344,8 @@ fn create_cache_file<'dc>(data_cache: &'dc mut HashMap<PathBuf, FileInfo>,
     })
 }
 
-fn compyle_dir(python_dir: &Path, python_exe: &Path, pak_file: &mut PakFile)
-    -> Result<()>
+fn compyle_dir(python_dir: &Path, subdir_limit: Option<Vec<&OsStr>>,
+               python_exe: &Path, pak_file: &mut PakFile) -> Result<()>
 {
     // Look for the glue code.  For now, we append this to everything in the
     // specified subdir if the glue file exists (this will be the case for
@@ -358,7 +359,7 @@ fn compyle_dir(python_dir: &Path, python_exe: &Path, pak_file: &mut PakFile)
         String::new()
     };
 
-    let py_sources = scan_python_dir(python_dir)?;
+    let py_sources = scan_python_dir(python_dir, subdir_limit)?;
     info!("Compiling {} Python sources from {}...", py_sources.len(),
           python_dir.display());
 
@@ -425,22 +426,45 @@ fn compyle_dir(python_dir: &Path, python_exe: &Path, pak_file: &mut PakFile)
     Ok(())
 }
 
+fn get_python_system_lib(python_exe: &Path) -> Result<PathBuf> {
+    // This works by geting the path to os.py; this should work in any Python
+    // version, at least as far back as Python 2.0
+    let output = Command::new(python_exe).args([OsStr::new("-c"),
+                    OsStr::new("import os; print(os.path.dirname(os.__file__))")]).output()?;
+    eprint!("{}", String::from_utf8_lossy(&output.stderr));
+    match output.status.code() {
+        Some(0) => (),
+        Some(code) => return Err(general_error!("python exited with status {}", code)),
+        None => return Err(general_error!("python process killed by signal")),
+    }
+
+    let path = String::from_utf8_lossy(&output.stdout);
+    Ok(PathBuf::from(path.trim_end()))
+}
+
 fn process_python(python_dir: &Path, python_exe: &Path, python_pak: &Path,
                   key: &[u32; 4]) -> Result<()>
 {
     // Build a .pak from the source files
     let mut pak_file = PakFile::new();
 
-    // TODO: Get the system files from the specified python interpreter
-    // rather than requiring us to manually copy everything over
-    for subdir in ["plasma", "system"] {
-        let python_subdir = python_dir.join(subdir);
-        if python_subdir.exists() {
-            compyle_dir(&python_subdir, python_exe, &mut pak_file)?;
-        } else {
-            warn!("Could not find {} python sources in {}", subdir,
-                  python_subdir.display());
-        }
+    if python_dir.exists() {
+        compyle_dir(python_dir, None, python_exe, &mut pak_file)?;
+    } else {
+        warn!("Could not find Plasma python sources in {}", python_dir.display());
+    }
+
+    // TODO: Should this be configurable?
+    let python_system_dirs = vec![
+        OsStr::new("collections"), OsStr::new("encodings"), OsStr::new("importlib"),
+        OsStr::new("json"), OsStr::new("logging"), OsStr::new("zoneinfo"),
+    ];
+
+    let system_dir = get_python_system_lib(python_exe)?;
+    if system_dir.exists() {
+        compyle_dir(&system_dir, Some(python_system_dirs), python_exe, &mut pak_file)?;
+    } else {
+        warn!("Could not find system python sources in {}", system_dir.display());
     }
 
     // We always just write the .pak file if --python was specified.
