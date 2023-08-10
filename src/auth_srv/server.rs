@@ -595,8 +595,8 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
                     if !send_message(stream.get_mut(), reply).await {
                         return;
                     }
-                } else  if !do_set_player(stream.get_mut(), trans_id, player_id,
-                                          &mut state, vault.as_ref()).await
+                } else if !do_set_player(stream.get_mut(), trans_id, player_id,
+                                         &mut state, vault.as_ref()).await
                 {
                     return;
                 }

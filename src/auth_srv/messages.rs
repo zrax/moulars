@@ -1025,10 +1025,10 @@ impl AuthToCli {
 impl StreamWrite for AuthToCli {
     fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         match self {
-            AuthToCli::PingReply { trans_id, ping_time, payload } => {
+            AuthToCli::PingReply { ping_time, trans_id, payload } => {
                 stream.write_u16::<LittleEndian>(ServerMsgId::PingReply as u16)?;
-                stream.write_u32::<LittleEndian>(*trans_id)?;
                 stream.write_u32::<LittleEndian>(*ping_time)?;
+                stream.write_u32::<LittleEndian>(*trans_id)?;
                 net_io::write_sized_buffer(stream, payload)?;
             }
             AuthToCli::ServerAddr { server_addr, token } => {
