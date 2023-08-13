@@ -15,6 +15,7 @@
  */
 
 use std::io::{BufRead, Cursor, Result, ErrorKind};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -22,7 +23,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use log::{error, warn, info, debug};
 use rand::Rng;
 use tokio::io::{AsyncReadExt, BufReader};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, broadcast};
 use tokio::net::TcpStream;
 use uuid::Uuid;
 
@@ -42,6 +43,16 @@ use super::vault_helpers::create_player_nodes;
 
 pub struct AuthServer {
     incoming_send: mpsc::Sender<TcpStream>,
+}
+
+struct AuthServerWorker {
+    stream: BufReader<CryptTcpStream>,
+    server_config: Arc<ServerConfig>,
+    vault: Arc<VaultServer>,
+    vault_bcast: broadcast::Receiver<VaultBroadcast>,
+    server_challenge: u32,
+    account_id: Option<Uuid>,
+    player_id: Option<u32>,
 }
 
 const CONN_HEADER_SIZE: usize = 20;
@@ -65,20 +76,6 @@ fn read_conn_header<S>(stream: &mut S) -> Result<()>
     Ok(())
 }
 
-async fn send_message(stream: &mut CryptTcpStream, reply: AuthToCli) -> bool {
-    let mut reply_buf = Cursor::new(Vec::new());
-    if let Err(err) = reply.stream_write(&mut reply_buf) {
-        warn!("Failed to write reply stream: {}", err);
-        return false;
-    }
-    if let Err(err) = stream.write_all(reply_buf.get_ref()).await {
-        warn!("Failed to send reply: {}", err);
-        false
-    } else {
-        true
-    }
-}
-
 async fn init_client(mut sock: TcpStream, server_config: &ServerConfig)
     -> Result<BufReader<CryptTcpStream>>
 {
@@ -86,20 +83,8 @@ async fn init_client(mut sock: TcpStream, server_config: &ServerConfig)
     sock.read_exact(&mut header).await?;
     read_conn_header(&mut Cursor::new(header))?;
 
-    let mut crypt_sock = crate::net_crypt::init_crypt(sock, &server_config.auth_n_key,
-                                                      &server_config.auth_k_key).await?;
-
-    /* Shard Capabilities */
-    let mut caps = BitVector::new();
-    caps.set(ServerCaps::ScoreLeaderBoards as usize, true);
-    let mut caps_buffer = Cursor::new(Vec::new());
-    caps.stream_write(&mut caps_buffer)?;
-    let caps_msg = AuthToCli::ServerCaps { caps_buffer: caps_buffer.into_inner() };
-    if !send_message(crypt_sock.get_mut(), caps_msg).await {
-        return Err(general_error!("Failed to send ServerCaps message"));
-    }
-
-    Ok(crypt_sock)
+    crate::net_crypt::init_crypt(sock, &server_config.auth_n_key,
+                                 &server_config.auth_k_key).await
 }
 
 fn check_file_request(dir_name: &str, ext: &str) -> bool {
@@ -120,32 +105,6 @@ fn fetch_list(dir_name: &str, ext: &str, data_root: &Path) -> Option<Manifest> {
             None
         }
     }
-}
-
-async fn do_manifest(stream: &mut CryptTcpStream, trans_id: u32, dir_name: &str,
-                     ext: &str, data_root: &Path) -> bool
-{
-    let reply =
-        if let Some(manifest) = fetch_list(dir_name, ext, data_root) {
-            debug!("Client {} requested list '{}\\*.{}'",
-                   stream.peer_addr().unwrap(), dir_name, ext);
-
-            AuthToCli::FileListReply {
-                trans_id,
-                result: NetResultCode::NetSuccess as i32,
-                manifest
-            }
-        } else {
-            warn!("Client {} requested invalid list '{}\\*.{}'",
-                  stream.peer_addr().unwrap(), dir_name, ext);
-            AuthToCli::FileListReply {
-                trans_id,
-                result: NetResultCode::NetFileNotFound as i32,
-                manifest: Manifest::new()
-            }
-        };
-
-    send_message(stream, reply).await
 }
 
 async fn open_server_file(filename: &str, data_root: &Path)
@@ -186,523 +145,242 @@ async fn open_server_file(filename: &str, data_root: &Path)
     Some((file, metadata, download_path))
 }
 
-async fn do_download(stream: &mut CryptTcpStream, trans_id: u32, filename: &str,
-                     data_root: &Path) -> bool
-{
-    if let Some((mut file, metadata, download_path))
-                = open_server_file(filename, data_root).await
+impl AuthServer {
+    pub fn start(server_config: Arc<ServerConfig>, vault: Arc<VaultServer>)
+        -> AuthServer
     {
-        debug!("Client {} requested file '{}'", stream.peer_addr().unwrap(), filename);
+        let (incoming_send, mut incoming_recv) = mpsc::channel(5);
 
-        if metadata.len() > u32::MAX as u64 {
-            debug!("File {} too large for 32-bit stream", filename);
-            let reply = AuthToCli::download_error(trans_id, NetResultCode::NetInternalError);
-            return send_message(stream, reply).await;
+        tokio::spawn(async move {
+            while let Some(sock) = incoming_recv.recv().await {
+                AuthServerWorker::start(sock, server_config.clone(), vault.clone());
+            }
+        });
+        AuthServer { incoming_send }
+    }
+
+    pub async fn add(&mut self, sock: TcpStream) {
+        if let Err(err) = self.incoming_send.send(sock).await {
+            error!("Failed to add client: {}", err);
+            std::process::exit(1);
         }
+    }
+}
 
-        let mut buffer = [0u8; FILE_CHUNK_SIZE];
-        let mut offset = 0;
-        loop {
-            match file.read(&mut buffer).await {
-                Ok(count) => {
-                    if count == 0 {
-                        // End of file reached
-                        return true;
-                    }
-                    let reply = AuthToCli::FileDownloadChunk {
-                        trans_id,
-                        result: NetResultCode::NetSuccess as i32,
-                        total_size: metadata.len() as u32,
-                        offset,
-                        file_data: Vec::from(&buffer[..count]),
-                    };
-                    if !send_message(stream, reply).await {
-                        return false;
-                    }
-                    offset += count as u32;
-                }
+impl AuthServerWorker {
+    pub fn start(sock: TcpStream, server_config: Arc<ServerConfig>,
+                 vault: Arc<VaultServer>)
+    {
+        tokio::spawn(async move {
+            let stream = match init_client(sock, &server_config).await {
+                Ok(cipher) => cipher,
                 Err(err) => {
-                    warn!("Could not read from {}: {}", download_path.display(), err);
-                    let reply = AuthToCli::download_error(trans_id, NetResultCode::NetInternalError);
-                    return send_message(stream, reply).await;
+                    warn!("Failed to initialize client: {}", err);
+                    return;
                 }
-            }
-        }
-    } else {
-        warn!("Client {} requested invalid path '{}'", stream.peer_addr().unwrap(), filename);
-        let reply = AuthToCli::download_error(trans_id, NetResultCode::NetFileNotFound);
-        send_message(stream, reply).await
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn do_login_request(stream: &mut CryptTcpStream, trans_id: u32,
-                          client_challenge: u32, account_name: &str,
-                          pass_hash: ShaDigest, state: &mut ClientState,
-                          server_config: &ServerConfig, vault: &VaultServer) -> bool
-{
-    let account = match vault.get_account(account_name).await {
-        Ok(Some(account)) => account,
-        Ok(None) => {
-            info!("{}: Account {} was not found",
-                  stream.peer_addr().unwrap(), account_name);
-
-            // Don't leak to the client that the account doesn't exist...
-            let reply = AuthToCli::login_error(trans_id,
-                            NetResultCode::NetAuthenticationFailed);
-            return send_message(stream, reply).await;
-        }
-        Err(err) => {
-            let reply = AuthToCli::login_error(trans_id, err);
-            return send_message(stream, reply).await;
-        }
-    };
-
-    // NOTE: Neither of these is good or secure, but they are what the
-    // client expects.  To fix these, we'd have to break compatibility
-    // with older clients.
-    if use_email_auth(account_name) {
-        // Use broken LE Sha0 hash mechanism
-        let challenge_hash = match hash_password_challenge(
-                    client_challenge, state.server_challenge,
-                    account.pass_hash)
-        {
-            Ok(digest) => digest,
-            Err(err) => {
-                warn!("Failed to generate challenge hash: {}", err);
-                let reply = AuthToCli::login_error(trans_id,
-                                NetResultCode::NetInternalError);
-                return send_message(stream, reply).await;
-            }
-        };
-        if challenge_hash != pass_hash {
-            info!("{}: Login failure for account {}",
-                  stream.peer_addr().unwrap(), account_name);
-            let reply = AuthToCli::login_error(trans_id,
-                            NetResultCode::NetAuthenticationFailed);
-            return send_message(stream, reply).await;
-        }
-    } else {
-        // Directly compare the BE Sha1 hash
-        // NOTE: The client sends its hash as Little Endian...
-        if account.pass_hash != pass_hash.endian_swap() {
-            info!("{}: Login failure for account {}",
-                  stream.peer_addr().unwrap(), account_name);
-            let reply = AuthToCli::login_error(trans_id,
-                            NetResultCode::NetAuthenticationFailed);
-            return send_message(stream, reply).await;
-        }
-    }
-
-    if account.is_banned() {
-        info!("{}: Account {} is banned", stream.peer_addr().unwrap(), account_name);
-        let reply = AuthToCli::login_error(trans_id, NetResultCode::NetAccountBanned);
-        return send_message(stream, reply).await;
-    }
-    if server_config.restrict_logins && !account.can_login_restricted() {
-        info!("{}: Account {} login is restricted", stream.peer_addr().unwrap(),
-              account_name);
-        let reply = AuthToCli::login_error(trans_id, NetResultCode::NetLoginDenied);
-        return send_message(stream, reply).await;
-    }
-
-    let ntd_key = match server_config.get_ntd_key() {
-        Ok(key) => key,
-        Err(err) => {
-            warn!("Failed to get encryption key: {}", err);
-            let reply = AuthToCli::login_error(trans_id, NetResultCode::NetInternalError);
-            return send_message(stream, reply).await;
-        }
-    };
-
-    info!("{}: Logged in as {} {}", stream.peer_addr().unwrap(),
-          account_name, account.account_id);
-    state.account_id = Some(account.account_id);
-
-    match fetch_account_players(stream, trans_id, &account.account_id, vault).await {
-        Some(result) if result == NetResultCode::NetSuccess => (),
-        Some(err) => {
-            let reply = AuthToCli::login_error(trans_id, err);
-            return send_message(stream, reply).await;
-        }
-        None => return false,
-    }
-
-    // Send the final reply after all players are sent
-    let reply = AuthToCli::AcctLoginReply {
-        trans_id,
-        result: NetResultCode::NetSuccess as i32,
-        account_id: account.account_id,
-        account_flags: account.account_flags,
-        billing_type: account.billing_type,
-        encryption_key: ntd_key,
-    };
-    send_message(stream, reply).await
-}
-
-async fn fetch_account_players(stream: &mut CryptTcpStream, trans_id: u32,
-                               account_id: &Uuid, vault: &VaultServer)
-    -> Option<NetResultCode>
-{
-    let players = match vault.get_players(account_id).await {
-        Ok(players) => players,
-        Err(err) => return Some(err),
-    };
-    for player in players {
-        let msg = AuthToCli::AcctPlayerInfo {
-            trans_id,
-            player_id: player.player_id,
-            player_name: player.player_name,
-            avatar_shape: player.avatar_shape,
-            explorer: player.explorer,
-        };
-        if !send_message(stream, msg).await {
-            return None;
-        }
-    }
-    Some(NetResultCode::NetSuccess)
-}
-
-async fn player_create(stream: &mut CryptTcpStream, trans_id: u32,
-                       player_name: &str, avatar_shape: &str,
-                       state: &ClientState, vault: &VaultServer) -> bool
-{
-    let account_id = match state.account_id {
-        Some(uuid) => uuid,
-        None => {
-            warn!("{} cannot create player: Not logged in", stream.peer_addr().unwrap());
-            let reply = AuthToCli::player_create_error(trans_id,
-                                        NetResultCode::NetAuthenticationFailed);
-            return send_message(stream, reply).await;
-        }
-    };
-
-    // Disallow arbitrary choices of avatar shape...  Special models can
-    // be set by admins when appropriate.
-    if avatar_shape != "male" && avatar_shape != "female" {
-        warn!("Client {} attempted to use avatar shape '{}'",
-              stream.peer_addr().unwrap(), avatar_shape);
-        let reply = AuthToCli::player_create_error(trans_id,
-                                    NetResultCode::NetInvalidParameter);
-        return send_message(stream, reply).await;
-    }
-
-    let player_info = match vault.create_player(&account_id, player_name, avatar_shape).await {
-        Ok(player_info) => player_info,
-        Err(result) => {
-            let reply = AuthToCli::player_create_error(trans_id, result);
-            return send_message(stream, reply).await;
-        }
-    };
-
-    if let Err(err) = create_player_nodes(&account_id, &player_info, vault).await {
-        let reply = AuthToCli::player_create_error(trans_id, err);
-        return send_message(stream, reply).await;
-    }
-
-    info!("{} created new player {} ({})", stream.peer_addr().unwrap(),
-          player_info.player_name, player_info.player_id);
-
-    let reply = AuthToCli::PlayerCreateReply {
-        trans_id,
-        result: NetResultCode::NetSuccess as i32,
-        player_id: player_info.player_id,
-        explorer: player_info.explorer,
-        player_name: player_info.player_name,
-        avatar_shape: player_info.avatar_shape,
-    };
-    send_message(stream, reply).await
-}
-
-async fn do_set_player(stream: &mut CryptTcpStream, trans_id: u32, player_id: u32,
-                       state: &mut ClientState, vault: &VaultServer) -> bool
-{
-    let account_id = match state.account_id {
-        Some(uuid) => uuid,
-        None => {
-            warn!("{} cannot set player: Not logged in", stream.peer_addr().unwrap());
-            let reply = AuthToCli::AcctSetPlayerReply {
-                trans_id, result: NetResultCode::NetAuthenticationFailed as i32
             };
-            return send_message(stream, reply).await;
-        }
-    };
 
-    let player_node = match vault.fetch_node(player_id).await.map(|node| node.as_player_node()) {
-        Ok(Some(node)) => node,
-        Ok(None) => {
-            warn!("{} requested invalid Player ID {}", stream.peer_addr().unwrap(), player_id);
-            let reply = AuthToCli::AcctSetPlayerReply {
-                trans_id, result: NetResultCode::NetPlayerNotFound as i32
+            let vault_bcast = vault.subscribe();
+            let mut worker = AuthServerWorker {
+                stream,
+                server_config,
+                vault,
+                vault_bcast,
+                server_challenge: rand::thread_rng().gen::<u32>(),
+                account_id: None,
+                player_id: None,
             };
-            return send_message(stream, reply).await;
-        }
-        Err(err) => {
-            warn!("{}: Failed to fetch Player ID {}", stream.peer_addr().unwrap(), player_id);
-            let reply = AuthToCli::AcctSetPlayerReply {
-                trans_id, result: err as i32
-            };
-            return send_message(stream, reply).await;
-        }
-    };
-
-    if player_node.account_id() != &account_id {
-        warn!("{} requested Player {}, which belongs to a different account {}",
-              stream.peer_addr().unwrap(), player_id, player_node.account_id());
-        let reply = AuthToCli::AcctSetPlayerReply {
-            trans_id, result: NetResultCode::NetPlayerNotFound as i32
-        };
-        return send_message(stream, reply).await;
+            worker.run().await;
+        });
     }
 
-    let player_info = match vault.get_player_info_node(player_id).await {
-        Ok(node) => node.as_player_info_node().unwrap(),
-        Err(err) => {
-            warn!("Failed to get Player Info node for Player {}", player_id);
-            let reply = AuthToCli::AcctSetPlayerReply {
-                trans_id, result: err as i32
-            };
-            return send_message(stream, reply).await;
-        }
-    };
+    fn peer_addr(&self) -> Result<SocketAddr> { self.stream.get_ref().peer_addr() }
 
-    if player_info.online() != 0 {
-        warn!("{} requested already-online player {}", stream.peer_addr().unwrap(),
-              player_id);
-        let reply = AuthToCli::AcctSetPlayerReply {
-            trans_id, result: NetResultCode::NetLoggedInElsewhere as i32
+    async fn send_caps(&mut self) -> Result<()> {
+        let mut caps = BitVector::new();
+        caps.set(ServerCaps::ScoreLeaderBoards as usize, true);
+        let mut caps_buffer = Cursor::new(Vec::new());
+        caps.stream_write(&mut caps_buffer)?;
+        let caps_msg = AuthToCli::ServerCaps {
+            caps_buffer: caps_buffer.into_inner()
         };
-        return send_message(stream, reply).await;
+        if !self.send_message(caps_msg).await {
+            return Err(general_error!("Failed to send message to client"));
+        }
+        Ok(())
     }
 
-    let update = VaultNode::new_player_info_update(player_info.node_id(), 1,
-                    "Lobby", &Uuid::nil());
-    if let Err(err) = vault.update_node(update).await {
-        warn!("Failed to set player {} online", player_id);
-        let reply = AuthToCli::AcctSetPlayerReply {
-            trans_id, result: err as i32
-        };
-        return send_message(stream, reply).await;
-    }
-
-    info!("{} signed in as {} ({})", stream.peer_addr().unwrap(),
-          player_node.player_name_ci(), player_id);
-    state.player_id = Some(player_id);
-    true
-}
-
-struct ClientState {
-    server_challenge: u32,
-    account_id: Option<Uuid>,
-    player_id: Option<u32>,
-}
-
-async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
-                     vault: Arc<VaultServer>)
-{
-    let mut stream = match init_client(client_sock, &server_config).await {
-        Ok(cipher) => cipher,
-        Err(err) => {
-            warn!("Failed to initialize client: {}", err);
-            return;
+    async fn run(&mut self) {
+        /* Send Server Capabilities */
+        if let Err(err) = self.send_caps().await {
+            warn!("Failed to send ServerCaps message: {}", err);
         }
-    };
 
-    let mut state = ClientState {
-        server_challenge: rand::thread_rng().gen::<u32>(),
-        account_id: None,
-        player_id: None,
-    };
+        loop {
+            tokio::select! {
+                // Drain any broadcast messages first, to avoid the broadcast
+                // queue from filling up and starving.
+                biased;
 
-    let mut bcast_recv = vault.subscribe();
-
-    loop {
-        let client_msg = tokio::select! {
-            biased;
-            bcast_msg = bcast_recv.recv() => {
-                match bcast_msg {
-                    Ok(VaultBroadcast::NodeChanged { node_id, revision_id }) => {
-                        // TODO: Only if we care about this node...
-                        let msg = AuthToCli::VaultNodeChanged {
-                            node_id, revision_id,
-                        };
-                        if !send_message(stream.get_mut(), msg).await {
-                            return;
-                        }
-                    }
-                    Ok(VaultBroadcast::NodeAdded { parent_id, child_id, owner_id }) => {
-                        // TODO: Only if we care about this node...
-                        let msg = AuthToCli::VaultNodeAdded {
-                            parent_id, child_id, owner_id
-                        };
-                        if !send_message(stream.get_mut(), msg).await {
-                            return;
+                bcast_msg = self.vault_bcast.recv() => match bcast_msg {
+                    Ok(msg) => {
+                        if !self.handle_bcast_msg(msg).await {
+                            break;
                         }
                     }
                     Err(err) => warn!("Failed to receive broadcast message: {}", err),
-                }
+                },
 
-                // Drain any broadcast messages first, to avoid the broadcast
-                // queue from filling up and starving.
-                continue;
+                client_msg = CliToAuth::read(&mut self.stream) => match client_msg {
+                    Ok(message) => {
+                        if !self.handle_message(message).await {
+                            break;
+                        }
+                    }
+                    Err(err) => {
+                        if matches!(err.kind(), ErrorKind::ConnectionReset
+                                                | ErrorKind::UnexpectedEof) {
+                            debug!("Client {} disconnected", self.peer_addr().unwrap());
+                        } else {
+                            warn!("Error reading message from client: {}", err);
+                        }
+                        return;
+                    }
+                },
             }
-            client_msg = CliToAuth::read(&mut stream) => client_msg,
-        };
-        match client_msg {
-            Ok(CliToAuth::PingRequest { trans_id, ping_time, payload }) => {
-                let reply = AuthToCli::PingReply {
+        }
+        warn!("Dropping client {}", self.peer_addr().unwrap());
+    }
+
+    async fn handle_bcast_msg(&mut self, bcast_msg: VaultBroadcast) -> bool {
+        match bcast_msg {
+            VaultBroadcast::NodeChanged { node_id, revision_id } => {
+                // TODO: Only if we care about this node...
+                self.send_message(AuthToCli::VaultNodeChanged {
+                    node_id, revision_id,
+                }).await
+            }
+            VaultBroadcast::NodeAdded { parent_id, child_id, owner_id } => {
+                // TODO: Only if we care about this node...
+                self.send_message(AuthToCli::VaultNodeAdded {
+                    parent_id, child_id, owner_id
+                }).await
+            }
+        }
+    }
+
+    async fn handle_message(&mut self, message: CliToAuth) -> bool {
+        match message {
+            CliToAuth::PingRequest { trans_id, ping_time, payload } => {
+                self.send_message(AuthToCli::PingReply {
                     trans_id, ping_time, payload
-                };
-                if !send_message(stream.get_mut(), reply).await {
-                    return;
-                }
+                }).await
             }
-            Ok(CliToAuth::ClientRegisterRequest { build_id }) => {
-                if build_id != 0 && build_id != server_config.build_id {
+            CliToAuth::ClientRegisterRequest { build_id } => {
+                if build_id != 0 && build_id != self.server_config.build_id {
                     warn!("Client {} has an unexpected build ID {}",
-                          stream.get_ref().peer_addr().unwrap(), build_id);
+                          self.peer_addr().unwrap(), build_id);
                     // The client isn't listening for anything other than a
                     // ClientRegisterReply, which doesn't have a result field,
                     // so we can't notify them that their build is invalid...
-                    return;
+                    return false;
                 }
-                let reply = AuthToCli::ClientRegisterReply {
-                    server_challenge: state.server_challenge,
-                };
-                if !send_message(stream.get_mut(), reply).await {
-                    return;
-                }
+                self.send_message(AuthToCli::ClientRegisterReply {
+                    server_challenge: self.server_challenge,
+                }).await
             }
-            Ok(CliToAuth::ClientSetCCRLevel { .. }) => {
-                warn!("Ignoring CCR level set request from {}",
-                      stream.get_ref().peer_addr().unwrap());
+            CliToAuth::ClientSetCCRLevel { .. } => {
+                warn!("Ignoring CCR level set request from {}", self.peer_addr().unwrap());
+                true
             }
-            Ok(CliToAuth::AcctLoginRequest { trans_id, client_challenge, account_name,
-                                             pass_hash, auth_token, os }) => {
+            CliToAuth::AcctLoginRequest { trans_id, client_challenge, account_name,
+                                          pass_hash, auth_token, os } => {
                 debug!("Login Request U:{} P:{} T:{} O:{}", account_name,
                        pass_hash.as_hex(), auth_token, os);
-                if !do_login_request(stream.get_mut(), trans_id, client_challenge,
-                                     &account_name, pass_hash, &mut state,
-                                     server_config.as_ref(), vault.as_ref()).await
-                {
-                    return;
-                }
+                self.do_login_request(trans_id, client_challenge, &account_name,
+                                      pass_hash).await
             }
-            Ok(CliToAuth::AcctSetPlayerRequest { trans_id, player_id }) => {
+            CliToAuth::AcctSetPlayerRequest { trans_id, player_id } => {
                 if player_id == 0 {
                     // Setting no player (player_id = 0) is always successful
-                    let reply = AuthToCli::AcctSetPlayerReply {
+                    return self.send_message(AuthToCli::AcctSetPlayerReply {
                         trans_id,
                         result: NetResultCode::NetSuccess as i32,
-                    };
-                    if !send_message(stream.get_mut(), reply).await {
-                        return;
-                    }
-                } else if !do_set_player(stream.get_mut(), trans_id, player_id,
-                                         &mut state, vault.as_ref()).await
-                {
-                    return;
+                    }).await;
                 }
+                self.do_set_player(trans_id, player_id).await
             }
-            Ok(CliToAuth::AcctCreateRequest { trans_id, .. }) => {
-                let reply = AuthToCli::AcctCreateReply {
+            CliToAuth::AcctCreateRequest { trans_id, .. } => {
+                self.send_message(AuthToCli::AcctCreateReply {
                     trans_id,
                     result: NetResultCode::NetNotSupported as i32,
                     account_id: Uuid::nil(),
-                };
-                if !send_message(stream.get_mut(), reply).await {
-                    return;
-                }
+                }).await
             }
-            Ok(CliToAuth::AcctChangePasswordRequest { trans_id, .. }) => {
-                let reply = AuthToCli::AcctChangePasswordReply {
+            CliToAuth::AcctChangePasswordRequest { trans_id, .. } => {
+                self.send_message(AuthToCli::AcctChangePasswordReply {
                     trans_id,
                     result: NetResultCode::NetNotSupported as i32,
-                };
-                if !send_message(stream.get_mut(), reply).await {
-                    return;
-                }
+                }).await
             }
-            Ok(CliToAuth::AcctSetRolesRequest { trans_id, .. }) => {
-                let reply = AuthToCli::AcctSetRolesReply {
+            CliToAuth::AcctSetRolesRequest { trans_id, .. } => {
+                self.send_message(AuthToCli::AcctSetRolesReply {
                     trans_id,
                     result: NetResultCode::NetNotSupported as i32,
-                };
-                if !send_message(stream.get_mut(), reply).await {
-                    return;
-                }
+                }).await
             }
-            Ok(CliToAuth::AcctSetBillingTypeRequest { trans_id, .. }) => {
-                let reply = AuthToCli::AcctSetRolesReply {
+            CliToAuth::AcctSetBillingTypeRequest { trans_id, .. } => {
+                self.send_message(AuthToCli::AcctSetRolesReply {
                     trans_id,
                     result: NetResultCode::NetNotSupported as i32,
-                };
-                if !send_message(stream.get_mut(), reply).await {
-                    return;
-                }
+                }).await
             }
-            Ok(CliToAuth::AcctActivateRequest { trans_id, .. }) => {
-                let reply = AuthToCli::AcctActivateReply {
+            CliToAuth::AcctActivateRequest { trans_id, .. } => {
+                self.send_message(AuthToCli::AcctActivateReply {
                     trans_id,
                     result: NetResultCode::NetNotSupported as i32,
-                };
-                if !send_message(stream.get_mut(), reply).await {
-                    return;
-                }
+                }).await
             }
-            Ok(CliToAuth::AcctCreateFromKeyRequest { trans_id, .. }) => {
-                let reply = AuthToCli::AcctCreateFromKeyReply {
+            CliToAuth::AcctCreateFromKeyRequest { trans_id, .. } => {
+                self.send_message(AuthToCli::AcctCreateFromKeyReply {
                     trans_id,
                     result: NetResultCode::NetNotSupported as i32,
                     account_id: Uuid::nil(),
                     activation_key: Uuid::nil(),
-                };
-                if !send_message(stream.get_mut(), reply).await {
-                    return;
-                }
+                }).await
             }
-            Ok(CliToAuth::PlayerDeleteRequest { .. }) => {
+            CliToAuth::PlayerDeleteRequest { .. } => {
                 todo!()
             }
-            Ok(CliToAuth::PlayerCreateRequest { trans_id, player_name, avatar_shape, .. }) => {
-                if !player_create(stream.get_mut(), trans_id, &player_name,
-                                  &avatar_shape, &state, vault.as_ref()).await {
-                    return;
-                }
+            CliToAuth::PlayerCreateRequest { trans_id, player_name, avatar_shape, .. } => {
+                self.player_create(trans_id, &player_name, &avatar_shape).await
             }
-            Ok(CliToAuth::UpgradeVisitorRequest { trans_id, .. }) => {
-                let reply = AuthToCli::UpgradeVisitorReply {
+            CliToAuth::UpgradeVisitorRequest { trans_id, .. } => {
+                self.send_message(AuthToCli::UpgradeVisitorReply {
                     trans_id,
                     result: NetResultCode::NetNotSupported as i32,
-                };
-                if !send_message(stream.get_mut(), reply).await {
-                    return;
-                }
+                }).await
             }
-            Ok(CliToAuth::SetPlayerBanStatusRequest { trans_id, .. }) => {
-                warn!("Rejecting ban request from {}",
-                      stream.get_ref().peer_addr().unwrap());
-                let reply = AuthToCli::SetPlayerBanStatusReply {
+            CliToAuth::SetPlayerBanStatusRequest { trans_id, .. } => {
+                warn!("Rejecting ban request from {}", self.peer_addr().unwrap());
+                self.send_message(AuthToCli::SetPlayerBanStatusReply {
                     trans_id,
                     result: NetResultCode::NetServiceForbidden as i32,
-                };
-                if !send_message(stream.get_mut(), reply).await {
-                    return;
-                }
+                }).await
             }
-            Ok(CliToAuth::KickPlayer { .. }) => {
-                warn!("Ignoring kick player request from {}",
-                      stream.get_ref().peer_addr().unwrap());
+            CliToAuth::KickPlayer { .. } => {
+                warn!("Ignoring kick player request from {}", self.peer_addr().unwrap());
+                true
             }
-            Ok(CliToAuth::ChangePlayerNameRequest { .. }) => {
+            CliToAuth::ChangePlayerNameRequest { .. } => {
                 todo!()
             }
-            Ok(CliToAuth::SendFriendInviteRequest { .. }) => {
+            CliToAuth::SendFriendInviteRequest { .. } => {
                 todo!()
             }
-            Ok(CliToAuth::VaultNodeCreate { trans_id, node_buffer }) => {
+            CliToAuth::VaultNodeCreate { trans_id, node_buffer } => {
                 let reply = match VaultNode::from_blob(&node_buffer) {
-                    Ok(node) => match vault.create_node(node).await {
+                    Ok(node) => match self.vault.create_node(node).await {
                         Ok(node_id) => AuthToCli::VaultNodeCreated {
                             trans_id,
                             result: NetResultCode::NetSuccess as i32,
@@ -723,12 +401,10 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
                         }
                     }
                 };
-                if !send_message(stream.get_mut(), reply).await {
-                    return;
-                }
+                self.send_message(reply).await
             }
-            Ok(CliToAuth::VaultNodeFetch { trans_id, node_id }) => {
-                let reply = match vault.fetch_node(node_id).await {
+            CliToAuth::VaultNodeFetch { trans_id, node_id } => {
+                let reply = match self.vault.fetch_node(node_id).await {
                     Ok(node) => match node.to_blob() {
                         Ok(node_buffer) => AuthToCli::VaultNodeFetched {
                             trans_id,
@@ -750,18 +426,16 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
                         node_buffer: Vec::new()
                     },
                 };
-                if !send_message(stream.get_mut(), reply).await {
-                    return;
-                }
+                self.send_message(reply).await
             }
-            Ok(CliToAuth::VaultNodeSave { .. }) => {
+            CliToAuth::VaultNodeSave { .. } => {
                 todo!()
             }
-            Ok(CliToAuth::VaultNodeDelete { .. }) => {
+            CliToAuth::VaultNodeDelete { .. } => {
                 todo!()
             }
-            Ok(CliToAuth::VaultNodeAdd { trans_id, parent_id, child_id, owner_id }) => {
-                let reply = match vault.ref_node(parent_id, child_id, owner_id).await {
+            CliToAuth::VaultNodeAdd { trans_id, parent_id, child_id, owner_id } => {
+                let reply = match self.vault.ref_node(parent_id, child_id, owner_id).await {
                     Ok(()) => AuthToCli::VaultAddNodeReply {
                         trans_id,
                         result: NetResultCode::NetSuccess as i32
@@ -771,15 +445,13 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
                         result: err as i32
                     },
                 };
-                if !send_message(stream.get_mut(), reply).await {
-                    return;
-                }
+                self.send_message(reply).await
             }
-            Ok(CliToAuth::VaultNodeRemove { .. }) => {
+            CliToAuth::VaultNodeRemove { .. } => {
                 todo!()
             }
-            Ok(CliToAuth::VaultFetchNodeRefs { trans_id, node_id }) => {
-                let reply = match vault.fetch_refs(node_id, true).await {
+            CliToAuth::VaultFetchNodeRefs { trans_id, node_id } => {
+                let reply = match self.vault.fetch_refs(node_id, true).await {
                     Ok(refs) => AuthToCli::VaultNodeRefsFetched {
                         trans_id,
                         result: NetResultCode::NetSuccess as i32,
@@ -791,120 +463,406 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
                         refs: Vec::new()
                     },
                 };
-                if !send_message(stream.get_mut(), reply).await {
-                    return;
+                self.send_message(reply).await
+            }
+            CliToAuth::VaultInitAgeRequest { .. } => {
+                todo!()
+            }
+            CliToAuth::VaultNodeFind { .. } => {
+                todo!()
+            }
+            CliToAuth::VaultSetSeen { .. } => {
+                todo!()
+            }
+            CliToAuth::VaultSendNode { .. } => {
+                todo!()
+            }
+            CliToAuth::AgeRequest { .. } => {
+                todo!()
+            }
+            CliToAuth::FileListRequest { trans_id, directory, ext } => {
+                self.do_manifest(trans_id, &directory, &ext).await
+            }
+            CliToAuth::FileDownloadRequest { trans_id, filename } => {
+                self.do_download(trans_id, &filename).await
+            }
+            CliToAuth::FileDownloadChunkAck { .. } => true, // Ignored
+            CliToAuth::PropagateBuffer { .. } => {
+                warn!("Ignoring propagate buffer from {}", self.peer_addr().unwrap());
+                true
+            }
+            CliToAuth::GetPublicAgeList { .. } => {
+                todo!()
+            }
+            CliToAuth::SetAgePublic { .. } => {
+                todo!()
+            }
+            CliToAuth::LogPythonTraceback { traceback } => {
+                warn!("Python Traceback from {}:\n{}", self.peer_addr().unwrap(), traceback);
+                true
+            }
+            CliToAuth::LogStackDump { stackdump } => {
+                warn!("Stack Dump from {}:\n{}", self.peer_addr().unwrap(), stackdump);
+                true
+            }
+            CliToAuth::LogClientDebuggerConnect { .. } => true, // Ignored
+            CliToAuth::ScoreCreate { .. } => {
+                todo!()
+            }
+            CliToAuth::ScoreDelete { .. } => {
+                todo!()
+            }
+            CliToAuth::ScoreGetScores { .. } => {
+                todo!()
+            }
+            CliToAuth::ScoreAddPoints { .. } => {
+                todo!()
+            }
+            CliToAuth::ScoreTransferPoints { .. } => {
+                todo!()
+            }
+            CliToAuth::ScoreSetPoints { .. } => {
+                todo!()
+            }
+            CliToAuth::ScoreGetRanks { .. } => {
+                todo!()
+            }
+            CliToAuth::AccountExistsRequest { .. } => {
+                todo!()
+            }
+            CliToAuth::ScoreGetHighScores { .. } => {
+                todo!()
+            }
+        }
+    }
+
+    async fn send_message(&mut self, reply: AuthToCli) -> bool {
+        let mut reply_buf = Cursor::new(Vec::new());
+        if let Err(err) = reply.stream_write(&mut reply_buf) {
+            warn!("Failed to write reply stream: {}", err);
+            return false;
+        }
+        if let Err(err) = self.stream.get_mut().write_all(reply_buf.get_ref()).await {
+            warn!("Failed to send reply: {}", err);
+            false
+        } else {
+            true
+        }
+    }
+
+    async fn do_manifest(&mut self, trans_id: u32, dir_name: &str, ext: &str) -> bool {
+        let reply = if let Some(manifest)
+                            = fetch_list(dir_name, ext, &self.server_config.data_root)
+        {
+            debug!("Client {} requested list '{}\\*.{}'",
+                   self.peer_addr().unwrap(), dir_name, ext);
+
+            AuthToCli::FileListReply {
+                trans_id,
+                result: NetResultCode::NetSuccess as i32,
+                manifest
+            }
+        } else {
+            warn!("Client {} requested invalid list '{}\\*.{}'",
+                  self.peer_addr().unwrap(), dir_name, ext);
+            AuthToCli::FileListReply {
+                trans_id,
+                result: NetResultCode::NetFileNotFound as i32,
+                manifest: Manifest::new()
+            }
+        };
+
+        self.send_message(reply).await
+    }
+
+    async fn do_download(&mut self, trans_id: u32, filename: &str) -> bool {
+        if let Some((mut file, metadata, download_path))
+                    = open_server_file(filename, &self.server_config.data_root).await
+        {
+            debug!("Client {} requested file '{}'", self.peer_addr().unwrap(), filename);
+
+            if metadata.len() > u32::MAX as u64 {
+                debug!("File {} too large for 32-bit stream", filename);
+                return self.send_message(AuthToCli::download_error(trans_id,
+                                            NetResultCode::NetInternalError)).await;
+            }
+
+            let mut buffer = [0u8; FILE_CHUNK_SIZE];
+            let mut offset = 0;
+            loop {
+                match file.read(&mut buffer).await {
+                    Ok(count) => {
+                        if count == 0 {
+                            // End of file reached
+                            return true;
+                        }
+                        let reply = AuthToCli::FileDownloadChunk {
+                            trans_id,
+                            result: NetResultCode::NetSuccess as i32,
+                            total_size: metadata.len() as u32,
+                            offset,
+                            file_data: Vec::from(&buffer[..count]),
+                        };
+                        if !self.send_message(reply).await {
+                            return false;
+                        }
+                        offset += count as u32;
+                    }
+                    Err(err) => {
+                        warn!("Could not read from {}: {}", download_path.display(), err);
+                        return self.send_message(AuthToCli::download_error(trans_id,
+                                                    NetResultCode::NetInternalError)).await;
+                    }
                 }
             }
-            Ok(CliToAuth::VaultInitAgeRequest { .. }) => {
-                todo!()
-            }
-            Ok(CliToAuth::VaultNodeFind { .. }) => {
-                todo!()
-            }
-            Ok(CliToAuth::VaultSetSeen { .. }) => {
-                todo!()
-            }
-            Ok(CliToAuth::VaultSendNode { .. }) => {
-                todo!()
-            }
-            Ok(CliToAuth::AgeRequest { .. }) => {
-                todo!()
-            }
-            Ok(CliToAuth::FileListRequest { trans_id, directory, ext }) => {
-                if !do_manifest(stream.get_mut(), trans_id, &directory, &ext,
-                                &server_config.data_root).await
-                {
-                    return;
-                }
-            }
-            Ok(CliToAuth::FileDownloadRequest { trans_id, filename }) => {
-                if !do_download(stream.get_mut(), trans_id, &filename,
-                                &server_config.data_root).await
-                {
-                    return;
-                }
-            }
-            Ok(CliToAuth::FileDownloadChunkAck { .. }) => (),   // Ignored
-            Ok(CliToAuth::PropagateBuffer { .. }) => {
-                warn!("Ignoring propagate buffer from {}",
-                      stream.get_ref().peer_addr().unwrap());
-            }
-            Ok(CliToAuth::GetPublicAgeList { .. }) => {
-                todo!()
-            }
-            Ok(CliToAuth::SetAgePublic { .. }) => {
-                todo!()
-            }
-            Ok(CliToAuth::LogPythonTraceback { traceback }) => {
-                warn!("Python Traceback from {}:\n{}",
-                      stream.get_ref().peer_addr().unwrap(), traceback);
-            }
-            Ok(CliToAuth::LogStackDump { stackdump }) => {
-                warn!("Stack Dump from {}:\n{}",
-                      stream.get_ref().peer_addr().unwrap(), stackdump);
-            }
-            Ok(CliToAuth::LogClientDebuggerConnect { .. }) => (),   // Ignored
-            Ok(CliToAuth::ScoreCreate { .. }) => {
-                todo!()
-            }
-            Ok(CliToAuth::ScoreDelete { .. }) => {
-                todo!()
-            }
-            Ok(CliToAuth::ScoreGetScores { .. }) => {
-                todo!()
-            }
-            Ok(CliToAuth::ScoreAddPoints { .. }) => {
-                todo!()
-            }
-            Ok(CliToAuth::ScoreTransferPoints { .. }) => {
-                todo!()
-            }
-            Ok(CliToAuth::ScoreSetPoints { .. }) => {
-                todo!()
-            }
-            Ok(CliToAuth::ScoreGetRanks { .. }) => {
-                todo!()
-            }
-            Ok(CliToAuth::AccountExistsRequest { .. }) => {
-                todo!()
-            }
-            Ok(CliToAuth::ScoreGetHighScores { .. }) => {
-                todo!()
+        } else {
+            warn!("Client {} requested invalid path '{}'", self.peer_addr().unwrap(),
+                  filename);
+            self.send_message(AuthToCli::download_error(trans_id,
+                                NetResultCode::NetFileNotFound)).await
+        }
+    }
+
+    async fn do_login_request(&mut self, trans_id: u32, client_challenge: u32,
+                              account_name: &str, pass_hash: ShaDigest) -> bool
+    {
+        let account = match self.vault.get_account(account_name).await {
+            Ok(Some(account)) => account,
+            Ok(None) => {
+                info!("{}: Account {} was not found", self.peer_addr().unwrap(),
+                      account_name);
+
+                // Don't leak to the client that the account doesn't exist...
+                return self.send_message(AuthToCli::login_error(trans_id,
+                                            NetResultCode::NetAuthenticationFailed)).await;
             }
             Err(err) => {
-                if matches!(err.kind(), ErrorKind::ConnectionReset | ErrorKind::UnexpectedEof) {
-                    debug!("Client {} disconnected", stream.get_ref().peer_addr().unwrap());
-                } else {
-                    warn!("Error reading message from client: {}", err);
+                return self.send_message(AuthToCli::login_error(trans_id, err)).await;
+            }
+        };
+
+        // NOTE: Neither of these is good or secure, but they are what the
+        // client expects.  To fix these, we'd have to break compatibility
+        // with older clients.
+        if use_email_auth(account_name) {
+            // Use broken LE Sha0 hash mechanism
+            let challenge_hash = match hash_password_challenge(
+                        client_challenge, self.server_challenge,
+                        account.pass_hash)
+            {
+                Ok(digest) => digest,
+                Err(err) => {
+                    warn!("Failed to generate challenge hash: {}", err);
+                    return self.send_message(AuthToCli::login_error(trans_id,
+                                                NetResultCode::NetInternalError)).await;
                 }
-                return;
+            };
+            if challenge_hash != pass_hash {
+                info!("{}: Login failure for account {}", self.peer_addr().unwrap(),
+                      account_name);
+                return self.send_message(AuthToCli::login_error(trans_id,
+                                            NetResultCode::NetAuthenticationFailed)).await;
+            }
+        } else {
+            // Directly compare the BE Sha1 hash
+            // NOTE: The client sends its hash as Little Endian...
+            if account.pass_hash != pass_hash.endian_swap() {
+                info!("{}: Login failure for account {}", self.peer_addr().unwrap(),
+                      account_name);
+                return self.send_message(AuthToCli::login_error(trans_id,
+                                            NetResultCode::NetAuthenticationFailed)).await;
             }
         }
-    }
-}
 
-impl AuthServer {
-    pub fn start(server_config: Arc<ServerConfig>, vault: Arc<VaultServer>)
-        -> AuthServer
+        if account.is_banned() {
+            info!("{}: Account {} is banned", self.peer_addr().unwrap(), account_name);
+            return self.send_message(AuthToCli::login_error(trans_id,
+                                        NetResultCode::NetAccountBanned)).await;
+        }
+        if self.server_config.restrict_logins && !account.can_login_restricted() {
+            info!("{}: Account {} login is restricted", self.peer_addr().unwrap(),
+                  account_name);
+            return self.send_message(AuthToCli::login_error(trans_id,
+                                        NetResultCode::NetLoginDenied)).await;
+        }
+
+        let ntd_key = match self.server_config.get_ntd_key() {
+            Ok(key) => key,
+            Err(err) => {
+                warn!("Failed to get encryption key: {}", err);
+                return self.send_message(AuthToCli::login_error(trans_id,
+                                            NetResultCode::NetInternalError)).await;
+            }
+        };
+
+        info!("{}: Logged in as {} {}", self.peer_addr().unwrap(),
+              account_name, account.account_id);
+        self.account_id = Some(account.account_id);
+
+        match self.fetch_account_players(trans_id, &account.account_id).await {
+            Some(result) if result == NetResultCode::NetSuccess => (),
+            Some(err) => {
+                return self.send_message(AuthToCli::login_error(trans_id, err)).await;
+            }
+            None => return false,
+        }
+
+        // Send the final reply after all players are sent
+        self.send_message(AuthToCli::AcctLoginReply {
+            trans_id,
+            result: NetResultCode::NetSuccess as i32,
+            account_id: account.account_id,
+            account_flags: account.account_flags,
+            billing_type: account.billing_type,
+            encryption_key: ntd_key,
+        }).await
+    }
+
+    async fn fetch_account_players(&mut self, trans_id: u32, account_id: &Uuid)
+        -> Option<NetResultCode>
     {
-        let (incoming_send, mut incoming_recv) = mpsc::channel(5);
-
-        tokio::spawn(async move {
-            while let Some(sock) = incoming_recv.recv().await {
-                let server_config = server_config.clone();
-                let vault = vault.clone();
-                tokio::spawn(async move {
-                    auth_client(sock, server_config, vault).await;
-                });
+        let players = match self.vault.get_players(account_id).await {
+            Ok(players) => players,
+            Err(err) => return Some(err),
+        };
+        for player in players {
+            let msg = AuthToCli::AcctPlayerInfo {
+                trans_id,
+                player_id: player.player_id,
+                player_name: player.player_name,
+                avatar_shape: player.avatar_shape,
+                explorer: player.explorer,
+            };
+            if !self.send_message(msg).await {
+                return None;
             }
-        });
-        AuthServer { incoming_send }
+        }
+        Some(NetResultCode::NetSuccess)
     }
 
-    pub async fn add(&mut self, sock: TcpStream) {
-        if let Err(err) = self.incoming_send.send(sock).await {
-            error!("Failed to add client: {}", err);
-            std::process::exit(1);
+    async fn player_create(&mut self, trans_id: u32, player_name: &str,
+                           avatar_shape: &str) -> bool
+    {
+        let account_id = match self.account_id {
+            Some(uuid) => uuid,
+            None => {
+                warn!("{} cannot create player: Not logged in", self.peer_addr().unwrap());
+                return self.send_message(AuthToCli::player_create_error(trans_id,
+                                            NetResultCode::NetAuthenticationFailed)).await;
+            }
+        };
+
+        // Disallow arbitrary choices of avatar shape...  Special models can
+        // be set by admins when appropriate.
+        if avatar_shape != "male" && avatar_shape != "female" {
+            warn!("Client {} attempted to use avatar shape '{}'",
+                  self.peer_addr().unwrap(), avatar_shape);
+            return self.send_message(AuthToCli::player_create_error(trans_id,
+                                        NetResultCode::NetInvalidParameter)).await;
         }
+
+        let player_info = match self.vault.create_player(&account_id, player_name,
+                                                         avatar_shape).await
+        {
+            Ok(player_info) => player_info,
+            Err(result) => {
+                return self.send_message(AuthToCli::player_create_error(trans_id, result)).await;
+            }
+        };
+
+        if let Err(err) = create_player_nodes(&account_id, &player_info, &self.vault).await {
+            return self.send_message(AuthToCli::player_create_error(trans_id, err)).await;
+        }
+
+        info!("{} created new player {} ({})", self.peer_addr().unwrap(),
+              player_info.player_name, player_info.player_id);
+
+        self.send_message(AuthToCli::PlayerCreateReply {
+            trans_id,
+            result: NetResultCode::NetSuccess as i32,
+            player_id: player_info.player_id,
+            explorer: player_info.explorer,
+            player_name: player_info.player_name,
+            avatar_shape: player_info.avatar_shape,
+        }).await
+    }
+
+    async fn do_set_player(&mut self, trans_id: u32, player_id: u32) -> bool {
+        let account_id = match self.account_id {
+            Some(uuid) => uuid,
+            None => {
+                warn!("{} cannot set player: Not logged in", self.peer_addr().unwrap());
+                return self.send_message(AuthToCli::AcctSetPlayerReply {
+                    trans_id,
+                    result: NetResultCode::NetAuthenticationFailed as i32
+                }).await;
+            }
+        };
+
+        let player_node = match self.vault.fetch_node(player_id).await
+                                    .map(|node| node.as_player_node())
+        {
+            Ok(Some(node)) => node,
+            Ok(None) => {
+                warn!("{} requested invalid Player ID {}", self.peer_addr().unwrap(),
+                      player_id);
+                return self.send_message(AuthToCli::AcctSetPlayerReply {
+                    trans_id,
+                    result: NetResultCode::NetPlayerNotFound as i32
+                }).await;
+            }
+            Err(err) => {
+                warn!("{}: Failed to fetch Player ID {}", self.peer_addr().unwrap(),
+                      player_id);
+                return self.send_message(AuthToCli::AcctSetPlayerReply {
+                    trans_id,
+                    result: err as i32
+                }).await;
+            }
+        };
+
+        if player_node.account_id() != &account_id {
+            warn!("{} requested Player {}, which belongs to a different account {}",
+                  self.peer_addr().unwrap(), player_id, player_node.account_id());
+            return self.send_message(AuthToCli::AcctSetPlayerReply {
+                trans_id,
+                result: NetResultCode::NetPlayerNotFound as i32
+            }).await;
+        }
+
+        let player_info = match self.vault.get_player_info_node(player_id).await {
+            Ok(node) => node.as_player_info_node().unwrap(),
+            Err(err) => {
+                warn!("Failed to get Player Info node for Player {}", player_id);
+                return self.send_message(AuthToCli::AcctSetPlayerReply {
+                    trans_id,
+                    result: err as i32
+                }).await;
+            }
+        };
+
+        if player_info.online() != 0 {
+            warn!("{} requested already-online player {}", self.peer_addr().unwrap(),
+                  player_id);
+            return self.send_message(AuthToCli::AcctSetPlayerReply {
+                trans_id,
+                result: NetResultCode::NetLoggedInElsewhere as i32
+            }).await;
+        }
+
+        let update = VaultNode::new_player_info_update(player_info.node_id(), 1,
+                        "Lobby", &Uuid::nil());
+        if let Err(err) = self.vault.update_node(update).await {
+            warn!("Failed to set player {} online", player_id);
+            return self.send_message(AuthToCli::AcctSetPlayerReply {
+                trans_id,
+                result: err as i32
+            }).await;
+        }
+
+        info!("{} signed in as {} ({})", self.peer_addr().unwrap(),
+              player_node.player_name_ci(), player_id);
+        self.player_id = Some(player_id);
+        true
     }
 }

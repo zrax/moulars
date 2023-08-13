@@ -27,7 +27,7 @@ use crate::plasma::{StreamRead, StreamWrite};
 use crate::file_srv::manifest::{read_utf16z_text, write_utf16z_text,
                                 read_utf16z_u32, write_utf16z_u32};
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct FileInfo {
     path: String,
     file_size: u32,

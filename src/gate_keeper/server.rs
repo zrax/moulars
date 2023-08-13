@@ -15,6 +15,7 @@
  */
 
 use std::io::{BufRead, Cursor, Result, ErrorKind};
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -32,6 +33,11 @@ use super::messages::{CliToGateKeeper, GateKeeperToCli};
 
 pub struct GateKeeper {
     incoming_send: mpsc::Sender<TcpStream>,
+}
+
+struct GateKeeperWorker {
+    stream: BufReader<CryptTcpStream>,
+    server_config: Arc<ServerConfig>,
 }
 
 const CONN_HEADER_SIZE: usize = 20;
@@ -61,82 +67,13 @@ async fn init_client(mut sock: TcpStream, server_config: &ServerConfig)
                                  &server_config.gate_k_key).await
 }
 
-async fn send_message(stream: &mut CryptTcpStream, reply: GateKeeperToCli) -> bool {
-    let mut reply_buf = Cursor::new(Vec::new());
-    if let Err(err) = reply.stream_write(&mut reply_buf) {
-        warn!("Failed to write reply stream: {}", err);
-        return false;
-    }
-    if let Err(err) = stream.write_all(reply_buf.get_ref()).await {
-        warn!("Failed to send reply: {}", err);
-        false
-    } else {
-        true
-    }
-}
-
-async fn gate_keeper_client(client_sock: TcpStream, server_config: Arc<ServerConfig>) {
-    let mut stream = match init_client(client_sock, &server_config).await {
-        Ok(cipher) => cipher,
-        Err(err) => {
-            warn!("Failed to initialize client: {}", err);
-            return;
-        }
-    };
-
-    loop {
-        match CliToGateKeeper::read(&mut stream).await {
-            Ok(CliToGateKeeper::PingRequest { trans_id, ping_time, payload }) => {
-                let reply = GateKeeperToCli::PingReply {
-                    trans_id, ping_time, payload
-                };
-                if !send_message(stream.get_mut(), reply).await {
-                    return;
-                }
-            }
-            Ok(CliToGateKeeper::FileServIpAddressRequest { trans_id, from_patcher }) => {
-                // Currently unused
-                let _ = from_patcher;
-
-                let reply = GateKeeperToCli::FileServIpAddressReply {
-                    trans_id,
-                    ip_addr: server_config.file_serv_ip.clone(),
-                };
-                if !send_message(stream.get_mut(), reply).await {
-                    return;
-                }
-            }
-            Ok(CliToGateKeeper::AuthServIpAddressRequest { trans_id }) => {
-                let reply = GateKeeperToCli::AuthServIpAddressReply {
-                    trans_id,
-                    ip_addr: server_config.auth_serv_ip.clone(),
-                };
-                if !send_message(stream.get_mut(), reply).await {
-                    return;
-                }
-            }
-            Err(err) => {
-                if matches!(err.kind(), ErrorKind::ConnectionReset | ErrorKind::UnexpectedEof) {
-                    debug!("Client {} disconnected", stream.get_ref().peer_addr().unwrap());
-                } else {
-                    warn!("Error reading message from client: {}", err);
-                }
-                return;
-            }
-        }
-    }
-}
-
 impl GateKeeper {
     pub fn start(server_config: Arc<ServerConfig>) -> GateKeeper {
         let (incoming_send, mut incoming_recv) = mpsc::channel(5);
 
         tokio::spawn(async move {
             while let Some(sock) = incoming_recv.recv().await {
-                let server_config = server_config.clone();
-                tokio::spawn(async move {
-                    gate_keeper_client(sock, server_config).await;
-                });
+                GateKeeperWorker::start(sock, server_config.clone());
             }
         });
         GateKeeper { incoming_send }
@@ -146,6 +83,85 @@ impl GateKeeper {
         if let Err(err) = self.incoming_send.send(sock).await {
             error!("Failed to add client: {}", err);
             std::process::exit(1);
+        }
+    }
+}
+
+impl GateKeeperWorker {
+    pub fn start(sock: TcpStream, server_config: Arc<ServerConfig>) {
+        tokio::spawn(async move {
+            let stream = match init_client(sock, &server_config).await {
+                Ok(cipher) => cipher,
+                Err(err) => {
+                    warn!("Failed to initialize client: {}", err);
+                    return;
+                }
+            };
+
+            let mut worker = GateKeeperWorker { stream, server_config };
+            worker.run().await;
+        });
+    }
+
+    fn peer_addr(&self) -> Result<SocketAddr> { self.stream.get_ref().peer_addr() }
+
+    async fn run(&mut self) {
+        loop {
+            match CliToGateKeeper::read(&mut self.stream).await {
+                Ok(message) => {
+                    if !self.handle_message(message).await {
+                        break;
+                    }
+                }
+                Err(err) => {
+                    if matches!(err.kind(), ErrorKind::ConnectionReset | ErrorKind::UnexpectedEof) {
+                        debug!("Client {} disconnected", self.peer_addr().unwrap());
+                    } else {
+                        warn!("Error reading message from client: {}", err);
+                    }
+                    return;
+                }
+            }
+        }
+        warn!("Dropping client {}", self.peer_addr().unwrap());
+    }
+
+    async fn handle_message(&mut self, message: CliToGateKeeper) -> bool {
+        match message {
+            CliToGateKeeper::PingRequest { trans_id, ping_time, payload } => {
+                self.send_message(GateKeeperToCli::PingReply {
+                    trans_id, ping_time, payload
+                }).await
+            }
+            CliToGateKeeper::FileServIpAddressRequest { trans_id, from_patcher } => {
+                // Currently unused
+                let _ = from_patcher;
+
+                self.send_message(GateKeeperToCli::FileServIpAddressReply {
+                    trans_id,
+                    ip_addr: self.server_config.file_serv_ip.clone(),
+                }).await
+            }
+            CliToGateKeeper::AuthServIpAddressRequest { trans_id } => {
+                self.send_message(GateKeeperToCli::AuthServIpAddressReply {
+                    trans_id,
+                    ip_addr: self.server_config.auth_serv_ip.clone(),
+                }).await
+            }
+        }
+    }
+
+    async fn send_message(&mut self, reply: GateKeeperToCli) -> bool {
+        let mut reply_buf = Cursor::new(Vec::new());
+        if let Err(err) = reply.stream_write(&mut reply_buf) {
+            warn!("Failed to write reply stream: {}", err);
+            return false;
+        }
+        if let Err(err) = self.stream.get_mut().write_all(reply_buf.get_ref()).await {
+            warn!("Failed to send reply: {}", err);
+            false
+        } else {
+            true
         }
     }
 }

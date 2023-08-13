@@ -141,8 +141,7 @@ fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender<Vault
             check_send(response_send, Ok(()));
         }
         VaultMessage::FetchRefs { parent, recursive, response_send } => {
-            let reply = db.fetch_refs(parent, recursive);
-            check_send(response_send, reply);
+            check_send(response_send, db.fetch_refs(parent, recursive));
         }
     }
 }
