@@ -487,12 +487,14 @@ async fn do_set_player(stream: &mut CryptTcpStream, trans_id: u32, player_id: u3
 
     info!("{} signed in as {} ({})", stream.peer_addr().unwrap(),
           player_node.player_name_ci(), player_id);
+    state.player_id = Some(player_id);
     true
 }
 
 struct ClientState {
     server_challenge: u32,
     account_id: Option<Uuid>,
+    player_id: Option<u32>,
 }
 
 async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
@@ -509,6 +511,7 @@ async fn auth_client(client_sock: TcpStream, server_config: Arc<ServerConfig>,
     let mut state = ClientState {
         server_challenge: rand::thread_rng().gen::<u32>(),
         account_id: None,
+        player_id: None,
     };
 
     let mut bcast_recv = vault.subscribe();
