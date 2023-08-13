@@ -191,6 +191,7 @@ impl AuthServerWorker {
                 player_id: None,
             };
             worker.run().await;
+            worker.handle_disconnect().await;
         });
     }
 
@@ -864,5 +865,32 @@ impl AuthServerWorker {
               player_node.player_name_ci(), player_id);
         self.player_id = Some(player_id);
         true
+    }
+
+    async fn set_player_offline(&mut self, player_id: u32) {
+        let player_info = match self.vault.get_player_info_node(player_id).await {
+            Ok(node) => node.as_player_info_node().unwrap(),
+            Err(err) => {
+                warn!("Failed to get Player Info node for Player {}: {:?}",
+                      player_id, err);
+                return;
+            }
+        };
+
+        let update = VaultNode::new_player_info_update(player_info.node_id(), 0,
+                                                       "", &Uuid::nil());
+        if let Err(err) = self.vault.update_node(update).await {
+            warn!("Failed to set player {} offline: {:?}", player_id, err);
+            return;
+        }
+
+        info!("Player {} ({}) is now offline", player_info.player_name_ci(),
+              player_id);
+    }
+
+    async fn handle_disconnect(&mut self) {
+        if let Some(player_id) = self.player_id {
+            self.set_player_offline(player_id).await;
+        }
     }
 }
