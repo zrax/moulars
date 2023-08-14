@@ -436,7 +436,7 @@ impl AuthServerWorker {
                 todo!()
             }
             CliToAuth::VaultNodeAdd { trans_id, parent_id, child_id, owner_id } => {
-                let reply = match self.vault.ref_node(parent_id, child_id, owner_id).await {
+                let reply = match self.vault.ref_node(parent_id, child_id, owner_id, true).await {
                     Ok(()) => AuthToCli::VaultAddNodeReply {
                         trans_id,
                         result: NetResultCode::NetSuccess as i32

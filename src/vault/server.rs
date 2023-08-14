@@ -131,13 +131,16 @@ fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender<Vault
         VaultMessage::GetPlayerInfoNode { player_id, response_send } => {
             check_send(response_send, db.get_player_info_node(player_id));
         }
-        VaultMessage::RefNode { parent_id, child_id, owner_id, response_send } => {
+        VaultMessage::RefNode { parent_id, child_id, owner_id, response_send,
+                                broadcast } => {
             if let Err(err) = db.ref_node(parent_id, child_id, owner_id) {
                 return check_send(response_send, Err(err));
             }
-            check_bcast(bcast_send, VaultBroadcast::NodeAdded {
-                parent_id, child_id, owner_id
-            });
+            if broadcast {
+                check_bcast(bcast_send, VaultBroadcast::NodeAdded {
+                    parent_id, child_id, owner_id
+                });
+            }
             check_send(response_send, Ok(()));
         }
         VaultMessage::FetchRefs { parent, recursive, response_send } => {
@@ -151,7 +154,7 @@ impl VaultServer {
             -> Arc<VaultServer>
     {
         let (msg_send, mut msg_recv) = mpsc::channel(20);
-        let (bcast_send, _) = broadcast::channel(20);
+        let (bcast_send, _) = broadcast::channel(100);
 
         let broadcast = bcast_send.clone();
         tokio::spawn(async move {
@@ -291,9 +294,13 @@ impl VaultServer {
         self.request(request, response_recv).await
     }
 
-    pub async fn ref_node(&self, parent_id: u32, child_id: u32, owner_id: u32) -> NetResult<()> {
+    pub async fn ref_node(&self, parent_id: u32, child_id: u32, owner_id: u32,
+                          broadcast: bool) -> NetResult<()>
+    {
         let (response_send, response_recv) = oneshot::channel();
-        let request = VaultMessage::RefNode { parent_id, child_id, owner_id, response_send };
+        let request = VaultMessage::RefNode {
+            parent_id, child_id, owner_id, response_send, broadcast
+        };
         self.request(request, response_recv).await
     }
 

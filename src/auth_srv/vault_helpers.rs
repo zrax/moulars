@@ -86,37 +86,37 @@ pub async fn create_player_nodes(account_id: &Uuid, player: &PlayerInfo,
     let user_name = format!("{}'s", player.player_name);
     let description = format!("{}'s Relto", player.player_name);
     let (relto_id, relto_info) = create_age_nodes(&Uuid::new_v4(), None,
-            "Personal", "Relto", &user_name, &description, 0, -1, Some(player_info),
-            false, vault).await?;
+            "Personal", "Relto", &user_name, &description, 0, -1,
+            Some((player.player_id, player_info)), false, vault).await?;
 
     // TODO: Add the new player to a 'Hood
     // TODO: Get the public city age
 
     let system_node = vault.get_system_node().await?;
-    vault.ref_node(player.player_id, system_node, 0).await?;
-    vault.ref_node(player.player_id, player_info, 0).await?;
-    vault.ref_node(player.player_id, buddy_list, 0).await?;
-    vault.ref_node(player.player_id, ignore_list, 0).await?;
-    vault.ref_node(player.player_id, invite_folder, 0).await?;
-    vault.ref_node(player.player_id, owned_ages, 0).await?;
-    vault.ref_node(player.player_id, journals_folder, 0).await?;
-    vault.ref_node(player.player_id, chronicle_folder, 0).await?;
-    vault.ref_node(player.player_id, visit_ages, 0).await?;
-    vault.ref_node(player.player_id, outfit_folder, 0).await?;
-    vault.ref_node(player.player_id, closet_folder, 0).await?;
-    vault.ref_node(player.player_id, inbox, 0).await?;
-    vault.ref_node(player.player_id, people_list, 0).await?;
-    vault.ref_node(owned_ages, relto_link, 0).await?;
-    vault.ref_node(owned_ages, hood_link, 0).await?;
-    vault.ref_node(owned_ages, city_link, 0).await?;
-    vault.ref_node(relto_link, relto_info, 0).await?;
-    /* TODO vault.ref_node(hood_link, hood_info, 0).await?; */
-    /* TODO vault.ref_node(city_link, city_info, 0).await?; */
-    vault.ref_node(relto_id, owned_ages, 0).await?;
+    vault.ref_node(player.player_id, system_node, 0, false).await?;
+    vault.ref_node(player.player_id, player_info, 0, false).await?;
+    vault.ref_node(player.player_id, buddy_list, 0, false).await?;
+    vault.ref_node(player.player_id, ignore_list, 0, false).await?;
+    vault.ref_node(player.player_id, invite_folder, 0, false).await?;
+    vault.ref_node(player.player_id, owned_ages, 0, false).await?;
+    vault.ref_node(player.player_id, journals_folder, 0, false).await?;
+    vault.ref_node(player.player_id, chronicle_folder, 0, false).await?;
+    vault.ref_node(player.player_id, visit_ages, 0, false).await?;
+    vault.ref_node(player.player_id, outfit_folder, 0, false).await?;
+    vault.ref_node(player.player_id, closet_folder, 0, false).await?;
+    vault.ref_node(player.player_id, inbox, 0, false).await?;
+    vault.ref_node(player.player_id, people_list, 0, false).await?;
+    vault.ref_node(owned_ages, relto_link, 0, false).await?;
+    vault.ref_node(owned_ages, hood_link, 0, false).await?;
+    vault.ref_node(owned_ages, city_link, 0, false).await?;
+    vault.ref_node(relto_link, relto_info, 0, false).await?;
+    /* TODO vault.ref_node(hood_link, hood_info, 0, false).await?; */
+    /* TODO vault.ref_node(city_link, city_info, 0, false).await?; */
+    vault.ref_node(relto_id, owned_ages, 0, false).await?;
 
     // Add the player to the All Players folder
     let all_players = vault.get_all_players_node().await?;
-    vault.ref_node(all_players, player_info, 0).await?;
+    vault.ref_node(all_players, player_info, 0, true).await?;
 
     Ok(())
 }
@@ -124,7 +124,7 @@ pub async fn create_player_nodes(account_id: &Uuid, player: &PlayerInfo,
 #[allow(clippy::too_many_arguments)]
 pub async fn create_age_nodes(age_uuid: &Uuid, parent_uuid: Option<&Uuid>,
         age_filename: &str, instance_name: &str, user_name: &str, description: &str,
-        sequence_number: i32, language: i32, add_owner: Option<u32>, public: bool,
+        sequence_number: i32, language: i32, add_owner: Option<(u32, u32)>, public: bool,
         vault: &VaultServer) -> NetResult<(u32, u32)>
 {
     let node = VaultNode::new_age(age_uuid, parent_uuid, age_filename);
@@ -176,19 +176,19 @@ pub async fn create_age_nodes(age_uuid: &Uuid, parent_uuid: Option<&Uuid>,
     let child_ages = vault.create_node(node).await?;
 
     let system_node = vault.get_system_node().await?;
-    vault.ref_node(age_id, system_node, 0).await?;
-    vault.ref_node(age_id, chronicle_folder, 0).await?;
-    vault.ref_node(age_id, people_list, 0).await?;
-    vault.ref_node(age_id, sub_ages, 0).await?;
-    vault.ref_node(age_id, age_info, 0).await?;
-    vault.ref_node(age_id, devices_folder, 0).await?;
-    vault.ref_node(age_info, can_visit, 0).await?;
-    vault.ref_node(age_info, sdl_node, 0).await?;
-    vault.ref_node(age_info, age_owners, 0).await?;
-    vault.ref_node(age_info, child_ages, 0).await?;
+    vault.ref_node(age_id, system_node, 0, false).await?;
+    vault.ref_node(age_id, chronicle_folder, 0, false).await?;
+    vault.ref_node(age_id, people_list, 0, false).await?;
+    vault.ref_node(age_id, sub_ages, 0, false).await?;
+    vault.ref_node(age_id, age_info, 0, false).await?;
+    vault.ref_node(age_id, devices_folder, 0, false).await?;
+    vault.ref_node(age_info, can_visit, 0, false).await?;
+    vault.ref_node(age_info, sdl_node, 0, false).await?;
+    vault.ref_node(age_info, age_owners, 0, false).await?;
+    vault.ref_node(age_info, child_ages, 0, false).await?;
 
-    if let Some(owner_id) = add_owner {
-        vault.ref_node(age_owners, owner_id, 0).await?;
+    if let Some((owner_id, owner_info)) = add_owner {
+        vault.ref_node(age_owners, owner_info, owner_id, true).await?;
     }
 
     let display_name = if !description.is_empty() {

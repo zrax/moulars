@@ -72,6 +72,7 @@ pub(super) enum VaultMessage {
         parent_id: u32,
         child_id: u32,
         owner_id: u32,
+        broadcast: bool,
         response_send: oneshot::Sender<NetResult<()>>,
     },
     FetchRefs {
