@@ -56,7 +56,7 @@ pub(super) enum VaultMessage {
     },
     FindNodes {
         template: Arc<VaultNode>,
-        response_send: oneshot::Sender<NetResult<Vec<Arc<VaultNode>>>>
+        response_send: oneshot::Sender<NetResult<Vec<u32>>>,
     },
     GetSystemNode {
         response_send: oneshot::Sender<NetResult<u32>>,

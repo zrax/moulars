@@ -469,8 +469,31 @@ impl AuthServerWorker {
             CliToAuth::VaultInitAgeRequest { .. } => {
                 todo!()
             }
-            CliToAuth::VaultNodeFind { .. } => {
-                todo!()
+            CliToAuth::VaultNodeFind { trans_id, node_buffer } => {
+                let node_template = match VaultNode::from_blob(&node_buffer) {
+                    Ok(node) => node,
+                    Err(err) => {
+                        warn!("Failed to parse blob: {}", err);
+                        return self.send_message(AuthToCli::VaultNodeFindReply {
+                            trans_id,
+                            result: NetResultCode::NetInternalError as i32,
+                            node_ids: Vec::new(),
+                        }).await;
+                    }
+                };
+                let reply = match self.vault.find_nodes(node_template).await {
+                    Ok(node_ids) => AuthToCli::VaultNodeFindReply {
+                        trans_id,
+                        result: NetResultCode::NetSuccess as i32,
+                        node_ids,
+                    },
+                    Err(err) => AuthToCli::VaultNodeFindReply {
+                        trans_id,
+                        result: err as i32,
+                        node_ids: Vec::new(),
+                    }
+                };
+                self.send_message(reply).await
             }
             CliToAuth::VaultSetSeen { .. } => {
                 todo!()

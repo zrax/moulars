@@ -36,7 +36,7 @@ pub trait DbInterface: Sync + Send {
     fn create_node(&mut self, node: Arc<VaultNode>) -> NetResult<u32>;
     fn fetch_node(&self, node_id: u32) -> NetResult<Arc<VaultNode>>;
     fn update_node(&mut self, node: Arc<VaultNode>) -> NetResult<Vec<u32>>;
-    fn find_nodes(&self, template: Arc<VaultNode>) -> NetResult<Vec<Arc<VaultNode>>>;
+    fn find_nodes(&self, template: Arc<VaultNode>) -> NetResult<Vec<u32>>;
     fn get_system_node(&self) -> NetResult<u32>;
     fn get_all_players_node(&self) -> NetResult<u32>;
     fn get_player_info_node(&self, player_id: u32) -> NetResult<Arc<VaultNode>>;

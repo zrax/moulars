@@ -267,7 +267,7 @@ impl VaultServer {
         self.request(request, response_recv).await
     }
 
-    pub async fn find_nodes(&self, template: VaultNode) -> NetResult<Vec<Arc<VaultNode>>> {
+    pub async fn find_nodes(&self, template: VaultNode) -> NetResult<Vec<u32>> {
         let (response_send, response_recv) = oneshot::channel();
         let request = VaultMessage::FindNodes {
             template: Arc::new(template),

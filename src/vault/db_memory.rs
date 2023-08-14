@@ -150,9 +150,14 @@ impl DbInterface for DbMemory {
         Ok(vec![node_id])
     }
 
-    fn find_nodes(&self, template: Arc<VaultNode>) -> NetResult<Vec<Arc<VaultNode>>> {
-        Ok(self.vault.values().filter(|node|
-                node_match(template.as_ref(), node.as_ref())).cloned().collect())
+    fn find_nodes(&self, template: Arc<VaultNode>) -> NetResult<Vec<u32>> {
+        Ok(self.vault.values().filter_map(|node| {
+            if node_match(template.as_ref(), node.as_ref()) {
+                Some(node.node_id())
+            } else {
+                None
+            }
+        }).collect())
     }
 
     fn get_system_node(&self) -> NetResult<u32> {
