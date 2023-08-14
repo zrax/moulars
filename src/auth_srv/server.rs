@@ -887,7 +887,11 @@ impl AuthServerWorker {
         info!("{} signed in as {} ({})", self.peer_addr().unwrap(),
               player_node.player_name_ci(), player_id);
         self.player_id = Some(player_id);
-        true
+
+        self.send_message(AuthToCli::AcctSetPlayerReply {
+            trans_id,
+            result: NetResultCode::NetSuccess as i32,
+        }).await
     }
 
     async fn set_player_offline(&mut self, player_id: u32) {
