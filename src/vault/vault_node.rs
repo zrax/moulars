@@ -14,6 +14,7 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+use std::fmt::{Debug, Formatter};
 use std::io::{BufRead, Write, Cursor, Result};
 use std::mem::size_of;
 use std::sync::Arc;
@@ -47,7 +48,7 @@ pub enum StandardNode {
     GlobalInboxFolder, ChildAgesFolder, GameScoresFolder,
 }
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default)]
 pub struct VaultNode {
     fields: u64,
 
@@ -379,6 +380,63 @@ const FIELD_TEXT_1: u64             = 1 << 28;
 const FIELD_TEXT_2: u64             = 1 << 29;
 const FIELD_BLOB_1: u64             = 1 << 30;
 const FIELD_BLOB_2: u64             = 1 << 31;
+
+macro_rules! debug_field {
+    ($fmt:ident, $fields:ident, $field_name:ident, $value:expr) => {
+        paste! {
+            if ($fields & [<FIELD_ $field_name:upper>]) != 0 {
+                $fields &= ![<FIELD_ $field_name:upper>];
+                if $fields != 0 {
+                    write!($fmt, " {}: {},", stringify!($field_name), $value)?;
+                } else {
+                    write!($fmt, " {}: {}", stringify!($field_name), $value)?;
+                }
+            }
+        }
+    }
+}
+
+impl Debug for VaultNode {
+    // Simplify the default debug format by using the fields mask to make
+    // nodes easier to read
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(fmt, "VaultNode {{")?;
+        let mut fields = self.fields;
+        debug_field!(fmt, fields, node_id, self.node_id);
+        debug_field!(fmt, fields, create_time, self.create_time);
+        debug_field!(fmt, fields, modify_time, self.modify_time);
+        debug_field!(fmt, fields, create_age_name, self.create_age_name);
+        debug_field!(fmt, fields, create_age_uuid, self.create_age_uuid);
+        debug_field!(fmt, fields, creator_uuid, self.creator_uuid);
+        debug_field!(fmt, fields, creator_id, self.creator_id);
+        debug_field!(fmt, fields, node_type, self.node_type);
+        debug_field!(fmt, fields, int32_1, self.int32_1);
+        debug_field!(fmt, fields, int32_2, self.int32_2);
+        debug_field!(fmt, fields, int32_3, self.int32_3);
+        debug_field!(fmt, fields, int32_4, self.int32_4);
+        debug_field!(fmt, fields, uint32_1, self.uint32_1);
+        debug_field!(fmt, fields, uint32_2, self.uint32_2);
+        debug_field!(fmt, fields, uint32_3, self.uint32_3);
+        debug_field!(fmt, fields, uint32_4, self.uint32_4);
+        debug_field!(fmt, fields, uuid_1, self.uuid_1);
+        debug_field!(fmt, fields, uuid_2, self.uuid_2);
+        debug_field!(fmt, fields, uuid_3, self.uuid_3);
+        debug_field!(fmt, fields, uuid_4, self.uuid_4);
+        debug_field!(fmt, fields, string64_1, self.string64_1);
+        debug_field!(fmt, fields, string64_2, self.string64_2);
+        debug_field!(fmt, fields, string64_3, self.string64_3);
+        debug_field!(fmt, fields, string64_4, self.string64_4);
+        debug_field!(fmt, fields, string64_5, self.string64_5);
+        debug_field!(fmt, fields, string64_6, self.string64_6);
+        debug_field!(fmt, fields, istring64_1, self.istring64_1);
+        debug_field!(fmt, fields, istring64_2, self.istring64_2);
+        debug_field!(fmt, fields, text_1, self.text_1);
+        debug_field!(fmt, fields, text_2, self.text_2);
+        debug_field!(fmt, fields, blob_1, hex::encode(&self.blob_1));
+        debug_field!(fmt, fields, blob_2, hex::encode(&self.blob_2));
+        write!(fmt, " }}")
+    }
+}
 
 // Strings in vault nodes use UTF-16, but store the number of BYTES taken up
 // by the string, including the terminating nul character.
