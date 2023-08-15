@@ -200,17 +200,22 @@ impl VaultNode {
         }
     }
 
-    pub fn new_age(age_uuid: &Uuid, parent_uuid: Option<&Uuid>,
-                   age_filename: &str) -> Self
-    {
+    pub fn new_age(instance_id: &Uuid, parent_uuid: &Uuid, age_filename: &str) -> Self {
         let mut node = Self::default();
         node.set_node_type(NodeType::Age as i32);
-        node.set_creator_uuid(age_uuid);
-        node.set_uuid_1(age_uuid);
-        if let Some(uuid) = parent_uuid {
-            node.set_uuid_2(uuid);
+        node.set_creator_uuid(instance_id);
+        node.set_uuid_1(instance_id);
+        if !parent_uuid.is_nil() {
+            node.set_uuid_2(parent_uuid);
         }
         node.set_string64_1(age_filename);
+        node
+    }
+
+    pub fn new_age_lookup(instance_id: &Uuid) -> Self {
+        let mut node = Self::default();
+        node.set_node_type(NodeType::Age as i32);
+        node.set_uuid_1(instance_id);
         node
     }
 
@@ -293,14 +298,14 @@ impl VaultNode {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn new_age_info(creator_uuid: &Uuid, age_id: u32, seq_number: i32,
-                        public: bool, language: i32, parent_uuid: Option<&Uuid>,
+    pub fn new_age_info(instance_id: &Uuid, age_id: u32, seq_number: i32,
+                        public: bool, language: i32, parent_uuid: &Uuid,
                         age_filename: &str, instance_name: &str, user_name: &str,
                         description: &str) -> Self
     {
         let mut node = Self::default();
         node.set_node_type(NodeType::AgeInfo as i32);
-        node.set_creator_uuid(creator_uuid);
+        node.set_creator_uuid(instance_id);
         node.set_creator_id(age_id);
         node.set_int32_1(seq_number);
         node.set_int32_2(if public { 1 } else { 0 });
@@ -308,9 +313,9 @@ impl VaultNode {
         node.set_uint32_1(age_id);
         node.set_uint32_2(0);   // Czar ID
         node.set_uint32_3(0);   // Flags
-        node.set_uuid_1(creator_uuid);
-        if let Some(uuid) = parent_uuid {
-            node.set_uuid_2(uuid);
+        node.set_uuid_1(instance_id);
+        if !parent_uuid.is_nil() {
+            node.set_uuid_2(parent_uuid);
         }
         node.set_string64_2(age_filename);
         if !instance_name.is_empty() {
@@ -322,6 +327,13 @@ impl VaultNode {
         if !description.is_empty() {
             node.set_text_1(description);
         }
+        node
+    }
+
+    pub fn new_age_info_lookup(instance_id: &Uuid) -> Self {
+        let mut node = Self::default();
+        node.set_node_type(NodeType::AgeInfo as i32);
+        node.set_uuid_1(instance_id);
         node
     }
 

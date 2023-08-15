@@ -39,7 +39,7 @@ use crate::vault::messages::VaultBroadcast;
 use super::auth_hash::{hash_password_challenge, use_email_auth};
 use super::manifest::Manifest;
 use super::messages::{CliToAuth, AuthToCli};
-use super::vault_helpers::create_player_nodes;
+use super::vault_helpers::{create_player_nodes, find_age_instance};
 
 pub struct AuthServer {
     incoming_send: mpsc::Sender<TcpStream>,
@@ -466,8 +466,27 @@ impl AuthServerWorker {
                 };
                 self.send_message(reply).await
             }
-            CliToAuth::VaultInitAgeRequest { .. } => {
-                todo!()
+            CliToAuth::VaultInitAgeRequest { trans_id, age_instance_id, parent_age_instance_id,
+                                             age_filename, age_instance_name, age_user_name,
+                                             age_description, age_sequence, age_language } => {
+                let reply = match find_age_instance(&age_instance_id, &parent_age_instance_id,
+                                        &age_filename, &age_instance_name, &age_user_name,
+                                        &age_description, age_sequence, age_language,
+                                        &self.vault).await {
+                    Ok((age_id, age_info)) => AuthToCli::VaultInitAgeReply {
+                        trans_id,
+                        result: NetResultCode::NetSuccess as i32,
+                        age_vault_id: age_id,
+                        age_info_vault_id: age_info,
+                    },
+                    Err(err) => AuthToCli::VaultInitAgeReply {
+                        trans_id,
+                        result: err as i32,
+                        age_vault_id: 0,
+                        age_info_vault_id: 0
+                    },
+                };
+                self.send_message(reply).await
             }
             CliToAuth::VaultNodeFind { trans_id, node_buffer } => {
                 let node_template = match VaultNode::from_blob(&node_buffer) {

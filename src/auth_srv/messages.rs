@@ -161,8 +161,8 @@ pub enum CliToAuth {
         age_instance_name: String,
         age_user_name: String,
         age_description: String,
-        age_sequence: u32,
-        age_language: u32,
+        age_sequence: i32,
+        age_language: i32,
     },
     VaultNodeFind {
         trans_id: u32,
@@ -835,8 +835,8 @@ impl CliToAuth {
                 let age_instance_name = net_io::read_utf16_str(stream).await?;
                 let age_user_name = net_io::read_utf16_str(stream).await?;
                 let age_description = net_io::read_utf16_str(stream).await?;
-                let age_sequence = stream.read_u32_le().await?;
-                let age_language = stream.read_u32_le().await?;
+                let age_sequence = stream.read_i32_le().await?;
+                let age_language = stream.read_i32_le().await?;
                 Ok(CliToAuth::VaultInitAgeRequest {
                     trans_id, age_instance_id, parent_age_instance_id,
                     age_filename, age_instance_name, age_user_name,

@@ -85,7 +85,7 @@ pub async fn create_player_nodes(account_id: &Uuid, player: &PlayerInfo,
 
     let user_name = format!("{}'s", player.player_name);
     let description = format!("{}'s Relto", player.player_name);
-    let (relto_id, relto_info) = create_age_nodes(&Uuid::new_v4(), None,
+    let (relto_id, relto_info) = create_age_nodes(&Uuid::new_v4(), &Uuid::nil(),
             "Personal", "Relto", &user_name, &description, 0, -1,
             Some((player.player_id, player_info)), false, vault).await?;
 
@@ -122,7 +122,33 @@ pub async fn create_player_nodes(account_id: &Uuid, player: &PlayerInfo,
 }
 
 #[allow(clippy::too_many_arguments)]
-pub async fn create_age_nodes(age_uuid: &Uuid, parent_uuid: Option<&Uuid>,
+pub async fn find_age_instance(age_uuid: &Uuid, parent_uuid: &Uuid,
+        age_filename: &str, instance_name: &str, user_name: &str, description: &str,
+        sequence_number: i32, language: i32, vault: &VaultServer)
+        -> NetResult<(u32, u32)>
+{
+    let template = VaultNode::new_age_lookup(age_uuid);
+    let age_id = match vault.find_nodes(template).await?.first() {
+        Some(node_id) => *node_id,
+        None => return create_age_nodes(age_uuid, parent_uuid, age_filename,
+                            instance_name, user_name, description,
+                            sequence_number, language, None, false, vault).await,
+    };
+
+    let template = VaultNode::new_age_info_lookup(age_uuid);
+    let age_info = match vault.find_nodes(template).await?.first() {
+        Some(node_id) => *node_id,
+        None => {
+            warn!("Got Age node {}, but no Age Info node for {}", age_id, age_uuid);
+            return Err(NetResultCode::NetInternalError);
+        }
+    };
+
+    Ok((age_id, age_info))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn create_age_nodes(age_uuid: &Uuid, parent_uuid: &Uuid,
         age_filename: &str, instance_name: &str, user_name: &str, description: &str,
         sequence_number: i32, language: i32, add_owner: Option<(u32, u32)>, public: bool,
         vault: &VaultServer) -> NetResult<(u32, u32)>
