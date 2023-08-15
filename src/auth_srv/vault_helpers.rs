@@ -14,7 +14,7 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use log::warn;
+use log::{warn, debug};
 use uuid::Uuid;
 
 use crate::netcli::{NetResult, NetResultCode};
@@ -178,20 +178,20 @@ pub async fn create_age_nodes(age_uuid: &Uuid, parent_uuid: &Uuid,
                                                StandardNode::CanVisitFolder);
     let can_visit = vault.create_node(node).await?;
 
-    let sdl_node = if let Some(descriptor) = vault.sdl_db().get_latest(age_filename) {
-        let sdl_blob = match sdl::State::from_defaults(descriptor, vault.sdl_db()).to_blob() {
+    let sdl_blob = if let Some(descriptor) = vault.sdl_db().get_latest(age_filename) {
+        match sdl::State::from_defaults(descriptor, vault.sdl_db()).to_blob() {
             Ok(blob) => blob,
             Err(err) => {
                 warn!("Failed to generate default SDL for {}: {}", age_filename, err);
                 return Err(NetResultCode::NetInternalError);
             }
-        };
-        let node = VaultNode::new_sdl(age_uuid, age_id, age_filename, &sdl_blob);
-        vault.create_node(node).await?
+        }
     } else {
-        warn!("Could not find SDL descriptor for {}", age_filename);
-        return Err(NetResultCode::NetInternalError);
+        debug!("Could not find SDL descriptor for {}", age_filename);
+        Vec::new()
     };
+    let node = VaultNode::new_sdl(age_uuid, age_id, age_filename, &sdl_blob);
+    let sdl_node = vault.create_node(node).await?;
 
     let node = VaultNode::new_player_info_list(age_uuid, age_id,
                                                StandardNode::AgeOwnersFolder);

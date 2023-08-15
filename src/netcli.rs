@@ -14,7 +14,6 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 pub type NetResult<T> = Result<T, NetResultCode>;
 
 #[repr(i32)]
