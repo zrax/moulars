@@ -17,7 +17,7 @@
 pub type NetResult<T> = Result<T, NetResultCode>;
 
 #[repr(i32)]
-#[derive(Eq, PartialEq)]
+#[derive(Eq, PartialEq, Debug)]
 pub enum NetResultCode
 {
     NetPending = -1,
