@@ -28,6 +28,11 @@
 #auth_server_ip = "127.0.0.1"
 #game_server_ip = "127.0.0.1"
 
+## OPTIONAL: The port to listen on for API access.  The API is currently
+## unauthenticated, so it is currently limited to localhost (127.0.0.1)
+## connections.  You should probably NOT open this port in your firewall.
+#api_port = 14615
+
 [crypt_keys]
 ## REQUIRED: The private and shared keys to use for encrypted server channels.
 ## These values are big endian Base64-encoded 512 bit keys.

@@ -21,6 +21,7 @@ pub mod plasma;
 pub mod sdl;
 pub mod vault;
 
+pub mod api;
 pub mod config;
 pub mod hashes;
 pub mod lobby;

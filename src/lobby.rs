@@ -21,7 +21,7 @@ use std::sync::Arc;
 use byteorder::{LittleEndian, ReadBytesExt};
 use log::{error, warn, info};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc;
+use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use crate::general_error;
@@ -102,16 +102,17 @@ pub struct LobbyServer {
 
 impl LobbyServer {
     pub async fn start(server_config: Arc<ServerConfig>) {
-        let (shutdown_send, mut shutdown_recv) = mpsc::channel(1);
+        let (shutdown_send, mut shutdown_recv) = broadcast::channel(1);
+        let ctrl_c_send = shutdown_send.clone();
         tokio::spawn(async move {
             match tokio::signal::ctrl_c().await {
-                Ok(()) => {},
+                Ok(()) => (),
                 Err(err) => {
                     error!("Failed to wait for Ctrl+C signal: {}", err);
                     std::process::exit(1);
                 }
             }
-            let _ = shutdown_send.send(true).await;
+            let _ = ctrl_c_send.send(());
         });
 
         let listener = match TcpListener::bind(&server_config.listen_address).await {
@@ -147,6 +148,9 @@ impl LobbyServer {
         let file_server = FileServer::start(server_config.clone());
         let gate_keeper = GateKeeper::start(server_config.clone());
         let mut lobby = Self { auth_server, file_server, gate_keeper };
+
+        crate::api::start_api(shutdown_send.subscribe(), vault.clone(),
+                              server_config.clone());
 
         info!("Starting lobby server on {}", server_config.listen_address);
         loop {
