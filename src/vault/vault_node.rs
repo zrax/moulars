@@ -28,10 +28,10 @@ use crate::plasma::{StreamRead, StreamWrite};
 
 #[repr(i32)]
 pub enum NodeType {
-    Invalid,
-    VNodeMgrLow, Player, Age,
-    VNodeMgrHigh = 21,
-    Folder, PlayerInfo, System, Image, TextNote, SDL, AgeLink, Chronicle,
+    _Invalid,
+    _VNodeMgrLow, Player, Age,
+    _VNodeMgrHigh = 21,
+    Folder, PlayerInfo, System, Image, TextNote, Sdl, AgeLink, Chronicle,
     PlayerInfoList, _Unused01, _Unused02, AgeInfo, AgeInfoList, MarkerGame,
 }
 
@@ -212,10 +212,12 @@ impl VaultNode {
         node
     }
 
-    pub fn new_age_lookup(instance_id: &Uuid) -> Self {
+    pub fn age_lookup(instance_id: Option<&Uuid>) -> Self {
         let mut node = Self::default();
         node.set_node_type(NodeType::Age as i32);
-        node.set_uuid_1(instance_id);
+        if let Some(uuid) = instance_id {
+            node.set_uuid_1(uuid);
+        }
         node
     }
 
@@ -240,8 +242,17 @@ impl VaultNode {
         node
     }
 
-    pub fn new_player_info_update(node_id: u32, online: i32, age_instance_name: &str,
-                                  age_instance_uuid: &Uuid) -> Self
+    pub fn player_info_lookup(online: Option<i32>) -> Self {
+        let mut node = Self::default();
+        node.set_node_type(NodeType::PlayerInfo as i32);
+        if let Some(value) = online {
+            node.set_int32_1(value);
+        }
+        node
+    }
+
+    pub fn player_info_update(node_id: u32, online: i32, age_instance_name: &str,
+                              age_instance_uuid: &Uuid) -> Self
     {
         let mut node = Self::default();
         node.set_node_id(node_id);
@@ -269,7 +280,7 @@ impl VaultNode {
                    sdl_blob: &[u8]) -> Self
     {
         let mut node = Self::default();
-        node.set_node_type(NodeType::SDL as i32);
+        node.set_node_type(NodeType::Sdl as i32);
         node.set_creator_uuid(creator_uuid);
         node.set_creator_id(creator_id);
         node.set_string64_1(sdl_name);
@@ -330,10 +341,12 @@ impl VaultNode {
         node
     }
 
-    pub fn new_age_info_lookup(instance_id: &Uuid) -> Self {
+    pub fn age_info_lookup(instance_id: Option<&Uuid>) -> Self {
         let mut node = Self::default();
         node.set_node_type(NodeType::AgeInfo as i32);
-        node.set_uuid_1(instance_id);
+        if let Some(uuid) = instance_id {
+            node.set_uuid_1(uuid);
+        }
         node
     }
 

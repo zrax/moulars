@@ -893,7 +893,7 @@ impl AuthServerWorker {
             }).await;
         }
 
-        let update = VaultNode::new_player_info_update(player_info.node_id(), 1,
+        let update = VaultNode::player_info_update(player_info.node_id(), 1,
                         "Lobby", &Uuid::nil());
         if let Err(err) = self.vault.update_node(update).await {
             warn!("Failed to set player {} online", player_id);
@@ -923,8 +923,7 @@ impl AuthServerWorker {
             }
         };
 
-        let update = VaultNode::new_player_info_update(player_info.node_id(), 0,
-                                                       "", &Uuid::nil());
+        let update = VaultNode::player_info_update(player_info.node_id(), 0, "", &Uuid::nil());
         if let Err(err) = self.vault.update_node(update).await {
             warn!("Failed to set player {} offline: {:?}", player_id, err);
             return;

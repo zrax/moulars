@@ -24,7 +24,8 @@ use uuid::Uuid;
 
 use crate::auth_srv::auth_hash::create_pass_hash;
 use crate::netcli::{NetResult, NetResultCode};
-use crate::vault::{VaultNode, NodeType, StandardNode, NodeRef};
+use crate::vault::NodeRef;
+use crate::vault::vault_node::{VaultNode, StandardNode, NodeType};
 use super::db_interface::{DbInterface, AccountInfo, PlayerInfo, GameServer};
 
 // An ephemeral vault backend that vanishes once the server exits.

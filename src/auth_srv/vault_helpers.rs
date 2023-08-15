@@ -127,7 +127,7 @@ pub async fn find_age_instance(age_uuid: &Uuid, parent_uuid: &Uuid,
         sequence_number: i32, language: i32, vault: &VaultServer)
         -> NetResult<(u32, u32)>
 {
-    let template = VaultNode::new_age_lookup(age_uuid);
+    let template = VaultNode::age_lookup(Some(age_uuid));
     let age_id = match vault.find_nodes(template).await?.first() {
         Some(node_id) => *node_id,
         None => return create_age_nodes(age_uuid, parent_uuid, age_filename,
@@ -135,7 +135,7 @@ pub async fn find_age_instance(age_uuid: &Uuid, parent_uuid: &Uuid,
                             sequence_number, language, None, false, vault).await,
     };
 
-    let template = VaultNode::new_age_info_lookup(age_uuid);
+    let template = VaultNode::age_info_lookup(Some(age_uuid));
     let age_info = match vault.find_nodes(template).await?.first() {
         Some(node_id) => *node_id,
         None => {

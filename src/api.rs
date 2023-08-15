@@ -26,13 +26,10 @@ use tokio::sync::broadcast;
 
 use crate::config::ServerConfig;
 use crate::netcli::NetResult;
-use crate::vault::{VaultServer, VaultNode, NodeType};
+use crate::vault::{VaultServer, VaultNode};
 
 async fn query_online_players(vault: &VaultServer) -> NetResult<Vec<OnlinePlayer>> {
-    let mut template = VaultNode::default();
-    template.set_node_type(NodeType::PlayerInfo as i32);
-    template.set_int32_1(1);
-
+    let template = VaultNode::player_info_lookup(Some(1));
     let player_list = vault.find_nodes(template).await?;
     let mut players = Vec::with_capacity(player_list.len());
     for player_info in player_list {
