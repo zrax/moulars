@@ -15,44 +15,55 @@
  */
 
 use std::collections::HashMap;
+use std::io::Write;
 use std::sync::Arc;
 
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Server, Request, Response, Method, Body, StatusCode};
 use hyper::header::CONTENT_TYPE;
 use log::{warn, info};
+use num_bigint::ToBigUint;
 use serde_derive::Serialize;
 use tokio::sync::broadcast;
 
 use crate::config::ServerConfig;
+use crate::net_crypt::{CRYPT_BASE_AUTH, CRYPT_BASE_GAME, CRYPT_BASE_GATE_KEEPER};
 use crate::netcli::NetResult;
 use crate::vault::{VaultServer, VaultNode};
 
-// Returns the name of the account that matched the API token
-async fn check_api_token(query: &HashMap<String, String>, vault: &VaultServer) -> Option<String> {
-    if let Some(api_token) = query.get("token") {
-        if let Ok(Some(account)) = vault.get_account_for_token(api_token).await {
-            // Currently, only Admin accounts are allowed to use APIs
-            if account.is_admin() {
-                return Some(account.account_name);
-            }
-        }
-    }
-    None
+struct ApiInterface {
+    server_config: Arc<ServerConfig>,
+    shutdown_send: broadcast::Sender<()>,
+    vault: Arc<VaultServer>,
 }
 
-async fn query_online_players(vault: &VaultServer) -> NetResult<Vec<OnlinePlayer>> {
-    let template = VaultNode::player_info_lookup(Some(1));
-    let player_list = vault.find_nodes(template).await?;
-    let mut players = Vec::with_capacity(player_list.len());
-    for player_info in player_list {
-        let node = vault.fetch_node(player_info).await?.as_player_info_node().unwrap();
-        players.push(OnlinePlayer {
-            name: node.player_name_ci().clone(),
-            location: node.age_instance_name().clone(),
-        });
+impl ApiInterface {
+    // Returns the name of the account that matched the API token
+    async fn check_api_token(&self, query: &HashMap<String, String>) -> Option<String> {
+        if let Some(api_token) = query.get("token") {
+            if let Ok(Some(account)) = self.vault.get_account_for_token(api_token).await {
+                // Currently, only Admin accounts are allowed to use APIs
+                if account.is_admin() {
+                    return Some(account.account_name);
+                }
+            }
+        }
+        None
     }
-    Ok(players)
+
+    async fn query_online_players(&self) -> NetResult<Vec<OnlinePlayer>> {
+        let template = VaultNode::player_info_lookup(Some(1));
+        let player_list = self.vault.find_nodes(template).await?;
+        let mut players = Vec::with_capacity(player_list.len());
+        for player_info in player_list {
+            let node = self.vault.fetch_node(player_info).await?.as_player_info_node().unwrap();
+            players.push(OnlinePlayer {
+                name: node.player_name_ci().clone(),
+                location: node.age_instance_name().clone(),
+            });
+        }
+        Ok(players)
+    }
 }
 
 fn gen_unauthorized() -> Response<Body> {
@@ -71,8 +82,8 @@ fn gen_server_error() -> Response<Body> {
         .unwrap()
 }
 
-async fn api_router(request: Request<Body>, shutdown_send: broadcast::Sender<()>,
-                    vault: Arc<VaultServer>) -> Result<Response<Body>, hyper::Error>
+async fn api_router(request: Request<Body>, api: Arc<ApiInterface>)
+        -> Result<Response<Body>, hyper::Error>
 {
     let query_params = if let Some(query) = request.uri().query() {
         form_urlencoded::parse(query.as_bytes()).into_owned()
@@ -86,9 +97,24 @@ async fn api_router(request: Request<Body>, shutdown_send: broadcast::Sender<()>
             // Basic status check
             Response::builder().body(Body::from("OK")).unwrap()
         }
+        (&Method::GET, "/client_keys") => {
+            let mut lines = Vec::with_capacity(6 * 105);
+            for (stype, key_g, key_k, key_n) in [
+                ("Auth", CRYPT_BASE_AUTH, &api.server_config.auth_k_key, &api.server_config.auth_n_key),
+                ("Game", CRYPT_BASE_GAME, &api.server_config.game_k_key, &api.server_config.game_n_key),
+                ("Gate", CRYPT_BASE_GATE_KEEPER, &api.server_config.gate_k_key, &api.server_config.gate_n_key)]
+            {
+                let key_x = key_g.to_biguint().unwrap().modpow(key_k, key_n);
+                let bytes_n = key_n.to_bytes_be();
+                let bytes_x = key_x.to_bytes_be();
+                let _ = writeln!(lines, "Server.{}.N \"{}\"", stype, base64::encode(bytes_n));
+                let _ = writeln!(lines, "Server.{}.X \"{}\"", stype, base64::encode(bytes_x));
+            }
+            Response::builder().body(Body::from(lines)).unwrap()
+        }
         (&Method::GET, "/online") => {
             // Return JSON object containing the names and locations of online players
-            let online_players = match query_online_players(&vault).await {
+            let online_players = match api.query_online_players().await {
                 Ok(response) => response,
                 Err(err) => {
                     warn!("Failed to query online players: {:?}", err);
@@ -107,9 +133,9 @@ async fn api_router(request: Request<Body>, shutdown_send: broadcast::Sender<()>
             }
         }
         (&Method::POST, "/shutdown") => {
-            if let Some(admin) = check_api_token(&query_params, &vault).await {
+            if let Some(admin) = api.check_api_token(&query_params).await {
                 info!("Shutdown requested by {}", admin);
-                let _ = shutdown_send.send(());
+                let _ = api.shutdown_send.send(());
                 Response::builder()
                     .header(CONTENT_TYPE, "application/json")
                     .body(Body::from(r#"{"status": "ok"}"#))
@@ -132,18 +158,7 @@ async fn api_router(request: Request<Body>, shutdown_send: broadcast::Sender<()>
 pub fn start_api(shutdown_send: broadcast::Sender<()>, vault: Arc<VaultServer>,
                  server_config: Arc<ServerConfig>)
 {
-    let mut shutdown_recv = shutdown_send.subscribe();
     tokio::spawn(async move {
-        let api_service = make_service_fn(move |_| {
-            let vault = vault.clone();
-            let shutdown_send = shutdown_send.clone();
-            async {
-                Ok::<_, hyper::Error>(service_fn(move |request| {
-                    api_router(request, shutdown_send.clone(), vault.clone())
-                }))
-            }
-        });
-
         let api_address = match server_config.api_address.parse() {
             Ok(addr) => addr,
             Err(err) => {
@@ -151,6 +166,22 @@ pub fn start_api(shutdown_send: broadcast::Sender<()>, vault: Arc<VaultServer>,
                 return;
             }
         };
+
+        let mut shutdown_recv = shutdown_send.subscribe();
+        let api = Arc::new(ApiInterface {
+            server_config,
+            shutdown_send,
+            vault,
+        });
+        let api_service = make_service_fn(|_| {
+            let api = api.clone();
+            async {
+                Ok::<_, hyper::Error>(service_fn(move |request| {
+                    api_router(request, api.clone())
+                }))
+            }
+        });
+
         let server = Server::bind(&api_address).serve(api_service)
                 .with_graceful_shutdown(async { let _ = shutdown_recv.recv().await; });
         info!("Starting API service on http://{}", api_address);

@@ -26,16 +26,13 @@ use num_prime::RandPrime;
 
 use moulars::config::ServerConfig;
 use moulars::lobby::LobbyServer;
+use moulars::net_crypt::{CRYPT_BASE_AUTH, CRYPT_BASE_GAME, CRYPT_BASE_GATE_KEEPER};
 
 #[cfg(debug_assertions)]
 const DEFAULT_LOG_LEVEL: &str = "debug";
 
 #[cfg(not(debug_assertions))]
 const DEFAULT_LOG_LEVEL: &str = "warn";
-
-const CRYPT_BASE_AUTH: u32 = 41;
-const CRYPT_BASE_GAME: u32 = 73;
-const CRYPT_BASE_GATE_KEEPER: u32 = 4;
 
 fn write_progress_pip() {
     let _ = stdout().write(b".");

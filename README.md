@@ -11,6 +11,8 @@ DirtSand, it is differentiated by a few key features:
 * Better cross-platform compatibility.  MOULArs is known to work on both
   Linux and Windows, but it should also work anywhere else Rust and the
   library dependencies can run (macOS, OpenIndiana, *BSD, etc...)
+* MOULArs includes a REST API which can be used for informational and
+  administrative tasks.
 
 Like DirtSand, MOULArs is designed to work best with the
 [H-uru Plasma](https://github.com/H-uru/Plasma) client, but it may work

@@ -27,6 +27,10 @@ use tokio::io::{AsyncRead, BufReader, ReadBuf};
 use crate::general_error;
 use crate::plasma::StreamRead;
 
+pub const CRYPT_BASE_AUTH: u32 = 41;
+pub const CRYPT_BASE_GAME: u32 = 73;
+pub const CRYPT_BASE_GATE_KEEPER: u32 = 4;
+
 type CryptCipher = rc4::Rc4<rc4::consts::U7>;
 
 pub struct CryptTcpStream {
