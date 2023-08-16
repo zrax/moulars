@@ -24,6 +24,7 @@ use super::{VaultNode, NodeRef};
 
 pub trait DbInterface: Sync + Send {
     fn get_account(&mut self, account_name: &str) -> NetResult<Option<AccountInfo>>;
+    fn get_account_for_token(&self, api_token: &str) -> NetResult<Option<AccountInfo>>;
 
     fn set_all_players_offline(&mut self) -> NetResult<()>;
     fn get_players(&self, account_id: &Uuid) -> NetResult<Vec<PlayerInfo>>;
@@ -52,14 +53,16 @@ pub struct AccountInfo {
     pub account_id: Uuid,
     pub account_flags: u32,
     pub billing_type: u32,
+    pub api_token: String,
 }
 
 impl AccountInfo {
     // Account flags
-    const ADMIN: u32        = 1 << 0;
-    const BETA_TESTER: u32  = 1 << 1;
-    const BANNED: u32       = 1 << 16;
+    pub const ADMIN: u32        = 1 << 0;
+    pub const BETA_TESTER: u32  = 1 << 1;
+    pub const BANNED: u32       = 1 << 16;
 
+    pub fn is_admin(&self) -> bool { (self.account_flags & Self::ADMIN) != 0 }
     pub fn is_banned(&self) -> bool { (self.account_flags & Self::BANNED) != 0 }
 
     pub fn can_login_restricted(&self) -> bool {

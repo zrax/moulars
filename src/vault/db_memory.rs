@@ -18,11 +18,12 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-use log::warn;
+use log::{warn, info};
 use unicase::UniCase;
 use uuid::Uuid;
 
 use crate::auth_srv::auth_hash::create_pass_hash;
+use crate::hashes::ShaDigest;
 use crate::netcli::{NetResult, NetResultCode};
 use crate::vault::NodeRef;
 use crate::vault::vault_node::{VaultNode, StandardNode, NodeType};
@@ -62,15 +63,30 @@ impl DbInterface for DbMemory {
                             warn!("Failed to create password hash: {}", err);
                             NetResultCode::NetInternalError
                         })?;
+        // Since this backend is not persistent, we use a simple SHA-1 hash
+        // of the username as the API token for consistent results
+        let api_token = ShaDigest::sha1(account_name.as_bytes()).as_hex();
+        info!("API token for '{}' is {}", account_name, api_token);
         let account = self.accounts.entry(UniCase::new(account_name.to_string()))
                         .or_insert(AccountInfo {
                             account_name: account_name.to_string(),
                             pass_hash,
                             account_id: Uuid::new_v4(),
-                            account_flags: 0,
+                            account_flags: AccountInfo::ADMIN,
                             billing_type: 1,
+                            api_token,
                         });
         Ok(Some(account.clone()))
+    }
+
+    fn get_account_for_token(&self, api_token: &str) -> NetResult<Option<AccountInfo>> {
+        let api_token = api_token.to_ascii_lowercase();
+        for account in self.accounts.values() {
+            if account.api_token == api_token {
+                return Ok(Some(account.clone()))
+            }
+        }
+        Ok(None)
     }
 
     fn set_all_players_offline(&mut self) -> NetResult<()> {

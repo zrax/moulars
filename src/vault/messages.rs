@@ -28,6 +28,10 @@ pub(super) enum VaultMessage {
         account_name: String,
         response_send: oneshot::Sender<NetResult<Option<AccountInfo>>>,
     },
+    GetAccountForToken {
+        api_token: String,
+        response_send: oneshot::Sender<NetResult<Option<AccountInfo>>>,
+    },
     GetPlayers {
         account_id: Uuid,
         response_send: oneshot::Sender<NetResult<Vec<PlayerInfo>>>,

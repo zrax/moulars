@@ -149,7 +149,7 @@ impl LobbyServer {
         let gate_keeper = GateKeeper::start(server_config.clone());
         let mut lobby = Self { auth_server, file_server, gate_keeper };
 
-        crate::api::start_api(shutdown_send.subscribe(), vault.clone(),
+        crate::api::start_api(shutdown_send.clone(), vault.clone(),
                               server_config.clone());
 
         info!("Starting lobby server on {}", server_config.listen_address);

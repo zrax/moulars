@@ -37,8 +37,8 @@ pub struct ServerConfig {
     /* Listen address for the lobby server */
     pub listen_address: String,
 
-    /* Listen port for the API service (localhost only) */
-    pub api_port: u16,
+    /* Listen address for the API service */
+    pub api_address: String,
 
     /* Product configuration */
     pub build_id: u32,
@@ -119,7 +119,9 @@ impl ServerConfig {
         let game_serv_ip = server_section.game_server_ip.as_deref()
                                 .unwrap_or("127.0.0.1").to_string();
 
-        let api_port = server_section.api_port.unwrap_or(14615);
+        let api_address = format!("{}:{}",
+                server_section.api_address.as_deref().unwrap_or("127.0.0.1"),
+                server_section.api_port.unwrap_or(14615));
 
         let vault_db_section = config.vault_db.unwrap_or_default();
         let db_type = if let Some(type_str) = vault_db_section.db_type {
@@ -137,7 +139,7 @@ impl ServerConfig {
 
         Ok(Arc::new(ServerConfig {
             listen_address,
-            api_port,
+            api_address,
             build_id,
             auth_n_key,
             auth_k_key,
@@ -176,6 +178,7 @@ struct ServerAddrConfig {
     file_server_ip: Option<String>,
     auth_server_ip: Option<String>,
     game_server_ip: Option<String>,
+    api_address: Option<String>,
     api_port: Option<u16>,
 }
 

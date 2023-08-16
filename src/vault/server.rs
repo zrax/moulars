@@ -57,6 +57,9 @@ fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender<Vault
         VaultMessage::GetAccount { account_name, response_send } => {
             check_send(response_send, db.get_account(&account_name));
         }
+        VaultMessage::GetAccountForToken { api_token, response_send } => {
+            check_send(response_send, db.get_account_for_token(&api_token));
+        }
         VaultMessage::GetPlayers { account_id, response_send } => {
             check_send(response_send, db.get_players(&account_id));
         }
@@ -210,6 +213,17 @@ impl VaultServer {
         let (response_send, response_recv) = oneshot::channel();
         let request = VaultMessage::GetAccount {
             account_name: account_name.to_string(),
+            response_send
+        };
+        self.request(request, response_recv).await
+    }
+
+    pub async fn get_account_for_token(&self, api_token: &str)
+            -> NetResult<Option<AccountInfo>>
+    {
+        let (response_send, response_recv) = oneshot::channel();
+        let request = VaultMessage::GetAccountForToken {
+            api_token: api_token.to_string(),
             response_send
         };
         self.request(request, response_recv).await

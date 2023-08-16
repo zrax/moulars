@@ -28,9 +28,11 @@
 #auth_server_ip = "127.0.0.1"
 #game_server_ip = "127.0.0.1"
 
-## OPTIONAL: The port to listen on for API access.  The API is currently
-## unauthenticated, so it is currently limited to localhost (127.0.0.1)
-## connections.  You should probably NOT open this port in your firewall.
+## OPTIONAL: The local address to listen on for API access.  By default,
+## this is only open to localhost.  MOULArs doesn't support any TLS/SSL on
+## the API, so you probably want to proxy this behind a real web server if
+## you want the API to be available externally.
+#api_address = "127.0.0.1"
 #api_port = 14615
 
 [crypt_keys]
