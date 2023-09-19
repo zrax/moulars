@@ -42,7 +42,7 @@ impl ApiInterface {
     async fn check_api_token(&self, query: &HashMap<String, String>) -> Option<String> {
         if let Some(api_token) = query.get("token") {
             if let Ok(Some(account)) = self.vault.get_account_for_token(api_token).await {
-                // Currently, only Admin accounts are allowed to use APIs
+                // Currently, only Admin accounts are allowed to use privileged APIs
                 if account.is_admin() {
                     return Some(account.account_name);
                 }

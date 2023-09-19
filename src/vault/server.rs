@@ -51,7 +51,7 @@ fn check_bcast(sender: &broadcast::Sender<VaultBroadcast>, msg: VaultBroadcast) 
 }
 
 fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender<VaultBroadcast>,
-                         db: &mut Box<dyn DbInterface>)
+                         db: &Box<dyn DbInterface>)
 {
     match msg {
         VaultMessage::GetAccount { account_name, response_send } => {
@@ -161,13 +161,13 @@ impl VaultServer {
 
         let broadcast = bcast_send.clone();
         tokio::spawn(async move {
-            let mut db: Box<dyn DbInterface> =  match server_config.db_type {
+            let db: Box<dyn DbInterface> =  match server_config.db_type {
                 VaultDbBackend::None => Box::new(DbMemory::new()),
                 VaultDbBackend::Sqlite => todo!(),
                 VaultDbBackend::Postgres => todo!(),
             };
 
-            if init_vault(&mut db).is_err() {
+            if init_vault(&db).is_err() {
                 error!("Failed to initialize vault.");
                 std::process::exit(1);
             }
@@ -180,7 +180,7 @@ impl VaultServer {
             // TODO: Check and initialize static ages
 
             while let Some(msg) = msg_recv.recv().await {
-                process_vault_message(msg, &bcast_send, &mut db);
+                process_vault_message(msg, &bcast_send, &db);
             }
         });
         Arc::new(VaultServer { msg_send, broadcast, sdl_db })
@@ -325,7 +325,7 @@ impl VaultServer {
     }
 }
 
-fn init_vault(db: &mut Box<dyn DbInterface>) -> NetResult<()> {
+fn init_vault(db: &Box<dyn DbInterface>) -> NetResult<()> {
     if let Err(err) = db.get_system_node() {
         if err != NetResultCode::NetVaultNodeNotFound {
             warn!("Failed to fetch system node");

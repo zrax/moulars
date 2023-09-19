@@ -14,6 +14,7 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -30,7 +31,7 @@ use crate::vault::vault_node::{VaultNode, StandardNode, NodeType};
 use super::db_interface::{DbInterface, AccountInfo, PlayerInfo, GameServer};
 
 // An ephemeral vault backend that vanishes once the server exits.
-pub struct DbMemory {
+pub struct Backend {
     accounts: HashMap<UniCase<String>, AccountInfo>,
     players: HashMap<Uuid, Vec<PlayerInfo>>,
     game_servers: HashMap<u32, GameServer>,
@@ -40,7 +41,11 @@ pub struct DbMemory {
     node_index: AtomicU32,
 }
 
-impl DbMemory {
+pub struct DbMemory {
+    db: RefCell<Backend>,
+}
+
+impl Backend {
     pub fn new() -> Self {
         Self {
             accounts: HashMap::new(),
@@ -54,8 +59,16 @@ impl DbMemory {
     }
 }
 
+impl DbMemory {
+    pub fn new() -> Self {
+        Self {
+            db: RefCell::new(Backend::new())
+        }
+    }
+}
+
 impl DbInterface for DbMemory {
-    fn get_account(&mut self, account_name: &str) -> NetResult<Option<AccountInfo>> {
+    fn get_account(&self, account_name: &str) -> NetResult<Option<AccountInfo>> {
         // In this backend, account logins always succeed.  The password is
         // assumed to be blank, and any attempt to log into an account that
         // isn't already created will automatically create a new account.
@@ -67,7 +80,8 @@ impl DbInterface for DbMemory {
         // of the username as the API token for consistent results
         let api_token = ShaDigest::sha1(account_name.as_bytes()).as_hex();
         info!("API token for '{}' is {}", account_name, api_token);
-        let account = self.accounts.entry(UniCase::new(account_name.to_string()))
+        let mut db = self.db.borrow_mut();
+        let account = db.accounts.entry(UniCase::new(account_name.to_string()))
                         .or_insert(AccountInfo {
                             account_name: account_name.to_string(),
                             pass_hash,
@@ -81,7 +95,7 @@ impl DbInterface for DbMemory {
 
     fn get_account_for_token(&self, api_token: &str) -> NetResult<Option<AccountInfo>> {
         let api_token = api_token.to_ascii_lowercase();
-        for account in self.accounts.values() {
+        for account in self.db.borrow().accounts.values() {
             if account.api_token == api_token {
                 return Ok(Some(account.clone()))
             }
@@ -89,14 +103,14 @@ impl DbInterface for DbMemory {
         Ok(None)
     }
 
-    fn set_all_players_offline(&mut self) -> NetResult<()> {
+    fn set_all_players_offline(&self) -> NetResult<()> {
         // This doesn't have to do anything here -- we always start in a clean
         // state with all players offline.
         Ok(())
     }
 
     fn get_players(&self, account_id: &Uuid) -> NetResult<Vec<PlayerInfo>> {
-        if let Some(players) = self.players.get(account_id) {
+        if let Some(players) = self.db.borrow().players.get(account_id) {
             Ok(players.clone())
         } else {
             Ok(Vec::new())
@@ -104,7 +118,7 @@ impl DbInterface for DbMemory {
     }
 
     fn count_players(&self, account_id: &Uuid) -> NetResult<u64> {
-        if let Some(players) = self.players.get(account_id) {
+        if let Some(players) = self.db.borrow().players.get(account_id) {
             Ok(players.len() as u64)
         } else {
             Ok(0)
@@ -113,23 +127,24 @@ impl DbInterface for DbMemory {
 
     fn player_exists(&self, player_name: &str) -> NetResult<bool> {
         let player_name_ci = UniCase::new(player_name);
-        Ok(self.players.iter().any(|(_, player_list)| {
+        Ok(self.db.borrow().players.iter().any(|(_, player_list)| {
             player_list.iter().any(|player| {
                 UniCase::new(&player.player_name) == player_name_ci
             })
         }))
     }
 
-    fn create_player(&mut self, account_id: &Uuid, player: PlayerInfo) -> NetResult<()> {
-        self.players.entry(*account_id)
+    fn create_player(&self, account_id: &Uuid, player: PlayerInfo) -> NetResult<()> {
+        self.db.borrow_mut().players.entry(*account_id)
                 .or_insert(Vec::new())
                 .push(player);
         Ok(())
     }
 
-    fn add_game_server(&mut self, server: GameServer) -> NetResult<()> {
-        let server_id = self.game_index.fetch_add(1, Ordering::Relaxed);
-        if self.game_servers.insert(server_id, server).is_some() {
+    fn add_game_server(&self, server: GameServer) -> NetResult<()> {
+        let mut db = self.db.borrow_mut();
+        let server_id = db.game_index.fetch_add(1, Ordering::Relaxed);
+        if db.game_servers.insert(server_id, server).is_some() {
             warn!("Created duplicate game server ID {}!", server_id);
             Err(NetResultCode::NetInternalError)
         } else {
@@ -137,11 +152,12 @@ impl DbInterface for DbMemory {
         }
     }
 
-    fn create_node(&mut self, node: Arc<VaultNode>) -> NetResult<u32> {
-        let node_id = self.node_index.fetch_add(1, Ordering::Relaxed);
+    fn create_node(&self, node: Arc<VaultNode>) -> NetResult<u32> {
+        let mut db = self.db.borrow_mut();
+        let node_id = db.node_index.fetch_add(1, Ordering::Relaxed);
         let mut node = (*node).clone();
         node.set_node_id(node_id);
-        if self.vault.insert(node_id, Arc::new(node)).is_some() {
+        if db.vault.insert(node_id, Arc::new(node)).is_some() {
             warn!("Created duplicate node ID {}!", node_id);
             Err(NetResultCode::NetInternalError)
         } else {
@@ -150,25 +166,26 @@ impl DbInterface for DbMemory {
     }
 
     fn fetch_node(&self, node_id: u32) -> NetResult<Arc<VaultNode>> {
-        match self.vault.get(&node_id) {
+        match self.db.borrow().vault.get(&node_id) {
             Some(node) => Ok(node.clone()),
             None => Err(NetResultCode::NetVaultNodeNotFound),
         }
     }
 
-    fn update_node(&mut self, node: Arc<VaultNode>) -> NetResult<Vec<u32>> {
+    fn update_node(&self, node: Arc<VaultNode>) -> NetResult<Vec<u32>> {
+        let mut db = self.db.borrow_mut();
         let node_id = node.node_id();
-        let old_node = match self.vault.get(&node_id) {
+        let old_node = match db.vault.get(&node_id) {
             Some(node) => node,
             None => return Err(NetResultCode::NetVaultNodeNotFound),
         };
         let new_node = update_node(old_node, &node);
-        self.vault.insert(node_id, new_node);
+        db.vault.insert(node_id, new_node);
         Ok(vec![node_id])
     }
 
     fn find_nodes(&self, template: Arc<VaultNode>) -> NetResult<Vec<u32>> {
-        Ok(self.vault.values().filter_map(|node| {
+        Ok(self.db.borrow().vault.values().filter_map(|node| {
             if node_match(template.as_ref(), node.as_ref()) {
                 Some(node.node_id())
             } else {
@@ -178,7 +195,7 @@ impl DbInterface for DbMemory {
     }
 
     fn get_system_node(&self) -> NetResult<u32> {
-        for (node_id, node) in &self.vault {
+        for (node_id, node) in &self.db.borrow().vault {
             if node.node_type() == NodeType::System as i32 {
                 return Ok(*node_id);
             }
@@ -187,7 +204,7 @@ impl DbInterface for DbMemory {
     }
 
     fn get_all_players_node(&self) -> NetResult<u32> {
-        for (node_id, node) in &self.vault {
+        for (node_id, node) in &self.db.borrow().vault {
             if node.node_type() == NodeType::PlayerInfoList as i32
                     && node.int32_1() == StandardNode::AllPlayersFolder as i32
             {
@@ -200,7 +217,7 @@ impl DbInterface for DbMemory {
     fn get_player_info_node(&self, player_id: u32) -> NetResult<Arc<VaultNode>> {
         // Obviously this can be a bit more efficient in SQL...
         for node_ref in self.fetch_refs(player_id, false)? {
-            if let Some(node) = self.vault.get(&node_ref.child()) {
+            if let Some(node) = self.db.borrow().vault.get(&node_ref.child()) {
                 if let Some(player_info) = node.as_player_info_node() {
                     if player_info.player_id() == player_id {
                         return Ok(node.clone());
@@ -211,14 +228,14 @@ impl DbInterface for DbMemory {
         Err(NetResultCode::NetVaultNodeNotFound)
     }
 
-    fn ref_node(&mut self, parent: u32, child: u32, owner: u32) -> NetResult<()> {
-        self.node_refs.insert(NodeRef::new(parent, child, owner));
+    fn ref_node(&self, parent: u32, child: u32, owner: u32) -> NetResult<()> {
+        self.db.borrow_mut().node_refs.insert(NodeRef::new(parent, child, owner));
         Ok(())
     }
 
     fn fetch_refs(&self, parent: u32, recursive: bool) -> NetResult<Vec<NodeRef>> {
         let mut refs = Vec::new();
-        for node_ref in &self.node_refs {
+        for node_ref in &self.db.borrow().node_refs {
             if node_ref.parent() == parent {
                 refs.push(*node_ref);
                 if recursive {
