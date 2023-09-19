@@ -16,7 +16,6 @@
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use log::{warn, info};
@@ -35,10 +34,10 @@ pub struct Backend {
     accounts: HashMap<UniCase<String>, AccountInfo>,
     players: HashMap<Uuid, Vec<PlayerInfo>>,
     game_servers: HashMap<u32, GameServer>,
-    game_index: AtomicU32,
+    game_index: u32,
     vault: HashMap<u32, Arc<VaultNode>>,
     node_refs: HashSet<NodeRef>,
-    node_index: AtomicU32,
+    node_index: u32,
 }
 
 pub struct DbMemory {
@@ -51,10 +50,10 @@ impl Backend {
             accounts: HashMap::new(),
             players: HashMap::new(),
             game_servers: HashMap::new(),
-            game_index: AtomicU32::new(1),
+            game_index: 1,
             vault: HashMap::new(),
             node_refs: HashSet::new(),
-            node_index: AtomicU32::new(1000),
+            node_index: 1000,
         }
     }
 }
@@ -143,7 +142,8 @@ impl DbInterface for DbMemory {
 
     fn add_game_server(&self, server: GameServer) -> NetResult<()> {
         let mut db = self.db.borrow_mut();
-        let server_id = db.game_index.fetch_add(1, Ordering::Relaxed);
+        let server_id = db.game_index;
+        db.game_index += 1;
         if db.game_servers.insert(server_id, server).is_some() {
             warn!("Created duplicate game server ID {}!", server_id);
             Err(NetResultCode::NetInternalError)
@@ -154,7 +154,8 @@ impl DbInterface for DbMemory {
 
     fn create_node(&self, node: Arc<VaultNode>) -> NetResult<u32> {
         let mut db = self.db.borrow_mut();
-        let node_id = db.node_index.fetch_add(1, Ordering::Relaxed);
+        let node_id = db.node_index;
+        db.node_index += 1;
         let mut node = (*node).clone();
         node.set_node_id(node_id);
         if db.vault.insert(node_id, Arc::new(node)).is_some() {
