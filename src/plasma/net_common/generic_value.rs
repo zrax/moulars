@@ -112,7 +112,7 @@ impl StreamWrite for CreatableGenericValue {
             }
             GenericType::Bool(value) => {
                 stream.write_u8(TypeID::Bool as u8)?;
-                stream.write_u8(if *value { 1 } else { 0 })?;
+                stream.write_u8(u8::from(*value))?;
             }
             GenericType::String(value) => {
                 stream.write_u8(TypeID::String as u8)?;

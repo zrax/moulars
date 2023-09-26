@@ -69,7 +69,7 @@ impl StreamRead for PakFile {
             let _ = stream.read_u32::<LittleEndian>()?;
             files.push(FileInfo { name, data: Vec::new() });
         }
-        for file in files.iter_mut() {
+        for file in &mut files {
             let size = stream.read_u32::<LittleEndian>()?;
             file.data.resize(size as usize, 0);
             stream.read_exact(file.data.as_mut_slice())?;

@@ -111,7 +111,7 @@ impl StreamRead for Uoid {
         };
 
         Ok(Self {
-            location, load_mask, obj_type, obj_id, obj_name,
+            location, load_mask, obj_type, obj_name, obj_id,
             clone_id, clone_player_id
         })
     }

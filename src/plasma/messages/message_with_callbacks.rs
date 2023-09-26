@@ -48,7 +48,7 @@ impl StreamRead for MessageWithCallbacks {
         let mut callbacks = Vec::with_capacity(num_callbacks as usize);
         for _ in 0..num_callbacks {
             if let Some(msg) = Factory::read_message(stream)? {
-                callbacks.push(msg)
+                callbacks.push(msg);
             } else {
                 return Err(general_error!("Unexpected null message in callbacks"));
             }

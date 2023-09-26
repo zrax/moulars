@@ -108,8 +108,8 @@ impl StreamRead for Matrix44 {
     {
         if stream.read_u8()? != 0 {
             let mut data = [[0_f32; 4]; 4];
-            for row in data.iter_mut() {
-                for val in row.iter_mut() {
+            for row in &mut data {
+                for val in row {
                     *val = stream.read_f32::<LittleEndian>()?;
                 }
             }

@@ -55,13 +55,13 @@ impl State {
     pub fn descriptor(&self) -> &StateDescriptor { &self.descriptor }
 
     pub fn is_default(&self) -> bool {
-        self.simple_vars.iter().all(|var| var.is_default())
-            && self.statedesc_vars.iter().all(|var| var.is_default())
+        self.simple_vars.iter().all(Variable::is_default)
+            && self.statedesc_vars.iter().all(Variable::is_default)
     }
 
     pub fn is_dirty(&self) -> bool {
-        self.simple_vars.iter().any(|var| var.is_dirty())
-            || self.statedesc_vars.iter().any(|var| var.is_dirty())
+        self.simple_vars.iter().any(Variable::is_dirty)
+            || self.statedesc_vars.iter().any(Variable::is_dirty)
     }
 
     pub fn read<S>(&mut self, stream: &mut S, db: &DescriptorDb) -> Result<()>
@@ -148,7 +148,7 @@ impl State {
 
         let descriptor_name = read_safe_str(&mut stream, StringFormat::Latin1)?;
         let version = stream.read_u16::<LittleEndian>()?;
-        if let Some(descriptor) = db.get_version(&descriptor_name, version as u32) {
+        if let Some(descriptor) = db.get_version(&descriptor_name, u32::from(version)) {
             let mut state = State::from_defaults(descriptor, db);
             if (read_flags & HAS_UOID) != 0 {
                 state.object = Some(Uoid::stream_read(&mut stream)?);

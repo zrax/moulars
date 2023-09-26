@@ -53,6 +53,8 @@ impl ShaDigest {
     }
 
     pub fn sha0(data: &[u8]) -> Self {
+        const BLOCK_SIZE: usize = 64;
+
         // Hand-rolled implementation (based on DirtSand's) since RustCrypto
         // doesn't currently support Sha0
         let mut hash = [
@@ -67,7 +69,6 @@ impl ShaDigest {
         // Therefore, for simplicity, we just store the whole message in memory.
         // However, we need to pad it up to 512 bits and append the size in
         // bits (BE) to the end of the buffer.
-        const BLOCK_SIZE: usize = 64;
         let buf_size = ((data.len() + 1 + size_of::<u64>()
                             + (BLOCK_SIZE - 1)) / BLOCK_SIZE) * BLOCK_SIZE;
         let mut buffer = vec![0; buf_size];
@@ -95,22 +96,22 @@ impl ShaDigest {
             let mut hv = hash;
 
             // Main SHA loop
-            for w in work[0..20].iter() {
+            for w in &work[0..20] {
                 const K: u32 = 0x5a827999;
                 let f = (hv[1] & hv[2]) | (!hv[1] & hv[3]);
                 sha_common!(hv, f, K, w);
             }
-            for w in work[20..40].iter() {
+            for w in &work[20..40] {
                 const K: u32 = 0x6ed9eba1;
                 let f = hv[1] ^ hv[2] ^ hv[3];
                 sha_common!(hv, f, K, w);
             }
-            for w in work[40..60].iter() {
+            for w in &work[40..60] {
                 const K: u32 = 0x8f1bbcdc;
                 let f = (hv[1] & hv[2]) | (hv[1] & hv[3]) | (hv[2] & hv[3]);
                 sha_common!(hv, f, K, w);
             }
-            for w in work[60..80].iter() {
+            for w in &work[60..80] {
                 const K: u32 = 0xca62c1d6;
                 let f = hv[1] ^ hv[2] ^ hv[3];
                 sha_common!(hv, f, K, w);
@@ -139,6 +140,7 @@ impl ShaDigest {
         Self { data: result.into() }
     }
 
+    #[must_use]
     pub fn endian_swap(&self) -> Self {
         let mut swapped = [0; 20];
         for (src, dest) in self.data.chunks_exact(size_of::<u32>())

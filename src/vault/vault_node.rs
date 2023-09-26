@@ -319,7 +319,7 @@ impl VaultNode {
         node.set_creator_uuid(instance_id);
         node.set_creator_id(age_id);
         node.set_int32_1(seq_number);
-        node.set_int32_2(if public { 1 } else { 0 });
+        node.set_int32_2(i32::from(public));
         node.set_int32_3(language);
         node.set_uint32_1(age_id);
         node.set_uint32_2(0);   // Czar ID

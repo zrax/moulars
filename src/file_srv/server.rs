@@ -236,7 +236,7 @@ impl FileServerWorker {
                     return self.send_message(FileToCli::download_error(trans_id,
                                                 NetResultCode::NetOldBuildId)).await;
                 }
-                self.do_download(trans_id, &filename).await
+                Box::pin(self.do_download(trans_id, &filename)).await
             }
             CliToFile::ManifestEntryAck { .. } => true, // Ignored
             CliToFile::DownloadChunkAck { .. } => true, // Ignored
@@ -281,7 +281,7 @@ impl FileServerWorker {
         {
             debug!("Client {} requested file '{}'", self.peer_addr().unwrap(), filename);
 
-            if metadata.len() > u32::MAX as u64 {
+            if metadata.len() > u64::from(u32::MAX) {
                 debug!("File {} too large for 32-bit stream", filename);
                 return self.send_message(FileToCli::download_error(trans_id,
                                             NetResultCode::NetInternalError)).await;

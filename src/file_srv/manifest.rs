@@ -120,18 +120,17 @@ impl FileInfo {
 
         let updated_file_hash = md5_hash_file(&src_path)?;
         let src_metadata = src_path.metadata()?;
-        if src_metadata.len() != (self.file_size as u64)
+        if src_metadata.len() != u64::from(self.file_size)
             || updated_file_hash != self.file_hash
         {
             // The source file has changed (or this is the first time we're
             // updating it), so we need to update the other properties as well.
             debug!("Updating {}", src_path.display());
             self.file_hash = updated_file_hash;
-            if src_metadata.len() > u32::MAX as u64 {
+            if src_metadata.len() > u64::from(u32::MAX) {
                 return Err(general_error!("Source file is too large"));
-            } else {
-                self.file_size = src_metadata.len() as u32;
             }
+            self.file_size = src_metadata.len() as u32;
 
             // Try compressing the file.  If we don't get at least 10% savings,
             // it's not worth compressing and we should send it uncompressed.
@@ -146,7 +145,7 @@ impl FileInfo {
                 gz_stream.flush()?;
             }
             let gz_metadata = gz_path.metadata()?;
-            if gz_metadata.len() < ((self.file_size as f64) * 0.9) as u64 {
+            if gz_metadata.len() < (f64::from(self.file_size) * 0.9) as u64 {
                 // Compressed stream is small enough -- keep it and update
                 // the manifest cache to reference it.
                 self.download_path = path_utils::to_windows(
@@ -222,8 +221,8 @@ pub fn read_utf16z_md5_hash<S>(stream: &mut S) -> Result<[u8; 16]>
 pub fn read_utf16z_u32<S>(stream: &mut S) -> Result<u32>
     where S: BufRead
 {
-    let value = (stream.read_u16::<LittleEndian>()? as u32) << 16
-              | (stream.read_u16::<LittleEndian>()? as u32);
+    let value = u32::from(stream.read_u16::<LittleEndian>()?) << 16
+              | u32::from(stream.read_u16::<LittleEndian>()?);
     if stream.read_u16::<LittleEndian>()? != 0 {
         return Err(general_error!("uint32 value was not nul-terminated"));
     }

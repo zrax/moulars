@@ -220,7 +220,7 @@ pub fn load_or_create_ntd_key(data_root: &Path) -> Result<[u32; 4]> {
             if err.kind() == ErrorKind::NotFound {
                 let mut rng = rand::thread_rng();
                 let mut stream = BufWriter::new(File::create(&key_path)?);
-                for v in key_buffer.iter_mut() {
+                for v in &mut key_buffer {
                     *v = rng.gen::<u32>();
                     stream.write_u32::<BigEndian>(*v)?;
                 }

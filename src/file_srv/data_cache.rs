@@ -34,7 +34,9 @@ use crate::plasma::file_crypt::{self, EncryptionType, EncryptedWriter};
 use super::manifest::{Manifest, FileInfo};
 use super::server::ignore_file;
 
-pub fn scan_dir(path: &Path, file_set: &mut HashSet<PathBuf>) -> Result<()> {
+pub fn scan_dir<H>(path: &Path, file_set: &mut HashSet<PathBuf, H>) -> Result<()>
+    where H: std::hash::BuildHasher
+{
     for entry in path.read_dir()? {
         let entry = entry?;
         if !entry.metadata()?.is_file() {
@@ -48,7 +50,7 @@ pub fn scan_dir(path: &Path, file_set: &mut HashSet<PathBuf>) -> Result<()> {
     Ok(())
 }
 
-fn scan_python_dir(python_root: &Path, subdir_limit: Option<Vec<&OsStr>>)
+fn scan_python_dir(python_root: &Path, subdir_limit: Option<&Vec<&OsStr>>)
         -> Result<HashSet<PathBuf>>
 {
     let mut file_set = HashSet::new();
@@ -59,7 +61,7 @@ fn scan_python_dir(python_root: &Path, subdir_limit: Option<Vec<&OsStr>>)
             file_set.insert(entry.path());
         } else if metadata.is_dir() {
             let name_match = entry.file_name();
-            if subdir_limit.as_ref().map(|subdirs| subdirs.contains(&name_match.as_ref())).unwrap_or(true) {
+            if subdir_limit.map_or(true, |subdirs| subdirs.contains(&name_match.as_ref())) {
                 file_set.extend(scan_python_dir(&entry.path(), None)?.into_iter());
             }
         }
@@ -344,7 +346,7 @@ fn create_cache_file<'dc>(data_cache: &'dc mut HashMap<PathBuf, FileInfo>,
     })
 }
 
-fn compyle_dir(python_dir: &Path, subdir_limit: Option<Vec<&OsStr>>,
+fn compyle_dir(python_dir: &Path, subdir_limit: Option<&Vec<&OsStr>>,
                python_exe: &Path, pak_file: &mut PakFile) -> Result<()>
 {
     // Look for the glue code.  For now, we append this to everything in the
@@ -462,7 +464,7 @@ fn process_python(python_dir: &Path, python_exe: &Path, python_pak: &Path,
 
     let system_dir = get_python_system_lib(python_exe)?;
     if system_dir.exists() {
-        compyle_dir(&system_dir, Some(python_system_dirs), python_exe, &mut pak_file)?;
+        compyle_dir(&system_dir, Some(&python_system_dirs), python_exe, &mut pak_file)?;
     } else {
         warn!("Could not find system python sources in {}", system_dir.display());
     }

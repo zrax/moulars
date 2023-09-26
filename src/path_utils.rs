@@ -47,6 +47,7 @@ fn test_append_extension() {
     assert_eq!(append_extension(Path::new("/foo/bar.exe"), ""), Path::new("/foo/bar.exe"));
 }
 
+#[must_use]
 pub fn to_windows(path: &str) -> String {
     debug_assert!(MAIN_SEPARATOR.is_ascii());
 
@@ -57,7 +58,7 @@ pub fn to_windows(path: &str) -> String {
         unsafe {
             for ch in result.as_bytes_mut() {
                 if *ch == MAIN_SEPARATOR as u8 {
-                    *ch = b'\\'
+                    *ch = b'\\';
                 }
             }
         }
@@ -65,6 +66,7 @@ pub fn to_windows(path: &str) -> String {
     result
 }
 
+#[must_use]
 pub fn to_native(path: &str) -> String {
     debug_assert!(MAIN_SEPARATOR.is_ascii());
 
@@ -75,7 +77,7 @@ pub fn to_native(path: &str) -> String {
         unsafe {
             for ch in result.as_bytes_mut() {
                 if *ch == b'\\' {
-                    *ch = MAIN_SEPARATOR as u8
+                    *ch = MAIN_SEPARATOR as u8;
                 }
             }
         }

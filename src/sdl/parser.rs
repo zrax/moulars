@@ -81,7 +81,7 @@ impl<S: BufRead> Parser<S> {
 
     fn push_token(&mut self, token: Token, start: usize) {
         let location = Location { line: self.line_no, column: start + 1 };
-        self.tok_buffer.push_back((token, location))
+        self.tok_buffer.push_back((token, location));
     }
 
     fn next_line(&mut self) -> Result<bool> {
@@ -192,7 +192,7 @@ impl<S: BufRead> Parser<S> {
 
     fn parse_statedesc(&mut self) -> Result<StateDescriptor> {
         let name = self.expect_identifier(KW_STATEDESC)?;
-        self.expect_token(Token::CharToken('{'), KW_STATEDESC)?;
+        self.expect_token(&Token::CharToken('{'), KW_STATEDESC)?;
         let start_line = self.line_no;
 
         let mut opt_version = None;
@@ -256,14 +256,14 @@ impl<S: BufRead> Parser<S> {
             None => return Err(general_error!("Unexpected EOF while parsing VAR"))
         };
         let var_name = self.expect_identifier(KW_VAR)?;
-        self.expect_token(Token::CharToken('['), KW_VAR)?;
+        self.expect_token(&Token::CharToken('['), KW_VAR)?;
         let var_count = match self.next_token()? {
             Some((Token::Number(value), location)) => {
                 let count = value.parse::<usize>().map_err(|err| {
                     general_error!("Invalid var count '{}' at {}: {}",
                                    value, location, err)
                 })?;
-                self.expect_token(Token::CharToken(']'), KW_VAR)?;
+                self.expect_token(&Token::CharToken(']'), KW_VAR)?;
                 Some(count)
             }
             Some((Token::CharToken(']'), _)) => None,
@@ -284,12 +284,12 @@ impl<S: BufRead> Parser<S> {
                     }
                     KW_DEFAULTOPTION => {
                         // Ignored for now
-                        self.expect_token(Token::CharToken('='), KW_DEFAULTOPTION)?;
+                        self.expect_token(&Token::CharToken('='), KW_DEFAULTOPTION)?;
                         let _ = self.expect_identifier(KW_DEFAULTOPTION)?;
                     }
                     KW_DISPLAYOPTION => {
                         // Ignored for now
-                        self.expect_token(Token::CharToken('='), KW_DISPLAYOPTION)?;
+                        self.expect_token(&Token::CharToken('='), KW_DISPLAYOPTION)?;
                         let _ = self.expect_identifier(KW_DISPLAYOPTION)?;
                     }
                     _ => {
@@ -311,7 +311,7 @@ impl<S: BufRead> Parser<S> {
     }
 
     fn parse_default(&mut self, var_type: &VarType) -> Result<Option<VarDefault>> {
-        self.expect_token(Token::CharToken('='), KW_DEFAULT)?;
+        self.expect_token(&Token::CharToken('='), KW_DEFAULT)?;
         match var_type {
             VarType::Bool => Ok(Some(VarDefault::Bool(self.expect_bool(true, KW_DEFAULT)?))),
             VarType::Byte => Ok(Some(VarDefault::Byte(self.expect_number::<u8>(true, KW_DEFAULT)?))),
@@ -427,7 +427,7 @@ impl<S: BufRead> Parser<S> {
             }
             Some((Token::CharToken('('), _)) if seq_ok => {
                 let inner = self.expect_number::<T>(false, context)?;
-                self.expect_token(Token::CharToken(')'), context)?;
+                self.expect_token(&Token::CharToken(')'), context)?;
                 Ok(inner)
             }
             Some((token, location)) => {
@@ -455,7 +455,7 @@ impl<S: BufRead> Parser<S> {
             }
             Some((Token::CharToken('('), _)) if seq_ok => {
                 let inner = self.expect_bool(false, context)?;
-                self.expect_token(Token::CharToken(')'), context)?;
+                self.expect_token(&Token::CharToken(')'), context)?;
                 Ok(inner)
             }
             Some((token, location)) => {
@@ -469,7 +469,7 @@ impl<S: BufRead> Parser<S> {
         where T: FromStr, <T as FromStr>::Err: Display
     {
         let mut result = Vec::new();
-        let start = self.expect_token(Token::CharToken('('), context)?;
+        let start = self.expect_token(&Token::CharToken('('), context)?;
         loop {
             result.push(self.expect_number::<T>(false, context)?);
             match self.next_token()? {
@@ -483,10 +483,10 @@ impl<S: BufRead> Parser<S> {
         }
     }
 
-    fn expect_token(&mut self, expected: Token, context: &str) -> Result<Location> {
+    fn expect_token(&mut self, expected: &Token, context: &str) -> Result<Location> {
         match self.next_token()? {
             Some((token, location)) => {
-                if token == expected {
+                if &token == expected {
                     Ok(location)
                 } else {
                     Err(general_error!("Unexpected {:?} at {}", token, location))

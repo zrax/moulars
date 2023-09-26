@@ -48,9 +48,8 @@ impl EncryptionType {
                 // The stream is too small for the encryption marker
                 stream.seek(SeekFrom::Start(start_pos))?;
                 return Ok(Self::Unencrypted);
-            } else {
-                return Err(err);
             }
+            return Err(err);
         }
         if &buffer == b"whatdoyousee" || &buffer == b"BryceIsSmart" {
             Ok(Self::TEA)

@@ -37,21 +37,19 @@ pub struct VaultServer {
 const MAX_PLAYERS: u64 = 5;
 
 fn check_send<T>(sender: oneshot::Sender<NetResult<T>>, reply: NetResult<T>) {
-    match sender.send(reply) {
-        Ok(()) => (),
-        Err(_) => warn!("Failed to send vault reply to client"),
+    if sender.send(reply).is_err() {
+        warn!("Failed to send vault reply to client");
     }
 }
 
 fn check_bcast(sender: &broadcast::Sender<VaultBroadcast>, msg: VaultBroadcast) {
-    match sender.send(msg) {
-        Ok(_) => (),
-        Err(err) => warn!("Failed to send broadcast: {:?}", err),
+    if let Err(err) = sender.send(msg) {
+        warn!("Failed to send broadcast: {}", err);
     }
 }
 
 fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender<VaultBroadcast>,
-                         db: &Box<dyn DbInterface>)
+                         db: &dyn DbInterface)
 {
     match msg {
         VaultMessage::GetAccount { account_name, response_send } => {
@@ -167,7 +165,7 @@ impl VaultServer {
                 VaultDbBackend::Postgres => todo!(),
             };
 
-            if init_vault(&db).is_err() {
+            if init_vault(db.as_ref()).is_err() {
                 error!("Failed to initialize vault.");
                 std::process::exit(1);
             }
@@ -180,7 +178,7 @@ impl VaultServer {
             // TODO: Check and initialize static ages
 
             while let Some(msg) = msg_recv.recv().await {
-                process_vault_message(msg, &bcast_send, &db);
+                process_vault_message(msg, &bcast_send, db.as_ref());
             }
         });
         Arc::new(VaultServer { msg_send, broadcast, sdl_db })
@@ -325,7 +323,7 @@ impl VaultServer {
     }
 }
 
-fn init_vault(db: &Box<dyn DbInterface>) -> NetResult<()> {
+fn init_vault(db: &dyn DbInterface) -> NetResult<()> {
     if let Err(err) = db.get_system_node() {
         if err != NetResultCode::NetVaultNodeNotFound {
             warn!("Failed to fetch system node");

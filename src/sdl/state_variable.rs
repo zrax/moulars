@@ -234,7 +234,7 @@ impl Variable {
             VarType::AgeTimeOfDay => true,
             VarType::Creatable => {
                 if let VarValues::Creatable(creatables) = &self.values {
-                    creatables.iter().all(|creatable| creatable.is_none())
+                    creatables.iter().all(Option::is_none)
                 } else {
                     unreachable!()
                 }
@@ -305,7 +305,7 @@ impl Variable {
             }
             VarType::StateDesc(_) => {
                 if let VarValues::StateDesc(children) = &self.values {
-                    children.iter().all(|child| child.is_default())
+                    children.iter().all(State::is_default)
                 } else {
                     unreachable!()
                 }
@@ -337,7 +337,7 @@ impl Variable {
                     Some(statedesc) => statedesc,
                     None => return Err(general_error!("No such descriptor {}", name)),
                 };
-                self.read_statedesc(stream, db, statedesc)?
+                self.read_statedesc(stream, db, &statedesc)?;
             }
             _ => self.read_simple(stream)?,
         }
@@ -389,7 +389,7 @@ impl Variable {
                 VarType::Creatable => {
                     let mut values = Vec::with_capacity(total_count);
                     for _ in 0..total_count {
-                        values.push(self.read_creatable(stream)?);
+                        values.push(Self::read_creatable(stream)?);
                     }
                     VarValues::Creatable(values)
                 }
@@ -501,7 +501,7 @@ impl Variable {
         Ok(())
     }
 
-    fn read_creatable<S>(&mut self, stream: &mut S) -> Result<Option<Arc<dyn Creatable>>>
+    fn read_creatable<S>(stream: &mut S) -> Result<Option<Arc<dyn Creatable>>>
         where S: BufRead
     {
         let class_id = stream.read_u16::<LittleEndian>()?;
@@ -522,7 +522,7 @@ impl Variable {
     }
 
     fn read_statedesc<S>(&mut self, stream: &mut S, db: &DescriptorDb,
-                         statedesc: Arc<StateDescriptor>) -> Result<()>
+                         statedesc: &Arc<StateDescriptor>) -> Result<()>
         where S: BufRead
     {
         stream.read_u8()?;  // Unused: SD Var read flags
@@ -620,7 +620,7 @@ impl Variable {
                 VarValues::Bool(values) => {
                     self.write_var_count(stream, values.len())?;
                     for val in values {
-                        stream.write_u8(if *val { 1 } else { 0 })?;
+                        stream.write_u8(u8::from(*val))?;
                     }
                 }
                 VarValues::Byte(values) => {
@@ -630,7 +630,7 @@ impl Variable {
                 VarValues::Creatable(values) => {
                     self.write_var_count(stream, values.len())?;
                     for creatable in values {
-                        self.write_creatable(stream, creatable)?;
+                        Self::write_creatable(stream, creatable)?;
                     }
                 }
                 VarValues::Double(values) => {
@@ -657,7 +657,7 @@ impl Variable {
                         key.stream_write(stream)?;
                     }
                 }
-                VarValues::Point3(values) => {
+                VarValues::Point3(values) | VarValues::Vector3(values) => {
                     self.write_var_count(stream, values.len())?;
                     for val in values {
                         val.stream_write(stream)?;
@@ -724,12 +724,6 @@ impl Variable {
                         val.stream_write(stream)?;
                     }
                 }
-                VarValues::Vector3(values) => {
-                    self.write_var_count(stream, values.len())?;
-                    for val in values {
-                        val.stream_write(stream)?;
-                    }
-                }
                 VarValues::StateDesc(_) => unreachable!(),
             }
         }
@@ -748,7 +742,7 @@ impl Variable {
         }
     }
 
-    fn write_creatable(&self, stream: &mut dyn Write,
+    fn write_creatable(stream: &mut dyn Write,
                        creatable: &Option<Arc<dyn Creatable>>) -> Result<()>
     {
         if let Some(creatable) = creatable {

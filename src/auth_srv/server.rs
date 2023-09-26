@@ -21,7 +21,6 @@ use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt};
 use log::{error, warn, info, debug};
-use rand::Rng;
 use tokio::io::{AsyncReadExt, BufReader};
 use tokio::sync::{mpsc, broadcast};
 use tokio::net::TcpStream;
@@ -186,7 +185,7 @@ impl AuthServerWorker {
                 server_config,
                 vault,
                 vault_bcast,
-                server_challenge: rand::thread_rng().gen::<u32>(),
+                server_challenge: rand::random::<u32>(),
                 account_id: None,
                 player_id: None,
             };
@@ -527,7 +526,7 @@ impl AuthServerWorker {
                 self.do_manifest(trans_id, &directory, &ext).await
             }
             CliToAuth::FileDownloadRequest { trans_id, filename } => {
-                self.do_download(trans_id, &filename).await
+                Box::pin(self.do_download(trans_id, &filename)).await
             }
             CliToAuth::FileDownloadChunkAck { .. } => true, // Ignored
             CliToAuth::PropagateBuffer { .. } => {
@@ -624,7 +623,7 @@ impl AuthServerWorker {
         {
             debug!("Client {} requested file '{}'", self.peer_addr().unwrap(), filename);
 
-            if metadata.len() > u32::MAX as u64 {
+            if metadata.len() > u64::from(u32::MAX) {
                 debug!("File {} too large for 32-bit stream", filename);
                 return self.send_message(AuthToCli::download_error(trans_id,
                                             NetResultCode::NetInternalError)).await;
@@ -786,13 +785,12 @@ impl AuthServerWorker {
     async fn player_create(&mut self, trans_id: u32, player_name: &str,
                            avatar_shape: &str) -> bool
     {
-        let account_id = match self.account_id {
-            Some(uuid) => uuid,
-            None => {
-                warn!("{} cannot create player: Not logged in", self.peer_addr().unwrap());
-                return self.send_message(AuthToCli::player_create_error(trans_id,
-                                            NetResultCode::NetAuthenticationFailed)).await;
-            }
+        let account_id = if let Some(uuid) = self.account_id {
+            uuid
+        } else {
+            warn!("{} cannot create player: Not logged in", self.peer_addr().unwrap());
+            return self.send_message(AuthToCli::player_create_error(trans_id,
+                                        NetResultCode::NetAuthenticationFailed)).await;
         };
 
         // Disallow arbitrary choices of avatar shape...  Special models can
@@ -831,15 +829,14 @@ impl AuthServerWorker {
     }
 
     async fn do_set_player(&mut self, trans_id: u32, player_id: u32) -> bool {
-        let account_id = match self.account_id {
-            Some(uuid) => uuid,
-            None => {
-                warn!("{} cannot set player: Not logged in", self.peer_addr().unwrap());
-                return self.send_message(AuthToCli::AcctSetPlayerReply {
-                    trans_id,
-                    result: NetResultCode::NetAuthenticationFailed as i32
-                }).await;
-            }
+        let account_id = if let Some(uuid) = self.account_id {
+            uuid
+        } else {
+            warn!("{} cannot set player: Not logged in", self.peer_addr().unwrap());
+            return self.send_message(AuthToCli::AcctSetPlayerReply {
+                trans_id,
+                result: NetResultCode::NetAuthenticationFailed as i32
+            }).await;
         };
 
         let player_node = match self.vault.fetch_node(player_id).await

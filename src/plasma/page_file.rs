@@ -58,7 +58,7 @@ impl PageFile {
         let index_start = stream.read_u32::<LittleEndian>()?;
 
         // Skip to and read the object index
-        stream.seek(SeekFrom::Start(index_start as u64))?;
+        stream.seek(SeekFrom::Start(u64::from(index_start)))?;
         let num_types = stream.read_u32::<LittleEndian>()?;
         let mut key_index = HashMap::with_capacity(num_types as usize);
         for _ in 0..num_types {
@@ -104,7 +104,7 @@ impl PageFile {
 
         if let Some(keys) = self.key_index.get(&uoid.obj_type()) {
             if let Some(index_key) = keys.iter().find(|k| k.uoid == *uoid) {
-                let _ = stream.seek(SeekFrom::Start(index_key.offset as u64))?;
+                let _ = stream.seek(SeekFrom::Start(u64::from(index_key.offset)))?;
 
                 // Ensure the object is streamed from within the bounds of the stored data
                 let mut obj_buffer = vec![0; index_key.size as usize];

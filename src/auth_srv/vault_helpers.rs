@@ -136,12 +136,11 @@ pub async fn find_age_instance(age_uuid: &Uuid, parent_uuid: &Uuid,
     };
 
     let template = VaultNode::age_info_lookup(Some(age_uuid));
-    let age_info = match vault.find_nodes(template).await?.first() {
-        Some(node_id) => *node_id,
-        None => {
-            warn!("Got Age node {}, but no Age Info node for {}", age_id, age_uuid);
-            return Err(NetResultCode::NetInternalError);
-        }
+    let age_info = if let Some(node_id) = vault.find_nodes(template).await?.first() {
+        *node_id
+    } else {
+        warn!("Got Age node {}, but no Age Info node for {}", age_id, age_uuid);
+        return Err(NetResultCode::NetInternalError);
     };
 
     Ok((age_id, age_info))

@@ -67,7 +67,7 @@ impl Manifest {
             let entry = entry?;
             let metadata = entry.metadata()?;
             if metadata.is_file() && entry.path().extension() == Some(OsStr::new(ext)) {
-                if metadata.len() > u32::MAX as u64 {
+                if metadata.len() > u64::from(u32::MAX) {
                     warn!("File {} is too large to send to client; Ignoring it...",
                           entry.path().display());
                     continue;
