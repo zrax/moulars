@@ -113,3 +113,23 @@ pub(crate) enum ClassID {
 
     Nil = 0x8000,
 }
+
+#[macro_export]
+macro_rules! derive_creatable {
+    ($name:ident) => {
+        derive_creatable! { $name @lines[] }
+    };
+    ($name:ident, Message) => {
+        derive_creatable! { $name @lines[
+            fn as_message(self: Box<Self>) -> Option<Box<dyn MessageInterface>> { Some(self) }
+        ] }
+    };
+    ($name:ident @lines[ $($lines:tt)* ]) => {
+        impl $crate::plasma::Creatable for $name {
+            fn class_id(&self) -> u16 { $crate::plasma::creatable::ClassID::$name as u16 }
+            fn static_class_id() -> u16 { $crate::plasma::creatable::ClassID::$name as u16 }
+            fn as_creatable(&self) -> &dyn $crate::plasma::Creatable { self }
+            $($lines)*
+        }
+    };
+}

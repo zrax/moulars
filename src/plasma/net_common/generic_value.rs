@@ -20,9 +20,8 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
-use crate::general_error;
-use crate::plasma::{Creatable, StreamRead, StreamWrite};
-use crate::plasma::creatable::ClassID;
+use crate::{general_error, derive_creatable};
+use crate::plasma::{StreamRead, StreamWrite};
 use crate::plasma::safe_string::{read_safe_str, write_safe_str, StringFormat};
 
 pub enum GenericType {
@@ -41,11 +40,7 @@ pub struct CreatableGenericValue {
     value: GenericType,
 }
 
-impl Creatable for CreatableGenericValue {
-    fn class_id(&self) -> u16 { ClassID::CreatableGenericValue as u16 }
-    fn static_class_id() -> u16 { ClassID::CreatableGenericValue as u16 }
-    fn as_creatable(&self) -> &dyn Creatable { self }
-}
+derive_creatable!(CreatableGenericValue);
 
 #[repr(u8)]
 #[derive(FromPrimitive)]
