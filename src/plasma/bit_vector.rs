@@ -77,6 +77,9 @@ impl StreamWrite for BitVector {
 
 #[test]
 fn test_bit_vector() {
+    // For readability in bit testing
+    #![allow(clippy::bool_assert_comparison)]
+
     let mut bv = BitVector::new();
     assert_eq!(bv.bits.len(), 0);
     assert_eq!(bv.get(0), false);

@@ -18,6 +18,9 @@
 // stdout.  It can be useful for debugging, as well as porting data back to
 // DirtSand for compatibility/comparison.
 
+#![deny(clippy::all)]
+#![deny(clippy::pedantic)]
+
 use std::fs::File;
 use std::io::{Cursor, BufReader, BufWriter, Result};
 use std::mem::size_of;
@@ -91,9 +94,9 @@ fn main() {
             let out_file = if decrypt_args.get_flag("in_place") {
                 Some(file_path.as_path())
             } else {
-                decrypt_args.get_one::<PathBuf>("out_filename").map(|v| v.as_path())
+                decrypt_args.get_one::<PathBuf>("out_filename").map(PathBuf::as_path)
             };
-            let key_opt = decrypt_args.get_one::<String>("key").map(|v| v.as_str());
+            let key_opt = decrypt_args.get_one::<String>("key").map(String::as_str);
             if let Err(err) = decrypt_file(file_path, out_file, key_opt) {
                 error!("Failed to decrypt {}: {}", file_path.display(), err);
                 std::process::exit(1);
@@ -114,7 +117,7 @@ fn main() {
         }
         Some(("ls-pak", ls_pak_args)) => {
             let pak_file = ls_pak_args.get_one::<PathBuf>("pak_file").unwrap();
-            let key_opt = ls_pak_args.get_one::<String>("key").map(|v| v.as_str());
+            let key_opt = ls_pak_args.get_one::<String>("key").map(String::as_str);
             if let Err(err) = list_pak(pak_file, key_opt) {
                 error!("Failed to load pak file: {}", err);
                 std::process::exit(1);
@@ -122,7 +125,7 @@ fn main() {
         }
         Some(("update", update_args)) => {
             let data_root = update_args.get_one::<PathBuf>("data_root").unwrap();
-            let python_exe = update_args.get_one::<PathBuf>("python_exe").map(|p| p.as_path());
+            let python_exe = update_args.get_one::<PathBuf>("python_exe").map(PathBuf::as_path);
             if let Err(err) = cache_clients(data_root, python_exe) {
                 warn!("Failed to update file server cache: {}", err);
             }
