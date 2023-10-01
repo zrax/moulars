@@ -18,8 +18,8 @@ use std::io::{BufRead, Result, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use crate::plasma::{Key, Creatable, StreamRead, StreamWrite};
-use crate::plasma::creatable::ClassID;
+use crate::derive_creatable;
+use crate::plasma::{Key, StreamRead, StreamWrite};
 use crate::plasma::safe_string::{read_safe_str, write_safe_str, StringFormat};
 
 pub struct SoundBuffer {
@@ -29,6 +29,8 @@ pub struct SoundBuffer {
     file_name: String,
     wav_header: WavHeader,
 }
+
+derive_creatable!(SoundBuffer);
 
 struct WavHeader {
     format_tag: u16,
@@ -61,12 +63,6 @@ impl SoundBuffer {
     }
 
     pub fn file_name(&self) -> &String { &self.file_name }
-}
-
-impl Creatable for SoundBuffer {
-    fn class_id(&self) -> u16 { ClassID::SoundBuffer as u16 }
-    fn static_class_id() -> u16 { ClassID::SoundBuffer as u16 }
-    fn as_creatable(&self) -> &dyn Creatable { self }
 }
 
 impl StreamRead for SoundBuffer {

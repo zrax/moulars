@@ -18,9 +18,8 @@ use std::io::{BufRead, Write, Result};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use crate::general_error;
-use crate::plasma::{Creatable, StreamRead, StreamWrite};
-use crate::plasma::creatable::ClassID;
+use crate::{general_error, derive_creatable};
+use crate::plasma::{StreamRead, StreamWrite};
 use crate::plasma::Factory;
 use super::{Message, MessageInterface};
 
@@ -29,15 +28,7 @@ pub struct MessageWithCallbacks {
     callbacks: Vec<Box<dyn MessageInterface>>,
 }
 
-impl Creatable for MessageWithCallbacks {
-    fn class_id(&self) -> u16 { ClassID::MessageWithCallbacks as u16 }
-    fn static_class_id() -> u16 { ClassID::MessageWithCallbacks as u16 }
-
-    fn as_creatable(&self) -> &dyn Creatable { self }
-    fn as_message(self: Box<Self>) -> Option<Box<dyn MessageInterface>> {
-        Some(self)
-    }
-}
+derive_creatable!(MessageWithCallbacks, Message);
 
 impl StreamRead for MessageWithCallbacks {
     fn stream_read<S>(stream: &mut S) -> Result<Self>
