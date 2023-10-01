@@ -14,6 +14,23 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#![deny(clippy::all)]
+#![deny(clippy::pedantic)]
+#![allow(clippy::uninlined_format_args)]    // Added in Rust 1.66
+
+// TODO: Clean up some or all of these exceptions
+#![allow(clippy::if_not_else)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
+#![allow(clippy::module_name_repetitions)]
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::unreadable_literal)]
+#![warn(clippy::cast_possible_truncation)]
+#![warn(clippy::cast_sign_loss)]
+#![warn(clippy::match_same_arms)]
+#![warn(clippy::must_use_candidate)]
+#![warn(clippy::similar_names)]
+
 pub mod auth_srv;
 pub mod file_srv;
 pub mod gate_keeper;

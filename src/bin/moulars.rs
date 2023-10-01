@@ -14,6 +14,10 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#![deny(clippy::all)]
+#![deny(clippy::pedantic)]
+#![allow(clippy::uninlined_format_args)]    // Added in Rust 1.66
+
 use std::ffi::OsStr;
 use std::io::{Write, stdout};
 use std::path::{Path, PathBuf};
@@ -129,7 +133,7 @@ fn main() {
             let bytes_n = key_n.to_bytes_be();
             let bytes_x = key_x.to_bytes_be();
             println!("Server.{}.N \"{}\"", stype, base64::encode(bytes_n));
-            println!("Server.{}.X \"{}\"", stype, base64::encode(bytes_x))
+            println!("Server.{}.X \"{}\"", stype, base64::encode(bytes_x));
         }
 
         std::process::exit(0);

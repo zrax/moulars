@@ -271,6 +271,8 @@ impl<S: Write + Seek> Drop for EncryptedWriter<S> {
 const TEA_DELTA: u32 = 0x9E3779B9;
 
 fn tea_decipher(block: &mut [u32; 2], key: &[u32; 4]) {
+    #![allow(clippy::many_single_char_names)]
+
     let mut y = block[0];
     let mut z = block[1];
     let mut sum: u32 = 0xC6EF3720;
@@ -288,6 +290,8 @@ fn tea_decipher(block: &mut [u32; 2], key: &[u32; 4]) {
 }
 
 fn tea_encipher(block: &mut [u32; 2], key: &[u32; 4]) {
+    #![allow(clippy::many_single_char_names)]
+
     let mut y = block[0];
     let mut z = block[1];
     let mut sum: u32 = 0;
@@ -312,6 +316,8 @@ macro_rules! mx {
 }
 
 fn xxtea_decipher(block: &mut [u32], key: &[u32; 4]) {
+    #![allow(clippy::many_single_char_names)]
+
     let mut y: u32 = block[0];
     let mut z: u32;     // = block[block.len() - 1];
     let q: u32 = 6 + (52 / block.len() as u32);
@@ -334,6 +340,8 @@ fn xxtea_decipher(block: &mut [u32], key: &[u32; 4]) {
 }
 
 fn xxtea_encipher(block: &mut [u32; 2], key: &[u32; 4]) {
+    #![allow(clippy::many_single_char_names)]
+
     let mut y: u32;     // = block[0];
     let mut z: u32 = block[block.len() - 1];
     let mut q: u32 = 6 + (52 / block.len() as u32);

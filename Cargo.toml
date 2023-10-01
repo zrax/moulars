@@ -17,6 +17,7 @@
 name = "moulars"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.63"   # Maintain compatibility with Debian 12
 
 [dependencies]
 base64 = "0.13"

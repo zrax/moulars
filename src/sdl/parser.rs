@@ -96,7 +96,9 @@ impl<S: BufRead> Parser<S> {
 
         let mut start = 0;
         while start < line_buf.len() {
-            match line_buf[start] {
+            // SAFETY: Range is already checked by the loop condition
+            let start_ch = unsafe { line_buf.get_unchecked(start) };
+            match start_ch {
                 // Stop at comment markers
                 b'#' => break,
 
@@ -107,7 +109,9 @@ impl<S: BufRead> Parser<S> {
                 b'0'..=b'9' | b'-' => {
                     let mut end = start + 1;
                     while end < line_buf.len() {
-                        match line_buf[end] {
+                        // SAFETY: Range is already checked by the loop condition
+                        let end_ch = unsafe { line_buf.get_unchecked(end) };
+                        match end_ch {
                             b'0'..=b'9' | b'.' => end += 1,
                             _ => break,
                         }
@@ -122,7 +126,9 @@ impl<S: BufRead> Parser<S> {
                 b'A'..=b'Z' | b'a'..=b'z' | b'_' | b'$' => {
                     let mut end = start + 1;
                     while end < line_buf.len() {
-                        match line_buf[end] {
+                        // SAFETY: Range is already checked by the loop condition
+                        let end_ch = unsafe { line_buf.get_unchecked(end) };
+                        match end_ch {
                             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' | b'-' => end += 1,
                             _ => break,
                         }

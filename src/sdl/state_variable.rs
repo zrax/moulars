@@ -84,6 +84,7 @@ macro_rules! get_default {
 macro_rules! check_default {
     ($values:expr, VarValues::$val_type:ident, $default_value:expr) => {
         if let VarValues::$val_type(values) = $values {
+            #[allow(clippy::float_cmp)]
             values.iter().all(|value| value == &$default_value)
         } else {
             unreachable!("Wrong VarValues type")
