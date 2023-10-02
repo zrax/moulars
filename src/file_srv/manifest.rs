@@ -145,7 +145,7 @@ impl FileInfo {
                 gz_stream.flush()?;
             }
             let gz_metadata = gz_path.metadata()?;
-            if gz_metadata.len() < (f64::from(self.file_size) * 0.9) as u64 {
+            if gz_metadata.len() < (u64::from(self.file_size) * 9) / 10 {
                 // Compressed stream is small enough -- keep it and update
                 // the manifest cache to reference it.
                 self.download_path = path_utils::to_windows(
