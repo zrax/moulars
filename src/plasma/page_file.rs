@@ -45,6 +45,8 @@ impl PageFile {
     pub fn read<S>(stream: &mut S) -> Result<Self>
         where S: BufRead + Seek
     {
+        #![allow(clippy::similar_names)]
+
         let page_version = stream.read_u32::<LittleEndian>()?;
         if page_version != 6 {
             return Err(general_error!("Unexpected page version {}", page_version));

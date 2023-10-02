@@ -547,6 +547,8 @@ impl StreamRead for VaultNode {
     fn stream_read<S>(stream: &mut S) -> Result<Self>
         where S: BufRead
     {
+        #![allow(clippy::similar_names)]
+
         let fields = stream.read_u64::<LittleEndian>()?;
 
         let node_id = f_read_u32!(stream, fields, FIELD_NODE_ID);

@@ -27,9 +27,7 @@
 #![allow(clippy::unreadable_literal)]
 #![warn(clippy::cast_possible_truncation)]
 #![warn(clippy::cast_sign_loss)]
-#![warn(clippy::match_same_arms)]
 #![warn(clippy::must_use_candidate)]
-#![warn(clippy::similar_names)]
 
 pub mod auth_srv;
 pub mod file_srv;

@@ -79,6 +79,8 @@ fn decode_crypt_key(value: &str) -> Result<BigUint> {
 
 impl ServerConfig {
     pub fn from_file(path: &Path) -> Result<Arc<ServerConfig>> {
+        #![allow(clippy::similar_names)]
+
         let config_file = std::fs::read_to_string(path)?;
         let config: StructuredConfig = toml::from_str(&config_file)
                 .map_err(|err| general_error!("Failed to parse config file: {}", err))?;

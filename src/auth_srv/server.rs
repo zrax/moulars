@@ -528,7 +528,6 @@ impl AuthServerWorker {
             CliToAuth::FileDownloadRequest { trans_id, filename } => {
                 Box::pin(self.do_download(trans_id, &filename)).await
             }
-            CliToAuth::FileDownloadChunkAck { .. } => true, // Ignored
             CliToAuth::PropagateBuffer { .. } => {
                 warn!("Ignoring propagate buffer from {}", self.peer_addr().unwrap());
                 true
@@ -547,7 +546,6 @@ impl AuthServerWorker {
                 warn!("Stack Dump from {}:\n{}", self.peer_addr().unwrap(), stackdump);
                 true
             }
-            CliToAuth::LogClientDebuggerConnect { .. } => true, // Ignored
             CliToAuth::ScoreCreate { .. } => {
                 todo!()
             }
@@ -575,6 +573,8 @@ impl AuthServerWorker {
             CliToAuth::ScoreGetHighScores { .. } => {
                 todo!()
             }
+            CliToAuth::FileDownloadChunkAck { .. }
+                | CliToAuth::LogClientDebuggerConnect { .. } => true, // Ignored
         }
     }
 

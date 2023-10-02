@@ -504,8 +504,8 @@ impl<S: BufRead> Parser<S> {
 
     fn expect_string_literal(&mut self, context: &str) -> Result<String> {
         match self.next_token()? {
-            Some((Token::StringLiteral(value), _)) => Ok(value),
-            Some((Token::Identifier(value), _)) => Ok(value),   // Single word value
+            // String literal or single word value
+            Some((Token::StringLiteral(value) | Token::Identifier(value), _)) => Ok(value),
             Some((token, location)) => {
                 Err(general_error!("Unexpected {:?} at {}", token, location))
             }
