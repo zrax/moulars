@@ -349,6 +349,8 @@ fn create_cache_file<'dc>(data_cache: &'dc mut HashMap<PathBuf, FileInfo>,
 fn compyle_dir(python_dir: &Path, subdir_limit: Option<&Vec<&OsStr>>,
                python_exe: &Path, pak_file: &mut PakFile) -> Result<()>
 {
+    #![allow(clippy::similar_names)]
+
     // Look for the glue code.  For now, we append this to everything in the
     // specified subdir if the glue file exists (this will be the case for
     // the plasma sources, but not generally for the system sources).  This

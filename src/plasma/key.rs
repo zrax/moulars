@@ -155,8 +155,10 @@ impl Location {
 
     pub fn make(prefix: i32, page: i32, flags: u16) -> Self {
         if prefix < 0 {
+            #[allow(clippy::cast_sign_loss)]
             Self { sequence: (page & 0xFFFF).wrapping_sub(prefix << 16) as u32 + 0xFF000001, flags }
         } else {
+            #[allow(clippy::cast_sign_loss)]
             Self { sequence: (page & 0xFFFF).wrapping_add(prefix << 16) as u32 + 0x00000021, flags }
         }
     }
