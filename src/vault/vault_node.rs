@@ -424,7 +424,7 @@ macro_rules! debug_field {
 impl Debug for VaultNode {
     // Simplify the default debug format by using the fields mask to make
     // nodes easier to read
-    fn fmt(&self, fmt: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, fmt: &mut Formatter) -> std::fmt::Result {
         write!(fmt, "VaultNode {{")?;
         let mut fields = self.fields;
         debug_field!(fmt, fields, node_id, self.node_id);

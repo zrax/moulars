@@ -31,7 +31,7 @@ pub trait Creatable: StreamRead + StreamWrite {
 }
 
 impl Debug for dyn Creatable {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "Creatable {{ type=0x{:04x} }}", self.class_id())
     }
 }

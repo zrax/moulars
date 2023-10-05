@@ -68,7 +68,7 @@ impl CryptTcpStream {
 }
 
 impl AsyncRead for CryptTcpStream {
-    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>)
+    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context, buf: &mut ReadBuf)
         -> Poll<Result<()>>
     {
         use rc4::StreamCipher;

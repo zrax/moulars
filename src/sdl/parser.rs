@@ -43,7 +43,7 @@ struct Location {
 }
 
 impl Display for Location {
-    fn fmt(&self, fmt: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, fmt: &mut Formatter) -> std::fmt::Result {
         write!(fmt, "line {}, column {}", self.line, self.column)
     }
 }
