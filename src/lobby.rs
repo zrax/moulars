@@ -101,7 +101,7 @@ pub struct LobbyServer {
 }
 
 impl LobbyServer {
-    pub async fn start(server_config: Arc<ServerConfig>) {
+    pub async fn start(server_config: ServerConfig) {
         let (shutdown_send, mut shutdown_recv) = broadcast::channel(1);
         let ctrl_c_send = shutdown_send.clone();
         tokio::spawn(async move {
@@ -143,14 +143,14 @@ impl LobbyServer {
             }
         };
 
-        let vault = VaultServer::start(server_config.clone(), sdl_db);
+        let server_config = Arc::new(server_config);
+        let vault = Arc::new(VaultServer::start(server_config.clone(), sdl_db));
         let auth_server = AuthServer::start(server_config.clone(), vault.clone());
         let file_server = FileServer::start(server_config.clone());
         let gate_keeper = GateKeeper::start(server_config.clone());
         let mut lobby = Self { auth_server, file_server, gate_keeper };
 
-        crate::api::start_api(shutdown_send.clone(), vault.clone(),
-                              server_config.clone());
+        crate::api::start_api(shutdown_send.clone(), vault, server_config.clone());
 
         info!("Starting lobby server on {}", server_config.listen_address);
         loop {
@@ -162,7 +162,7 @@ impl LobbyServer {
                             warn!("Failed to accept from socket: {}", err);
                         }
                     };
-                } => {}
+                } => (),
                 _ = shutdown_recv.recv() => break,
             }
         }

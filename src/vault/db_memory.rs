@@ -151,11 +151,10 @@ impl DbInterface for DbMemory {
         }
     }
 
-    fn create_node(&self, node: Arc<VaultNode>) -> NetResult<u32> {
+    fn create_node(&self, mut node: VaultNode) -> NetResult<u32> {
         let mut db = self.db.borrow_mut();
         let node_id = db.node_index;
         db.node_index += 1;
-        let mut node = (*node).clone();
         node.set_node_id(node_id);
         if db.vault.insert(node_id, Arc::new(node)).is_some() {
             warn!("Created duplicate node ID {}!", node_id);
@@ -172,7 +171,7 @@ impl DbInterface for DbMemory {
         }
     }
 
-    fn update_node(&self, node: Arc<VaultNode>) -> NetResult<Vec<u32>> {
+    fn update_node(&self, node: VaultNode) -> NetResult<Vec<u32>> {
         let mut db = self.db.borrow_mut();
         let node_id = node.node_id();
         let old_node = match db.vault.get(&node_id) {
@@ -184,9 +183,9 @@ impl DbInterface for DbMemory {
         Ok(vec![node_id])
     }
 
-    fn find_nodes(&self, template: Arc<VaultNode>) -> NetResult<Vec<u32>> {
+    fn find_nodes(&self, template: VaultNode) -> NetResult<Vec<u32>> {
         Ok(self.db.borrow().vault.values().filter_map(|node| {
-            if node_match(template.as_ref(), node.as_ref()) {
+            if node_match(&template, node.as_ref()) {
                 Some(node.node_id())
             } else {
                 None

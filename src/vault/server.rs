@@ -79,7 +79,7 @@ fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender<Vault
             }
 
             let node = VaultNode::new_player(&account_id, &player_name, &avatar_shape, 1);
-            let player_id = match db.create_node(Arc::new(node)) {
+            let player_id = match db.create_node(node) {
                 Ok(node_id) => node_id,
                 Err(err) => return check_send(response_send, Err(err)),
             };
@@ -102,13 +102,13 @@ fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender<Vault
             check_send(response_send, db.add_game_server(game_server));
         }
         VaultMessage::CreateNode { node, response_send } => {
-            check_send(response_send, db.create_node(node));
+            check_send(response_send, db.create_node(*node));
         }
         VaultMessage::FetchNode { node_id, response_send } => {
             check_send(response_send, db.fetch_node(node_id));
         }
         VaultMessage::UpdateNode { node, response_send } => {
-            let updated = match db.update_node(node) {
+            let updated = match db.update_node(*node) {
                 Ok(nodes) => nodes,
                 Err(err) => return check_send(response_send, Err(err)),
             };
@@ -121,7 +121,7 @@ fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender<Vault
             check_send(response_send, Ok(()));
         }
         VaultMessage::FindNodes { template, response_send } => {
-            check_send(response_send, db.find_nodes(template));
+            check_send(response_send, db.find_nodes(*template));
         }
         VaultMessage::GetSystemNode { response_send } => {
             check_send(response_send, db.get_system_node());
@@ -151,9 +151,7 @@ fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender<Vault
 }
 
 impl VaultServer {
-    pub fn start(server_config: Arc<ServerConfig>, sdl_db: DescriptorDb)
-            -> Arc<VaultServer>
-    {
+    pub fn start(server_config: Arc<ServerConfig>, sdl_db: DescriptorDb) -> Self {
         let (msg_send, mut msg_recv) = mpsc::channel(20);
         let (bcast_send, _) = broadcast::channel(100);
 
@@ -181,7 +179,7 @@ impl VaultServer {
                 process_vault_message(msg, &bcast_send, db.as_ref());
             }
         });
-        Arc::new(VaultServer { msg_send, broadcast, sdl_db })
+        Self { msg_send, broadcast, sdl_db }
     }
 
     pub fn sdl_db(&self) -> &DescriptorDb { &self.sdl_db }
@@ -258,7 +256,7 @@ impl VaultServer {
     pub async fn create_node(&self, node: VaultNode) -> NetResult<u32> {
         let (response_send, response_recv) = oneshot::channel();
         let request = VaultMessage::CreateNode {
-            node: Arc::new(node),
+            node: Box::new(node),
             response_send
         };
         self.request(request, response_recv).await
@@ -273,7 +271,7 @@ impl VaultServer {
     pub async fn update_node(&self, node: VaultNode) -> NetResult<()> {
         let (response_send, response_recv) = oneshot::channel();
         let request = VaultMessage::UpdateNode {
-            node: Arc::new(node),
+            node: Box::new(node),
             response_send
         };
         self.request(request, response_recv).await
@@ -282,7 +280,7 @@ impl VaultServer {
     pub async fn find_nodes(&self, template: VaultNode) -> NetResult<Vec<u32>> {
         let (response_send, response_recv) = oneshot::channel();
         let request = VaultMessage::FindNodes {
-            template: Arc::new(template),
+            template: Box::new(template),
             response_send
         };
         self.request(request, response_recv).await
@@ -333,15 +331,15 @@ fn init_vault(db: &dyn DbInterface) -> NetResult<()> {
         info!("Initializing empty Vault database");
 
         let node = VaultNode::new_system();
-        let system_node = db.create_node(Arc::new(node))?;
+        let system_node = db.create_node(node)?;
 
         let node = VaultNode::new_folder(&Uuid::nil(), 0, StandardNode::GlobalInboxFolder);
-        let global_inbox = db.create_node(Arc::new(node))?;
+        let global_inbox = db.create_node(node)?;
         db.ref_node(system_node, global_inbox, 0)?;
 
         let node = VaultNode::new_player_info_list(&Uuid::nil(), 0,
                         StandardNode::AllPlayersFolder);
-        let _ = db.create_node(Arc::new(node))?;
+        let _ = db.create_node(node)?;
     }
 
     Ok(())

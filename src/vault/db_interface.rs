@@ -34,10 +34,10 @@ pub trait DbInterface: Send {
 
     fn add_game_server(&self, server: GameServer) -> NetResult<()>;
 
-    fn create_node(&self, node: Arc<VaultNode>) -> NetResult<u32>;
+    fn create_node(&self, node: VaultNode) -> NetResult<u32>;
     fn fetch_node(&self, node_id: u32) -> NetResult<Arc<VaultNode>>;
-    fn update_node(&self, node: Arc<VaultNode>) -> NetResult<Vec<u32>>;
-    fn find_nodes(&self, template: Arc<VaultNode>) -> NetResult<Vec<u32>>;
+    fn update_node(&self, node: VaultNode) -> NetResult<Vec<u32>>;
+    fn find_nodes(&self, template: VaultNode) -> NetResult<Vec<u32>>;
     fn get_system_node(&self) -> NetResult<u32>;
     fn get_all_players_node(&self) -> NetResult<u32>;
     fn get_player_info_node(&self, player_id: u32) -> NetResult<Arc<VaultNode>>;

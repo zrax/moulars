@@ -17,7 +17,6 @@
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Result, ErrorKind};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use num_bigint::BigUint;
@@ -78,7 +77,7 @@ fn decode_crypt_key(value: &str) -> Result<BigUint> {
 }
 
 impl ServerConfig {
-    pub fn from_file(path: &Path) -> Result<Arc<ServerConfig>> {
+    pub fn from_file(path: &Path) -> Result<ServerConfig> {
         #![allow(clippy::similar_names)]
 
         let config_file = std::fs::read_to_string(path)?;
@@ -139,7 +138,7 @@ impl ServerConfig {
 
         let restrict_logins = config.restrict_logins.unwrap_or(false);
 
-        Ok(Arc::new(ServerConfig {
+        Ok(ServerConfig {
             listen_address,
             api_address,
             build_id,
@@ -155,7 +154,7 @@ impl ServerConfig {
             data_root,
             db_type,
             restrict_logins,
-        }))
+        })
     }
 
     pub fn get_ntd_key(&self) -> Result<[u32; 4]> {
@@ -233,6 +232,6 @@ pub fn load_or_create_ntd_key(data_root: &Path) -> Result<[u32; 4]> {
         }
     };
 
-    NTD_KEY.set(key).unwrap();
+    NTD_KEY.set(key).expect("Tried to set NTD key twice");
     Ok(key)
 }

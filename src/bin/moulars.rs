@@ -21,7 +21,6 @@
 use std::ffi::OsStr;
 use std::io::{Write, stdout};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use clap::{Command, Arg};
 use log::error;
@@ -147,7 +146,7 @@ fn main() {
     });
 }
 
-fn load_config() -> Arc<ServerConfig> {
+fn load_config() -> ServerConfig {
     // Look for a moulars.toml config file with the following precedence:
     //  1) In the same directory as the executable
     //  2) If the executable is in a bin/ directory, in ../etc/
