@@ -368,7 +368,7 @@ impl Variable {
         if (read_flags & HAS_TIMESTAMP) != 0 {
             self.timestamp = UnifiedTime::stream_read(stream)?;
         } else if (read_flags & HAS_DIRTY_FLAG) != 0 && (read_flags & WANT_TIMESTAMP) != 0 {
-            self.timestamp = UnifiedTime::now();
+            self.timestamp = UnifiedTime::now()?;
         }
 
         if (read_flags & SAME_AS_DEFAULT) == 0 {
