@@ -155,7 +155,7 @@ impl LobbyServer {
         info!("Starting lobby server on {}", server_config.listen_address);
         loop {
             tokio::select! {
-                _ = async {
+                () = async {
                     match listener.accept().await {
                         Ok((sock, sock_addr)) => lobby.accept_client(sock, sock_addr).await,
                         Err(err) => {

@@ -134,8 +134,7 @@ impl DbInterface for DbMemory {
     }
 
     fn create_player(&self, account_id: &Uuid, player: PlayerInfo) -> NetResult<()> {
-        self.db.borrow_mut().players.entry(*account_id)
-                .or_insert(Vec::new())
+        self.db.borrow_mut().players.entry(*account_id).or_default()
                 .push(player);
         Ok(())
     }

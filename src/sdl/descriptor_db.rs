@@ -35,8 +35,7 @@ pub struct DescriptorDb {
 
 fn merge_descriptors(db: &mut DescriptorMap, descriptors: Vec<StateDescriptor>) {
     for desc in descriptors {
-        db.entry(UniCase::new(desc.name().clone()))
-            .or_insert(BTreeMap::new())
+        db.entry(UniCase::new(desc.name().clone())).or_default()
             .entry(desc.version())
             .and_modify(|_| warn!("Duplicate descriptor found for {} version {}",
                                   desc.name(), desc.version()))

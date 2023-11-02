@@ -742,7 +742,7 @@ impl AuthServerWorker {
         self.account_id = Some(account.account_id);
 
         match self.fetch_account_players(trans_id, &account.account_id).await {
-            Some(result) if result == NetResultCode::NetSuccess => (),
+            Some(NetResultCode::NetSuccess) => (),
             Some(err) => {
                 return self.send_message(AuthToCli::login_error(trans_id, err)).await;
             }
