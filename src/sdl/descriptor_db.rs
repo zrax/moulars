@@ -27,7 +27,7 @@ use unicase::UniCase;
 use crate::plasma::file_crypt::EncryptedReader;
 use super::{StateDescriptor, Parser};
 
-type DescriptorMap = HashMap<UniCase<String>, BTreeMap<u32, Arc<StateDescriptor>>>;
+type DescriptorMap = HashMap<UniCase<String>, BTreeMap<u16, Arc<StateDescriptor>>>;
 
 pub struct DescriptorDb {
     descriptors: DescriptorMap,
@@ -73,7 +73,7 @@ impl DescriptorDb {
         Ok(Self { descriptors })
     }
 
-    pub fn get_version(&self, name: &str, version: u32) -> Option<Arc<StateDescriptor>> {
+    pub fn get_version(&self, name: &str, version: u16) -> Option<Arc<StateDescriptor>> {
         if let Some(ver_map) = self.descriptors.get(&UniCase::new(name.to_string())) {
             ver_map.get(&version).cloned()
         } else {

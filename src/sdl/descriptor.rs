@@ -54,7 +54,7 @@ pub struct VarDescriptor {
 #[derive(Debug)]
 pub struct StateDescriptor {
     name: String,
-    version: u32,
+    version: u16,
     vars: Vec<Arc<VarDescriptor>>,
 }
 
@@ -72,7 +72,7 @@ impl VarDescriptor {
 }
 
 impl StateDescriptor {
-    pub fn new(name: String, version: u32, vars: Vec<VarDescriptor>) -> Self {
+    pub fn new(name: String, version: u16, vars: Vec<VarDescriptor>) -> Self {
         Self {
             name,
             version,
@@ -81,7 +81,7 @@ impl StateDescriptor {
     }
 
     pub fn name(&self) -> &String { &self.name }
-    pub fn version(&self) -> u32 { self.version }
+    pub fn version(&self) -> u16 { self.version }
     pub fn vars(&self) -> &Vec<Arc<VarDescriptor>> { &self.vars }
 
     pub fn get_var(&self, name: &str) -> Option<Arc<VarDescriptor>> {

@@ -18,6 +18,7 @@ use std::io::{BufRead, Write, Result};
 
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 
+use crate::general_error;
 use crate::plasma::{Key, Creatable, StreamRead, StreamWrite};
 
 pub struct Message {
@@ -73,7 +74,9 @@ impl StreamRead for Message {
 impl StreamWrite for Message {
     fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         self.sender.stream_write(stream)?;
-        stream.write_u32::<LittleEndian>(self.receivers.len() as u32)?;
+        let num_receivers = u32::try_from(self.receivers.len())
+                .map_err(|_| general_error!("Too many receivers for stream"))?;
+        stream.write_u32::<LittleEndian>(num_receivers)?;
         for rc_key in &self.receivers {
             rc_key.stream_write(stream)?;
         }

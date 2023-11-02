@@ -40,14 +40,14 @@ struct GateKeeperWorker {
     server_config: Arc<ServerConfig>,
 }
 
-const CONN_HEADER_SIZE: usize = 20;
+const CONN_HEADER_SIZE: u32 = 20;
 
 fn read_conn_header<S>(stream: &mut S) -> Result<()>
     where S: BufRead
 {
     // Everything here is discarded...
     let header_size = stream.read_u32::<LittleEndian>()?;
-    if header_size != CONN_HEADER_SIZE as u32 {
+    if header_size != CONN_HEADER_SIZE {
         return Err(general_error!("Invalid connection header size {}", header_size));
     }
     // Null UUID
@@ -59,7 +59,7 @@ fn read_conn_header<S>(stream: &mut S) -> Result<()>
 async fn init_client(mut sock: TcpStream, server_config: &ServerConfig)
     -> Result<BufReader<CryptTcpStream>>
 {
-    let mut header = [0u8; CONN_HEADER_SIZE];
+    let mut header = [0u8; CONN_HEADER_SIZE as usize];
     sock.read_exact(&mut header).await?;
     read_conn_header(&mut Cursor::new(header))?;
 

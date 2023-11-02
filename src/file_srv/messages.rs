@@ -169,7 +169,8 @@ impl FileToCli {
             buffer.into_inner()
         };
 
-        let msg_size = (size_of::<u32>() + buffer.len()) as u32;
+        let msg_size = u32::try_from(size_of::<u32>() + buffer.len())
+                .map_err(|_| general_error!("Message too large for stream"))?;
         stream.write_u32_le(msg_size).await?;
         stream.write_all(&buffer).await
     }

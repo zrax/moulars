@@ -64,10 +64,9 @@ impl StreamRead for BitVector {
 
 impl StreamWrite for BitVector {
     fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
-        if self.bits.len() > u32::MAX as usize {
-            return Err(general_error!("Waaaaaay too many bits..."));
-        }
-        stream.write_u32::<LittleEndian>(self.bits.len() as u32)?;
+        let bits_size = u32::try_from(self.bits.len())
+                .map_err(|_| general_error!("Waaaaaay too many bits..."))?;
+        stream.write_u32::<LittleEndian>(bits_size)?;
         for bitfield in &self.bits {
             stream.write_u32::<LittleEndian>(*bitfield)?;
         }

@@ -93,13 +93,13 @@ struct CryptConnectHeader {
     key_seed: [u8; 64],
 }
 
-const SERVER_SEED_SIZE: usize = 7;
-const CLIENT_KEY_SIZE: usize = 64;
+const SERVER_SEED_SIZE: u8 = 7;
+const CLIENT_KEY_SIZE: u8 = 64;
 
 impl CryptConnectHeader {
-    const FIXED_SIZE: usize = 2;
-    const MAX_SIZE: usize = CryptConnectHeader::FIXED_SIZE + CLIENT_KEY_SIZE;
-    const ENCRYPT_REPLY_SIZE: usize = CryptConnectHeader::FIXED_SIZE + SERVER_SEED_SIZE;
+    const FIXED_SIZE: u8 = 2;
+    const MAX_SIZE: u8 = CryptConnectHeader::FIXED_SIZE + CLIENT_KEY_SIZE;
+    const ENCRYPT_REPLY_SIZE: u8 = CryptConnectHeader::FIXED_SIZE + SERVER_SEED_SIZE;
 }
 
 impl StreamRead for CryptConnectHeader {
@@ -114,16 +114,16 @@ impl StreamRead for CryptConnectHeader {
 }
 
 fn create_error_reply() -> Result<Vec<u8>> {
-    let mut stream = Cursor::new(Vec::with_capacity(CryptConnectHeader::FIXED_SIZE));
+    let mut stream = Cursor::new(Vec::with_capacity(usize::from(CryptConnectHeader::FIXED_SIZE)));
     stream.write_u8(SRV_TO_CLI_ERROR)?;
-    stream.write_u8(CryptConnectHeader::FIXED_SIZE as u8)?;
+    stream.write_u8(CryptConnectHeader::FIXED_SIZE)?;
     Ok(stream.into_inner())
 }
 
 fn create_crypt_reply(server_seed: &[u8]) -> Result<Vec<u8>> {
-    let mut stream = Cursor::new(Vec::with_capacity(CryptConnectHeader::ENCRYPT_REPLY_SIZE));
+    let mut stream = Cursor::new(Vec::with_capacity(usize::from(CryptConnectHeader::ENCRYPT_REPLY_SIZE)));
     stream.write_u8(SRV_TO_CLI_ENCRYPT)?;
-    stream.write_u8(CryptConnectHeader::ENCRYPT_REPLY_SIZE as u8)?;
+    stream.write_u8(CryptConnectHeader::ENCRYPT_REPLY_SIZE)?;
     stream.write_all(server_seed)?;
     Ok(stream.into_inner())
 }
@@ -139,7 +139,7 @@ fn crypt_key_create(key_n: &BigUint, key_k: &BigUint, key_y: &BigUint)
     let mut rng = rand::thread_rng();
     let server_seed = loop {
         let server_seed = rng.gen_biguint(SERVER_SEED_BIT_SIZE).to_bytes_le();
-        if server_seed.len() == SERVER_SEED_SIZE {
+        if server_seed.len() == usize::from(SERVER_SEED_SIZE) {
             break server_seed;
         }
     };
@@ -149,9 +149,9 @@ fn crypt_key_create(key_n: &BigUint, key_k: &BigUint, key_y: &BigUint)
             && client_seed.bits() <= CLIENT_KEY_BIT_SIZE);
 
     let key_buffer = client_seed.to_bytes_le();
-    let key: Vec<u8> = key_buffer.iter().take(SERVER_SEED_SIZE).enumerate()
+    let key: Vec<u8> = key_buffer.iter().take(usize::from(SERVER_SEED_SIZE)).enumerate()
                                  .map(|(i, v)| v ^ server_seed[i]).collect();
-    assert_eq!(key.len(), SERVER_SEED_SIZE);
+    assert_eq!(key.len(), usize::from(SERVER_SEED_SIZE));
 
     (server_seed, key)
 }
@@ -161,17 +161,17 @@ pub async fn init_crypt(mut sock: TcpStream, key_n: &BigUint, key_k: &BigUint)
 {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    let mut buffer = [0u8; CryptConnectHeader::FIXED_SIZE];
+    let mut buffer = [0u8; CryptConnectHeader::FIXED_SIZE as usize];
     sock.read_exact(&mut buffer).await?;
     let mut stream = Cursor::new(buffer);
     let mut crypt_header = CryptConnectHeader::stream_read(&mut stream)?;
-    if crypt_header.msg_size > (CryptConnectHeader::FIXED_SIZE as u8)
-        && crypt_header.msg_size <= (CryptConnectHeader::MAX_SIZE as u8)
+    if crypt_header.msg_size > CryptConnectHeader::FIXED_SIZE
+            && crypt_header.msg_size <= CryptConnectHeader::MAX_SIZE
     {
         // Header contains an encrypt client key
-        let key_size = (crypt_header.msg_size as usize) - CryptConnectHeader::FIXED_SIZE;
-        sock.read_exact(&mut crypt_header.key_seed[0..key_size]).await?;
-    } else if crypt_header.msg_size != (CryptConnectHeader::FIXED_SIZE as u8) {
+        let key_size = crypt_header.msg_size - CryptConnectHeader::FIXED_SIZE;
+        sock.read_exact(&mut crypt_header.key_seed[0..usize::from(key_size)]).await?;
+    } else if crypt_header.msg_size != CryptConnectHeader::FIXED_SIZE {
         let reply = create_error_reply()?;
         sock.write_all(&reply).await?;
         return Err(general_error!("Invalid encryption header size {}", crypt_header.msg_size));

@@ -483,7 +483,9 @@ fn read_vault_string<S>(stream: &mut S) -> Result<String>
 
 fn write_vault_string(stream: &mut dyn Write, value: &str) -> Result<()> {
     let buffer: Vec<u16> = value.encode_utf16().collect();
-    stream.write_u32::<LittleEndian>(((buffer.len() + 1) * size_of::<u16>()) as u32)?;
+    let buffer_size = u32::try_from((buffer.len() + 1) * size_of::<u16>())
+            .map_err(|_| general_error!("Buffer too large for stream"))?;
+    stream.write_u32::<LittleEndian>(buffer_size)?;
     for ch in buffer {
         stream.write_u16::<LittleEndian>(ch)?;
     }

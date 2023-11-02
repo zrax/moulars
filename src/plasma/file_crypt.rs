@@ -23,6 +23,8 @@ use std::{mem, ptr};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use log::warn;
 
+use crate::general_error;
+
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum EncryptionType {
     // Plain text
@@ -254,7 +256,9 @@ impl<S: Write + Seek> Write for EncryptedWriter<S> {
         let sync_pos = self.base.stream_position()?;
         self.write_block()?;
         self.base.seek(SeekFrom::Start(self.size_pos))?;
-        self.base.write_u32::<LittleEndian>(self.base_size as u32)?;
+        let base_size = u32::try_from(self.base_size)
+                .map_err(|_| general_error!("Stream too large for encrypted header"))?;
+        self.base.write_u32::<LittleEndian>(base_size)?;
         self.base.seek(SeekFrom::Start(sync_pos))?;
         Ok(())
     }
@@ -317,6 +321,7 @@ macro_rules! mx {
 
 fn xxtea_decipher(block: &mut [u32], key: &[u32; 4]) {
     #![allow(clippy::many_single_char_names)]
+    #![allow(clippy::cast_possible_truncation)]
 
     let mut y: u32 = block[0];
     let mut z: u32;     // = block[block.len() - 1];
@@ -339,8 +344,9 @@ fn xxtea_decipher(block: &mut [u32], key: &[u32; 4]) {
     }
 }
 
-fn xxtea_encipher(block: &mut [u32; 2], key: &[u32; 4]) {
+fn xxtea_encipher(block: &mut [u32], key: &[u32; 4]) {
     #![allow(clippy::many_single_char_names)]
+    #![allow(clippy::cast_possible_truncation)]
 
     let mut y: u32;     // = block[0];
     let mut z: u32 = block[block.len() - 1];

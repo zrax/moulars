@@ -37,7 +37,9 @@ pub async fn read_utf16_str<S>(stream: &mut S) -> Result<String>
 
 pub fn write_utf16_str(stream: &mut dyn Write, value: &str) -> Result<()> {
     let value_utf16: Vec<u16> = value.encode_utf16().collect();
-    stream.write_u16::<LittleEndian>(value_utf16.len() as u16)?;
+    let utf_len = u16::try_from(value_utf16.len())
+            .map_err(|_| general_error!("UTF-16 string too long for stream"))?;
+    stream.write_u16::<LittleEndian>(utf_len)?;
     for ch in value_utf16 {
         stream.write_u16::<LittleEndian>(ch)?;
     }
@@ -68,10 +70,9 @@ pub async fn read_sized_buffer<S>(stream: &mut S, max_size: u32) -> Result<Vec<u
 
 pub fn write_sized_buffer(stream: &mut dyn Write, buffer: &Vec<u8>) -> Result<()>
 {
-    if buffer.len() > u32::MAX as usize {
-        return Err(general_error!("Buffer too large for 32-bit stream ({} bytes)",
-                                  buffer.len()))
-    }
-    stream.write_u32::<LittleEndian>(buffer.len() as u32)?;
+    let buffer_size = u32::try_from(buffer.len())
+            .map_err(|_| general_error!("Buffer too large for 32-bit stream ({} bytes)",
+                                        buffer.len()))?;
+    stream.write_u32::<LittleEndian>(buffer_size)?;
     stream.write_all(buffer.as_slice())
 }

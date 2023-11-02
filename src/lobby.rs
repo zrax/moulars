@@ -43,12 +43,12 @@ struct ConnectionHeader {
 }
 
 impl ConnectionHeader {
-    const CONN_HEADER_SIZE: usize = 31;
+    const CONN_HEADER_SIZE: u16 = 31;
 
     pub async fn read(sock: &mut TcpStream) -> Result<Self> {
         use tokio::io::AsyncReadExt;
 
-        let mut buffer = [0u8; Self::CONN_HEADER_SIZE];
+        let mut buffer = [0u8; Self::CONN_HEADER_SIZE as usize];
         sock.read_exact(&mut buffer).await?;
 
         let mut stream = Cursor::new(buffer);
@@ -62,7 +62,7 @@ impl StreamRead for ConnectionHeader {
     {
         let conn_type = stream.read_u8()?;
         let sock_header_size = stream.read_u16::<LittleEndian>()?;
-        if sock_header_size != Self::CONN_HEADER_SIZE as u16 {
+        if sock_header_size != Self::CONN_HEADER_SIZE {
             return Err(general_error!("Invalid socket header size: {}", sock_header_size));
         }
         let build_id = stream.read_u32::<LittleEndian>()?;

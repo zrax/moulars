@@ -25,7 +25,6 @@
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::unreadable_literal)]
-#![warn(clippy::cast_possible_truncation)]
 #![warn(clippy::must_use_candidate)]
 
 pub mod auth_srv;

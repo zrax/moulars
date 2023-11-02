@@ -1175,7 +1175,9 @@ impl StreamWrite for AuthToCli {
                 stream.write_u16::<LittleEndian>(ServerMsgId::VaultNodeRefsFetched as u16)?;
                 stream.write_u32::<LittleEndian>(*trans_id)?;
                 stream.write_i32::<LittleEndian>(*result)?;
-                stream.write_u32::<LittleEndian>(refs.len() as u32)?;
+                let num_refs = u32::try_from(refs.len())
+                        .map_err(|_| general_error!("Too many refs for stream"))?;
+                stream.write_u32::<LittleEndian>(num_refs)?;
                 for node_ref in refs {
                     node_ref.stream_write(stream)?;
                 }
@@ -1192,7 +1194,9 @@ impl StreamWrite for AuthToCli {
                 stream.write_u16::<LittleEndian>(ServerMsgId::VaultNodeFindReply as u16)?;
                 stream.write_u32::<LittleEndian>(*trans_id)?;
                 stream.write_i32::<LittleEndian>(*result)?;
-                stream.write_u32::<LittleEndian>(node_ids.len() as u32)?;
+                let num_nodes = u32::try_from(node_ids.len())
+                        .map_err(|_| general_error!("Too many nodes for stream"))?;
+                stream.write_u32::<LittleEndian>(num_nodes)?;
                 for id in node_ids {
                     stream.write_u32::<LittleEndian>(*id)?;
                 }
@@ -1250,7 +1254,9 @@ impl StreamWrite for AuthToCli {
                 stream.write_u16::<LittleEndian>(ServerMsgId::PublicAgeList as u16)?;
                 stream.write_u32::<LittleEndian>(*trans_id)?;
                 stream.write_i32::<LittleEndian>(*result)?;
-                stream.write_u32::<LittleEndian>(ages.len() as u32)?;
+                let num_ages = u32::try_from(ages.len())
+                        .map_err(|_| general_error!("Too many age results for stream"))?;
+                stream.write_u32::<LittleEndian>(num_ages)?;
                 for age in ages {
                     age.stream_write(stream)?;
                 }

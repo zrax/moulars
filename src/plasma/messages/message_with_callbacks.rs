@@ -51,12 +51,11 @@ impl StreamRead for MessageWithCallbacks {
 
 impl StreamWrite for MessageWithCallbacks {
     fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
-        if self.callbacks.len() > u32::MAX as usize {
-            return Err(general_error!("Too many messages for stream"));
-        }
+        let num_callbacks = u32::try_from(self.callbacks.len())
+                .map_err(|_| general_error!("Too many messages for stream"))?;
 
         self.base.stream_write(stream)?;
-        stream.write_u32::<LittleEndian>(self.callbacks.len() as u32)?;
+        stream.write_u32::<LittleEndian>(num_callbacks)?;
         for msg in &self.callbacks {
             Factory::write_creatable(stream, Some(msg.as_creatable()))?;
         }

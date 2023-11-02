@@ -207,7 +207,7 @@ impl<S: BufRead> Parser<S> {
             match &token {
                 Token::Identifier(ident) => match ident.as_ref() {
                     KW_VERSION => {
-                        opt_version = Some(self.expect_number::<u32>(false, KW_STATEDESC)?);
+                        opt_version = Some(self.expect_number::<u16>(false, KW_STATEDESC)?);
                     },
                     KW_VAR => vars.push(self.parse_var()?),
                     _ => return Err(general_error!("Unexpected {:?} at {}", token, location))

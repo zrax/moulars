@@ -127,10 +127,8 @@ impl FileInfo {
             // updating it), so we need to update the other properties as well.
             debug!("Updating {}", src_path.display());
             self.file_hash = updated_file_hash;
-            if src_metadata.len() > u64::from(u32::MAX) {
-                return Err(general_error!("Source file is too large"));
-            }
-            self.file_size = src_metadata.len() as u32;
+            self.file_size = u32::try_from(src_metadata.len())
+                    .map_err(|_| general_error!("Source file is too large"))?;
 
             // Try compressing the file.  If we don't get at least 10% savings,
             // it's not worth compressing and we should send it uncompressed.
@@ -155,7 +153,9 @@ impl FileInfo {
                 self.download_hash = md5_hash_file(&gz_path)?;
                 // Already verified to be less than the (checked) size of the
                 // source file.
-                self.download_size = gz_metadata.len() as u32;
+                #[allow(clippy::cast_possible_truncation)] {
+                    self.download_size = gz_metadata.len() as u32;
+                }
                 self.flags |= Self::COMPRESSED_GZ;
             } else {
                 // Keep the file uncompressed.  The download hash and size will
@@ -349,7 +349,9 @@ impl StreamWrite for Manifest {
         // Don't write deleted files.  We need to keep them around in the
         // cache though so the check for updated records still works properly.
         let write_files: Vec<&FileInfo> = self.files.iter().filter(|f| !f.deleted).collect();
-        stream.write_u32::<LittleEndian>(write_files.len() as u32)?;
+        let num_files = u32::try_from(write_files.len())
+                .map_err(|_| general_error!("Too many files for stream"))?;
+        stream.write_u32::<LittleEndian>(num_files)?;
 
         let mut file_stream = Cursor::new(Vec::new());
         for file in &write_files {
@@ -359,7 +361,9 @@ impl StreamWrite for Manifest {
 
         let file_buf = file_stream.into_inner();
         assert_eq!(file_buf.len() % size_of::<u16>(), 0);
-        stream.write_u32::<LittleEndian>((file_buf.len() / size_of::<u16>()) as u32)?;
+        let entry_size = u32::try_from(file_buf.len() / size_of::<u16>())
+                .map_err(|_| general_error!("Manifest entry too large for stream"))?;
+        stream.write_u32::<LittleEndian>(entry_size)?;
         stream.write_all(file_buf.as_slice())
     }
 }

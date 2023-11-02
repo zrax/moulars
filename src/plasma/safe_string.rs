@@ -74,6 +74,7 @@ pub fn write_safe_str(stream: &mut dyn Write, value: &str, format: StringFormat)
         if length_key > 0x0FFF {
             return Err(general_error!("String too large for SafeString encoding"));
         }
+        #[allow(clippy::cast_possible_truncation)]
         stream.write_u16::<LittleEndian>(length_key as u16 | 0xF000)?;
         for ch in buffer {
             stream.write_u16::<LittleEndian>(!ch)?;
@@ -89,6 +90,7 @@ pub fn write_safe_str(stream: &mut dyn Write, value: &str, format: StringFormat)
         if length_key > 0x0FFF {
             return Err(general_error!("String too large for SafeString encoding"));
         }
+        #[allow(clippy::cast_possible_truncation)]
         stream.write_u16::<LittleEndian>(length_key as u16 | 0xF000)?;
         stream.write_all(buffer.as_slice())?;
     }

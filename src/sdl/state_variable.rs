@@ -510,11 +510,12 @@ impl Variable {
             return Ok(None);
         }
 
-        let creatable_size = stream.read_u32::<LittleEndian>()? as usize;
-        let mut creatable_buf = vec![0; creatable_size];
+        let creatable_size = stream.read_u32::<LittleEndian>()?;
+        let mut creatable_buf = vec![0; creatable_size as usize];
         stream.read_exact(creatable_buf.as_mut_slice())?;
         let mut creatable_stream = Cursor::new(creatable_buf);
         let object = Factory::read_creatable_as(&mut creatable_stream, class_id)?;
+        #[allow(clippy::cast_possible_truncation)]
         if creatable_stream.position() as usize != creatable_stream.get_ref().len() {
             warn!("Creatable 0x{:04x} was not fully parsed in SDL blob ({} of {} bytes read)",
                   class_id, creatable_stream.position(), creatable_stream.get_ref().len());
@@ -574,12 +575,11 @@ impl Variable {
             VarValues::StateDesc(values) => values,
             _ => unreachable!()
         };
-        if values.len() > u32::MAX as usize {
-            return Err(general_error!("Too many values for stream: {}", values.len()));
-        }
+        let num_values = u32::try_from(values.len())
+                .map_err(|_| general_error!("Too many values for stream: {}", values.len()))?;
 
         if self.descriptor.count().is_none() {
-            stream.write_u32::<LittleEndian>(values.len() as u32)?;
+            stream.write_u32::<LittleEndian>(num_values)?;
         }
         let mut dirty_list = Vec::with_capacity(values.len());
         for (idx, state) in values.iter().enumerate() {
@@ -737,6 +737,7 @@ impl Variable {
             return Err(general_error!("Too many elements in SDL variable ({})", count));
         }
         if self.descriptor.count().is_none() {
+            #[allow(clippy::cast_possible_truncation)]
             stream.write_u32::<LittleEndian>(count as u32)
         } else {
             Ok(())
@@ -751,10 +752,9 @@ impl Variable {
             let mut creatable_stream = Cursor::new(Vec::new());
             creatable.stream_write(&mut creatable_stream)?;
             let creatable_buf = creatable_stream.into_inner();
-            if creatable_buf.len() > u32::MAX as usize {
-                return Err(general_error!("Creatable too large for stream"));
-            }
-            stream.write_u32::<LittleEndian>(creatable_buf.len() as u32)?;
+            let creatable_size = u32::try_from(creatable_buf.len())
+                    .map_err(|_| general_error!("Creatable too large for stream"))?;
+            stream.write_u32::<LittleEndian>(creatable_size)?;
             stream.write_all(creatable_buf.as_slice())?;
         } else {
             stream.write_u16::<LittleEndian>(ClassID::Nil as u16)?;

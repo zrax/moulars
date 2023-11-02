@@ -43,7 +43,7 @@ struct FileServerWorker {
     client_reader_id: u32,
 }
 
-const CONN_HEADER_SIZE: usize = 12;
+const CONN_HEADER_SIZE: u32 = 12;
 const FILE_CHUNK_SIZE: usize = 64 * 1024;
 
 fn read_conn_header<S>(stream: &mut S) -> Result<()>
@@ -51,7 +51,7 @@ fn read_conn_header<S>(stream: &mut S) -> Result<()>
 {
     // Everything here is discarded...
     let header_size = stream.read_u32::<LittleEndian>()?;
-    if header_size != CONN_HEADER_SIZE as u32 {
+    if header_size != CONN_HEADER_SIZE {
         return Err(general_error!("Invalid connection header size {}", header_size));
     }
     // Build ID
@@ -63,7 +63,7 @@ fn read_conn_header<S>(stream: &mut S) -> Result<()>
 }
 
 async fn init_client(mut sock: TcpStream) -> Result<BufReader<TcpStream>> {
-    let mut buffer = [0u8; CONN_HEADER_SIZE];
+    let mut buffer = [0u8; CONN_HEADER_SIZE as usize];
     sock.read_exact(&mut buffer).await?;
     read_conn_header(&mut Cursor::new(buffer))?;
 
@@ -281,11 +281,11 @@ impl FileServerWorker {
         {
             debug!("Client {} requested file '{}'", self.peer_addr().unwrap(), filename);
 
-            if metadata.len() > u64::from(u32::MAX) {
+            let Ok(total_size) = u32::try_from(metadata.len()) else {
                 debug!("File {} too large for 32-bit stream", filename);
                 return self.send_message(FileToCli::download_error(trans_id,
                                             NetResultCode::NetInternalError)).await;
-            }
+            };
 
             self.client_reader_id += 1;
             let mut buffer = [0u8; FILE_CHUNK_SIZE];
@@ -300,7 +300,7 @@ impl FileServerWorker {
                             trans_id,
                             result: NetResultCode::NetSuccess as i32,
                             reader_id: self.client_reader_id,
-                            total_size: metadata.len() as u32,
+                            total_size,
                             file_data: Vec::from(&buffer[..count]),
                         };
                         if !self.send_message(reply).await {

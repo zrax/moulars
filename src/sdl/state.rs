@@ -148,12 +148,13 @@ impl State {
 
         let descriptor_name = read_safe_str(&mut stream, StringFormat::Latin1)?;
         let version = stream.read_u16::<LittleEndian>()?;
-        if let Some(descriptor) = db.get_version(&descriptor_name, u32::from(version)) {
+        if let Some(descriptor) = db.get_version(&descriptor_name, version) {
             let mut state = State::from_defaults(descriptor, db);
             if (read_flags & HAS_UOID) != 0 {
                 state.object = Some(Uoid::stream_read(&mut stream)?);
             }
             state.read(&mut stream, db)?;
+            #[allow(clippy::cast_possible_truncation)]
             if stream.position() as usize != stream.get_ref().len() {
                 warn!("Did not fully parse SDL blob! ({} of {} bytes read)",
                       stream.position(), stream.get_ref().len());
@@ -174,7 +175,7 @@ impl State {
         stream.write_u16::<LittleEndian>(write_flags)?;
 
         write_safe_str(&mut stream, self.descriptor.name(), StringFormat::Latin1)?;
-        stream.write_u16::<LittleEndian>(self.descriptor.version() as u16)?;
+        stream.write_u16::<LittleEndian>(self.descriptor.version())?;
         if let Some(uoid) = &self.object {
             uoid.stream_write(&mut stream)?;
         }
@@ -222,27 +223,31 @@ pub(super) fn read_compressed_size<S>(stream: &mut S, max_hint: usize) -> Result
     where S: BufRead
 {
     if max_hint < 0x100 {
-        Ok(stream.read_u8()? as usize)
+        Ok(usize::from(stream.read_u8()?))
     } else if max_hint < 0x10000 {
-        Ok(stream.read_u16::<LittleEndian>()? as usize)
+        Ok(usize::from(stream.read_u16::<LittleEndian>()?))
     } else {
-        Ok(stream.read_u32::<LittleEndian>()? as usize)
+        let size = stream.read_u32::<LittleEndian>()?;
+        usize::try_from(size)
+                .map_err(|_| general_error!("Size {} is too large for usize type", size))
     }
 }
 
 pub(super) fn write_compressed_size(stream: &mut dyn Write, max_hint: usize, value: usize)
     -> Result<()>
 {
-    if value > u32::MAX as usize {
-        return Err(general_error!("Size {} is too large for stream", value));
-    }
     if max_hint < 0x100 {
-        stream.write_u8(value as u8)
+        if let Ok(value8) = u8::try_from(value) {
+            return stream.write_u8(value8);
+        }
     } else if max_hint < 0x10000 {
-        stream.write_u16::<LittleEndian>(value as u16)
-    } else {
-        stream.write_u32::<LittleEndian>(value as u32)
+        if let Ok(value16) = u16::try_from(value) {
+            return stream.write_u16::<LittleEndian>(value16);
+        }
+    } else if let Ok(value32) = u32::try_from(value) {
+        return stream.write_u32::<LittleEndian>(value32);
     }
+    Err(general_error!("Size {} is too large for stream", value))
 }
 
 #[cfg(test)]

@@ -67,13 +67,13 @@ impl Manifest {
             let entry = entry?;
             let metadata = entry.metadata()?;
             if metadata.is_file() && entry.path().extension() == Some(OsStr::new(ext)) {
-                if metadata.len() > u64::from(u32::MAX) {
+                let Ok(file_size) = u32::try_from(metadata.len()) else {
                     warn!("File {} is too large to send to client; Ignoring it...",
                           entry.path().display());
                     continue;
-                }
+                };
                 let client_path = format!("{}\\{}", directory, entry.file_name().to_string_lossy());
-                files.push(FileInfo { path: client_path, file_size: metadata.len() as u32 });
+                files.push(FileInfo { path: client_path, file_size });
             }
         }
         Ok(Manifest { files })
@@ -96,7 +96,7 @@ impl StreamRead for Manifest {
 
         let last_char_pos = file_buffer.len() - size_of::<u16>();
         let mut file_stream = Cursor::new(file_buffer);
-        while (file_stream.position() as usize) < last_char_pos {
+        while file_stream.position() < (last_char_pos as u64) {
             files.push(FileInfo::stream_read(&mut file_stream)?);
         }
         if file_stream.read_u16::<LittleEndian>()? != 0 {
@@ -117,7 +117,9 @@ impl StreamWrite for Manifest {
 
         let file_buf = file_stream.into_inner();
         assert_eq!(file_buf.len() % size_of::<u16>(), 0);
-        stream.write_u32::<LittleEndian>((file_buf.len() / size_of::<u16>()) as u32)?;
+        let entry_size = u32::try_from(file_buf.len() / size_of::<u16>())
+                .map_err(|_| general_error!("Manifest entry too large for stream"))?;
+        stream.write_u32::<LittleEndian>(entry_size)?;
         stream.write_all(file_buf.as_slice())
     }
 }

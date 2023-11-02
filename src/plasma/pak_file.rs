@@ -81,7 +81,9 @@ impl StreamRead for PakFile {
 
 impl StreamWrite for PakFile {
     fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
-        stream.write_u32::<LittleEndian>(self.files.len() as u32)?;
+        let num_files = u32::try_from(self.files.len())
+                .map_err(|_| general_error!("Too many files for stream"))?;
+        stream.write_u32::<LittleEndian>(num_files)?;
         let mut offset_accum = size_of::<u32>();
 
         // Compute the offsets first, so we don't have to do a bunch of
@@ -93,11 +95,10 @@ impl StreamWrite for PakFile {
 
         // Write the table of contents with computed offsets
         for file in &self.files {
-            if offset_accum > (u32::MAX as usize) {
-                return Err(general_error!("Pak file contents too large"));
-            }
+            let cur_offset = u32::try_from(offset_accum)
+                    .map_err(|_| general_error!("Pak file contents too large"))?;
             write_safe_str(stream, &file.name, StringFormat::Utf8)?;
-            stream.write_u32::<LittleEndian>(offset_accum as u32)?;
+            stream.write_u32::<LittleEndian>(cur_offset)?;
 
             // The data includes a u32 size header
             offset_accum += size_of::<u32>() + file.data.len();
@@ -105,7 +106,9 @@ impl StreamWrite for PakFile {
 
         // Write the file content
         for file in &self.files {
-            stream.write_u32::<LittleEndian>(file.data.len() as u32)?;
+            let file_size = u32::try_from(file.data.len())
+                    .map_err(|_| general_error!("Pak file contents too large"))?;
+            stream.write_u32::<LittleEndian>(file_size)?;
             stream.write_all(file.data.as_slice())?;
         }
 

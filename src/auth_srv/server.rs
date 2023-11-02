@@ -54,7 +54,7 @@ struct AuthServerWorker {
     player_id: Option<u32>,
 }
 
-const CONN_HEADER_SIZE: usize = 20;
+const CONN_HEADER_SIZE: u32 = 20;
 const FILE_CHUNK_SIZE: usize = 64 * 1024;
 
 enum ServerCaps {
@@ -66,7 +66,7 @@ fn read_conn_header<S>(stream: &mut S) -> Result<()>
 {
     // Everything here is discarded...
     let header_size = stream.read_u32::<LittleEndian>()?;
-    if header_size != CONN_HEADER_SIZE as u32 {
+    if header_size != CONN_HEADER_SIZE {
         return Err(general_error!("Invalid connection header size {}", header_size));
     }
     // Null UUID
@@ -78,7 +78,7 @@ fn read_conn_header<S>(stream: &mut S) -> Result<()>
 async fn init_client(mut sock: TcpStream, server_config: &ServerConfig)
     -> Result<BufReader<CryptTcpStream>>
 {
-    let mut header = [0u8; CONN_HEADER_SIZE];
+    let mut header = [0u8; CONN_HEADER_SIZE as usize];
     sock.read_exact(&mut header).await?;
     read_conn_header(&mut Cursor::new(header))?;
 
@@ -623,11 +623,11 @@ impl AuthServerWorker {
         {
             debug!("Client {} requested file '{}'", self.peer_addr().unwrap(), filename);
 
-            if metadata.len() > u64::from(u32::MAX) {
+            let Ok(total_size) = u32::try_from(metadata.len()) else {
                 debug!("File {} too large for 32-bit stream", filename);
                 return self.send_message(AuthToCli::download_error(trans_id,
                                             NetResultCode::NetInternalError)).await;
-            }
+            };
 
             let mut buffer = [0u8; FILE_CHUNK_SIZE];
             let mut offset = 0;
@@ -641,14 +641,17 @@ impl AuthServerWorker {
                         let reply = AuthToCli::FileDownloadChunk {
                             trans_id,
                             result: NetResultCode::NetSuccess as i32,
-                            total_size: metadata.len() as u32,
+                            total_size,
                             offset,
                             file_data: Vec::from(&buffer[..count]),
                         };
                         if !self.send_message(reply).await {
                             return false;
                         }
-                        offset += count as u32;
+                        // The total size was already validated above
+                        #[allow(clippy::cast_possible_truncation)] {
+                            offset += count as u32;
+                        }
                     }
                     Err(err) => {
                         warn!("Could not read from {}: {}", download_path.display(), err);
