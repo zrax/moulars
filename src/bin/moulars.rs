@@ -43,6 +43,7 @@ fn write_progress_pip(out: &mut io::Stdout) {
     let _ = out.flush();
 }
 
+#[allow(clippy::too_many_lines)]
 fn main() -> ExitCode {
     // See https://docs.rs/env_logger/latest/env_logger/index.html for
     // details on fine-tuning logging behavior beyond the defaults.
@@ -83,9 +84,9 @@ fn main() -> ExitCode {
                 let mut rng = rand::thread_rng();
                 let mut stdout = io::stdout();
                 loop {
-                    let key_n: BigUint = rng.gen_safe_prime_exact(512);
+                    let key_n: BigUint = rng.gen_safe_prime(512);
                     write_progress_pip(&mut stdout);
-                    let key_k: BigUint = rng.gen_safe_prime_exact(512);
+                    let key_k: BigUint = rng.gen_safe_prime(512);
                     write_progress_pip(&mut stdout);
                     let key_x = key_g.to_biguint().unwrap().modpow(&key_k, &key_n);
                     write_progress_pip(&mut stdout);
@@ -97,9 +98,8 @@ fn main() -> ExitCode {
                     let bytes_x = key_x.to_bytes_be();
 
                     if bytes_n.len() != 64 || bytes_k.len() != 64 || bytes_x.len() != 64 {
-                        // We generated a bad length key.  Somehow, this can happen
-                        // despite the "exactly 512 bits" requested above.  So now
-                        // we need to start over :(
+                        // We generated a bad length key, so now we need to
+                        // start over :(
                         continue;
                     }
 
