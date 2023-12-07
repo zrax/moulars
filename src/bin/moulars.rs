@@ -38,12 +38,6 @@ const DEFAULT_LOG_LEVEL: &str = "debug";
 #[cfg(not(debug_assertions))]
 const DEFAULT_LOG_LEVEL: &str = "warn";
 
-fn write_progress_pip(out: &mut io::Stdout) {
-    let _ = out.write(b".");
-    let _ = out.flush();
-}
-
-#[allow(clippy::too_many_lines)]
 fn main() -> ExitCode {
     // See https://docs.rs/env_logger/latest/env_logger/index.html for
     // details on fine-tuning logging behavior beyond the defaults.
@@ -70,70 +64,7 @@ fn main() -> ExitCode {
         .get_matches();
 
     if args.get_flag("keygen") {
-        // Progress pips are written on this line.  Deal with it.
-        print!("Generating new keys. This will take a while");
-        write_progress_pip(&mut io::stdout());
-
-        let mut keygen_threads = Vec::with_capacity(3);
-        for (stype, key_g) in [
-            ("Auth", CRYPT_BASE_AUTH),
-            ("Game", CRYPT_BASE_GAME),
-            ("Gate", CRYPT_BASE_GATE_KEEPER)]
-        {
-            keygen_threads.push(std::thread::spawn(move || {
-                let mut rng = rand::thread_rng();
-                let mut stdout = io::stdout();
-                loop {
-                    let key_n: BigUint = rng.gen_safe_prime(512);
-                    write_progress_pip(&mut stdout);
-                    let key_k: BigUint = rng.gen_safe_prime(512);
-                    write_progress_pip(&mut stdout);
-                    let key_x = key_g.to_biguint().unwrap().modpow(&key_k, &key_n);
-                    write_progress_pip(&mut stdout);
-
-                    // For best compatibility with H-uru/Plasma and DirtSand, the keys
-                    // are stored in Big Endian byte order
-                    let bytes_n = key_n.to_bytes_be();
-                    let bytes_k = key_k.to_bytes_be();
-                    let bytes_x = key_x.to_bytes_be();
-
-                    if bytes_n.len() != 64 || bytes_k.len() != 64 || bytes_x.len() != 64 {
-                        // We generated a bad length key, so now we need to
-                        // start over :(
-                        continue;
-                    }
-
-                    let stype_lower = stype.to_ascii_lowercase();
-                    return (
-                        format!("{}.n = \"{}\"", stype_lower, base64::encode(&bytes_n)),
-                        format!("{}.k = \"{}\"", stype_lower, base64::encode(&bytes_k)),
-                        format!("Server.{}.N \"{}\"", stype, base64::encode(&bytes_n)),
-                        format!("Server.{}.X \"{}\"", stype, base64::encode(&bytes_x)),
-                    );
-                }
-            }));
-        }
-        let mut server_lines = Vec::with_capacity(6);
-        let mut client_lines = Vec::with_capacity(6);
-        for thread in keygen_threads {
-            let (srv_n, srv_k, cli_n, cli_x) = thread.join().unwrap();
-            server_lines.extend([srv_n, srv_k]);
-            client_lines.extend([cli_n, cli_x]);
-        }
-        println!("\n----------------------------");
-        println!("Server keys: (moulars.toml)");
-        println!("----------------------------");
-        println!("[crypt_keys]");
-        for line in server_lines {
-            println!("{}", line);
-        }
-        println!("\n----------------------------");
-        println!("Client keys: (server.ini)");
-        println!("----------------------------");
-        for line in client_lines {
-            println!("{}", line);
-        }
-
+        generate_keys();
         return ExitCode::SUCCESS;
     } else if args.get_flag("show-keys") {
         let config = match load_config() {
@@ -221,4 +152,75 @@ fn load_config() -> Result<ServerConfig, ExitCode> {
            }));
     error!("Please refer to moulars.toml.example for reference on configuring moulars.");
     Err(ExitCode::FAILURE)
+}
+
+fn write_progress_pip(out: &mut io::Stdout) {
+    let _ = out.write(b".");
+    let _ = out.flush();
+}
+
+fn generate_keys() {
+    // Progress pips are written on this line.  Deal with it.
+    print!("Generating new keys. This will take a while");
+    write_progress_pip(&mut io::stdout());
+
+    let mut keygen_threads = Vec::with_capacity(3);
+    for (stype, key_g) in [
+        ("Auth", CRYPT_BASE_AUTH),
+        ("Game", CRYPT_BASE_GAME),
+        ("Gate", CRYPT_BASE_GATE_KEEPER)]
+    {
+        keygen_threads.push(std::thread::spawn(move || {
+            let mut rng = rand::thread_rng();
+            let mut stdout = io::stdout();
+            loop {
+                let key_n: BigUint = rng.gen_safe_prime(512);
+                write_progress_pip(&mut stdout);
+                let key_k: BigUint = rng.gen_safe_prime(512);
+                write_progress_pip(&mut stdout);
+                let key_x = key_g.to_biguint().unwrap().modpow(&key_k, &key_n);
+                write_progress_pip(&mut stdout);
+
+                // For best compatibility with H-uru/Plasma and DirtSand, the keys
+                // are stored in Big Endian byte order
+                let bytes_n = key_n.to_bytes_be();
+                let bytes_k = key_k.to_bytes_be();
+                let bytes_x = key_x.to_bytes_be();
+
+                if bytes_n.len() != 64 || bytes_k.len() != 64 || bytes_x.len() != 64 {
+                    // We generated a bad length key, so now we need to
+                    // start over :(
+                    continue;
+                }
+
+                let stype_lower = stype.to_ascii_lowercase();
+                return (
+                    format!("{}.n = \"{}\"", stype_lower, base64::encode(&bytes_n)),
+                    format!("{}.k = \"{}\"", stype_lower, base64::encode(&bytes_k)),
+                    format!("Server.{}.N \"{}\"", stype, base64::encode(&bytes_n)),
+                    format!("Server.{}.X \"{}\"", stype, base64::encode(&bytes_x)),
+                );
+            }
+        }));
+    }
+    let mut server_lines = Vec::with_capacity(6);
+    let mut client_lines = Vec::with_capacity(6);
+    for thread in keygen_threads {
+        let (srv_n, srv_k, cli_n, cli_x) = thread.join().unwrap();
+        server_lines.extend([srv_n, srv_k]);
+        client_lines.extend([cli_n, cli_x]);
+    }
+    println!("\n----------------------------");
+    println!("Server keys: (moulars.toml)");
+    println!("----------------------------");
+    println!("[crypt_keys]");
+    for line in server_lines {
+        println!("{}", line);
+    }
+    println!("\n----------------------------");
+    println!("Client keys: (server.ini)");
+    println!("----------------------------");
+    for line in client_lines {
+        println!("{}", line);
+    }
 }
