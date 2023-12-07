@@ -16,7 +16,7 @@
 
 use std::sync::Arc;
 
-use log::{info, warn, error};
+use log::{info, warn};
 use tokio::sync::{mpsc, oneshot, broadcast};
 use uuid::Uuid;
 
@@ -163,10 +163,7 @@ impl VaultServer {
                 VaultDbBackend::Postgres => todo!(),
             };
 
-            if init_vault(db.as_ref()).is_err() {
-                error!("Failed to initialize vault.");
-                std::process::exit(1);
-            }
+            assert!(init_vault(db.as_ref()).is_ok(), "Failed to initialize vault.");
 
             if db.set_all_players_offline().is_err() {
                 warn!("Failed to set all players offline.");
@@ -192,8 +189,7 @@ impl VaultServer {
         -> NetResult<T>
     {
         if let Err(err) = self.msg_send.send(msg).await {
-            error!("Failed to send message to vault: {}", err);
-            std::process::exit(1);
+            panic!("Failed to send message to vault: {}", err);
         }
 
         match recv.await {

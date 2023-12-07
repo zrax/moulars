@@ -19,7 +19,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt};
-use log::{error, warn, info};
+use log::{warn, info};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
 use uuid::Uuid;
@@ -107,21 +107,15 @@ impl LobbyServer {
         tokio::spawn(async move {
             match tokio::signal::ctrl_c().await {
                 Ok(()) => (),
-                Err(err) => {
-                    error!("Failed to wait for Ctrl+C signal: {}", err);
-                    std::process::exit(1);
-                }
+                Err(err) => panic!("Failed to wait for Ctrl+C signal: {}", err),
             }
             let _ = ctrl_c_send.send(());
         });
 
         let listener = match TcpListener::bind(&server_config.listen_address).await {
             Ok(listener) => listener,
-            Err(err) => {
-                error!("Failed to bind on address {}: {}",
-                       server_config.listen_address, err);
-                std::process::exit(1);
-            }
+            Err(err) => panic!("Failed to bind on address {}: {}",
+                               server_config.listen_address, err),
         };
 
         let ntd_key = match server_config.get_ntd_key() {

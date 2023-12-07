@@ -18,7 +18,7 @@ use std::io::{Cursor, BufRead, Write, Result};
 use std::sync::Arc;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use log::{warn, error};
+use log::warn;
 use paste::paste;
 
 use crate::general_error;
@@ -210,8 +210,7 @@ impl Variable {
                     }
                     VarValues::StateDesc(states)
                 } else {
-                    error!("Unknown state descriptor '{}'", name);
-                    std::process::exit(1);
+                    panic!("Unknown state descriptor '{}'", name);
                 }
             }
         };

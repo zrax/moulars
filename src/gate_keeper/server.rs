@@ -82,7 +82,6 @@ impl GateKeeper {
     pub async fn add(&mut self, sock: TcpStream) {
         if let Err(err) = self.incoming_send.send(sock).await {
             error!("Failed to add client: {}", err);
-            std::process::exit(1);
         }
     }
 }

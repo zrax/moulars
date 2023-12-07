@@ -19,8 +19,9 @@
 #![allow(clippy::uninlined_format_args)]    // Added in Rust 1.66
 
 use std::ffi::OsStr;
-use std::io::{Write, stdout};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 
 use clap::{Command, Arg};
 use log::error;
@@ -37,17 +38,24 @@ const DEFAULT_LOG_LEVEL: &str = "debug";
 #[cfg(not(debug_assertions))]
 const DEFAULT_LOG_LEVEL: &str = "warn";
 
-fn write_progress_pip() {
-    let _ = stdout().write(b".");
-    let _ = stdout().flush();
+fn write_progress_pip(out: &mut io::Stdout) {
+    let _ = out.write(b".");
+    let _ = out.flush();
 }
 
-fn main() {
+fn main() -> ExitCode {
     // See https://docs.rs/env_logger/latest/env_logger/index.html for
     // details on fine-tuning logging behavior beyond the defaults.
     env_logger::Builder::from_env(
         env_logger::Env::default().default_filter_or(DEFAULT_LOG_LEVEL)
     ).init();
+
+    let default_panic = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        // Ensure panic messages are also captured by the logger
+        error!("{}", info);
+        default_panic(info);
+    }));
 
     let args = Command::new("moulars")
         .about("MOULArs: A Myst Online: Uru Live (Again) server")
@@ -63,7 +71,8 @@ fn main() {
     if args.get_flag("keygen") {
         // Progress pips are written on this line.  Deal with it.
         print!("Generating new keys. This will take a while");
-        write_progress_pip();
+        let mut stdout = io::stdout();
+        write_progress_pip(&mut stdout);
 
         let mut rng = rand::thread_rng();
         let mut server_lines = Vec::with_capacity(6);
@@ -75,11 +84,11 @@ fn main() {
         {
             loop {
                 let key_n: BigUint = rng.gen_safe_prime_exact(512);
-                write_progress_pip();
+                write_progress_pip(&mut stdout);
                 let key_k: BigUint = rng.gen_safe_prime_exact(512);
-                write_progress_pip();
+                write_progress_pip(&mut stdout);
                 let key_x = key_g.to_biguint().unwrap().modpow(&key_k, &key_n);
-                write_progress_pip();
+                write_progress_pip(&mut stdout);
 
                 // For best compatibility with H-uru/Plasma and DirtSand, the keys
                 // are stored in Big Endian byte order
@@ -116,9 +125,12 @@ fn main() {
             println!("{}", line);
         }
 
-        std::process::exit(0);
+        return ExitCode::SUCCESS;
     } else if args.get_flag("show-keys") {
-        let config = load_config();
+        let config = match load_config() {
+            Ok(config) => config,
+            Err(exit_code) => return exit_code,
+        };
 
         println!("\n----------------------------");
         println!("Client keys: (server.ini)");
@@ -135,18 +147,23 @@ fn main() {
             println!("Server.{}.X \"{}\"", stype, base64::encode(bytes_x));
         }
 
-        std::process::exit(0);
+        return ExitCode::SUCCESS;
     }
 
-    let server_config = load_config();
+    let server_config = match load_config() {
+        Ok(config) => config,
+        Err(exit_code) => return exit_code,
+    };
     let runtime = tokio::runtime::Builder::new_multi_thread()
                             .enable_all().build().unwrap();
     runtime.block_on(async {
         LobbyServer::start(server_config).await;
     });
+
+    ExitCode::SUCCESS
 }
 
-fn load_config() -> ServerConfig {
+fn load_config() -> Result<ServerConfig, ExitCode> {
     // Look for a moulars.toml config file with the following precedence:
     //  1) In the same directory as the executable
     //  2) If the executable is in a bin/ directory, in ../etc/
@@ -160,7 +177,7 @@ fn load_config() -> ServerConfig {
         Ok(path) => path.parent().unwrap().to_owned(),
         Err(err) => {
             error!("Failed to get executable path: {}", err);
-            std::process::exit(1);
+            return Err(ExitCode::FAILURE);
         }
     };
     try_paths.push([exe_path.as_path(), config_file].iter().collect());
@@ -181,10 +198,10 @@ fn load_config() -> ServerConfig {
             continue;
         }
         match ServerConfig::from_file(path) {
-            Ok(config) => return config,
+            Ok(config) => return Ok(config),
             Err(err) => {
                 error!("Failed to load config file {}: {}", path.display(), err);
-                std::process::exit(1);
+                return Err(ExitCode::FAILURE);
             }
         }
     }
@@ -194,5 +211,5 @@ fn load_config() -> ServerConfig {
                 list + format!("\n * {}", path.display()).as_str()
            }));
     error!("Please refer to moulars.toml.example for reference on configuring moulars.");
-    std::process::exit(1);
+    Err(ExitCode::FAILURE)
 }

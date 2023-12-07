@@ -95,7 +95,7 @@ impl DescriptorDb {
 }
 
 #[cfg(test)]
-pub(super) const TEST_DESCRIPTORS: &str = r#"
+pub(super) const TEST_DESCRIPTORS: &str = r"
     STATEDESC Test
     {
         VERSION 1
@@ -122,7 +122,7 @@ pub(super) const TEST_DESCRIPTORS: &str = r#"
     {
         VERSION 1
     }
-"#;
+";
 
 #[cfg(test)]
 macro_rules! check_var_descriptor {
