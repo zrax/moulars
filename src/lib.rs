@@ -43,7 +43,6 @@ pub mod netcli;
 pub mod path_utils;
 
 // Shortcut for generating (optionally formatted) general errors as std::io::Error
-#[macro_export]
 macro_rules! general_error {
     ($message:literal) => (
         ::std::io::Error::new(::std::io::ErrorKind::Other, $message)
@@ -52,3 +51,4 @@ macro_rules! general_error {
         ::std::io::Error::new(::std::io::ErrorKind::Other, format!($message, $($arg),+))
     );
 }
+pub(crate) use general_error;

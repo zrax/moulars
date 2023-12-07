@@ -114,7 +114,6 @@ pub(crate) enum ClassID {
     Nil = 0x8000,
 }
 
-#[macro_export]
 macro_rules! derive_creatable {
     ($name:ident) => {
         derive_creatable! { $name @lines[] }
@@ -133,3 +132,4 @@ macro_rules! derive_creatable {
         }
     };
 }
+pub(crate) use derive_creatable;

@@ -18,9 +18,10 @@ use std::io::{BufRead, Write, Result};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use crate::{general_error, derive_creatable};
+use crate::general_error;
 use crate::plasma::{StreamRead, StreamWrite};
 use crate::plasma::Factory;
+use crate::plasma::creatable::derive_creatable;
 use super::{Message, MessageInterface};
 
 pub struct MessageWithCallbacks {

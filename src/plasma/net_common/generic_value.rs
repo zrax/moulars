@@ -20,8 +20,9 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
-use crate::{general_error, derive_creatable};
+use crate::general_error;
 use crate::plasma::{StreamRead, StreamWrite};
+use crate::plasma::creatable::derive_creatable;
 use crate::plasma::safe_string::{read_safe_str, write_safe_str, StringFormat};
 
 pub enum GenericType {

@@ -18,8 +18,8 @@ use std::io::{BufRead, Result, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use crate::derive_creatable;
 use crate::plasma::{Key, StreamRead, StreamWrite};
+use crate::plasma::creatable::derive_creatable;
 use crate::plasma::safe_string::{read_safe_str, write_safe_str, StringFormat};
 
 pub struct SoundBuffer {

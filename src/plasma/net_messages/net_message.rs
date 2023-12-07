@@ -19,8 +19,8 @@ use std::io::{BufRead, Result, Write};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use uuid::Uuid;
 
-use crate::plasma::{UnifiedTime, StreamRead, StreamWrite};
 use crate::general_error;
+use crate::plasma::{UnifiedTime, StreamRead, StreamWrite};
 
 pub struct NetMessage {
     content_flags: u32,
