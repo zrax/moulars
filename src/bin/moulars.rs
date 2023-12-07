@@ -71,45 +71,54 @@ fn main() -> ExitCode {
     if args.get_flag("keygen") {
         // Progress pips are written on this line.  Deal with it.
         print!("Generating new keys. This will take a while");
-        let mut stdout = io::stdout();
-        write_progress_pip(&mut stdout);
+        write_progress_pip(&mut io::stdout());
 
-        let mut rng = rand::thread_rng();
-        let mut server_lines = Vec::with_capacity(6);
-        let mut client_lines = Vec::with_capacity(6);
+        let mut keygen_threads = Vec::with_capacity(3);
         for (stype, key_g) in [
             ("Auth", CRYPT_BASE_AUTH),
             ("Game", CRYPT_BASE_GAME),
             ("Gate", CRYPT_BASE_GATE_KEEPER)]
         {
-            loop {
-                let key_n: BigUint = rng.gen_safe_prime_exact(512);
-                write_progress_pip(&mut stdout);
-                let key_k: BigUint = rng.gen_safe_prime_exact(512);
-                write_progress_pip(&mut stdout);
-                let key_x = key_g.to_biguint().unwrap().modpow(&key_k, &key_n);
-                write_progress_pip(&mut stdout);
+            keygen_threads.push(std::thread::spawn(move || {
+                let mut rng = rand::thread_rng();
+                let mut stdout = io::stdout();
+                loop {
+                    let key_n: BigUint = rng.gen_safe_prime_exact(512);
+                    write_progress_pip(&mut stdout);
+                    let key_k: BigUint = rng.gen_safe_prime_exact(512);
+                    write_progress_pip(&mut stdout);
+                    let key_x = key_g.to_biguint().unwrap().modpow(&key_k, &key_n);
+                    write_progress_pip(&mut stdout);
 
-                // For best compatibility with H-uru/Plasma and DirtSand, the keys
-                // are stored in Big Endian byte order
-                let bytes_n = key_n.to_bytes_be();
-                let bytes_k = key_k.to_bytes_be();
-                let bytes_x = key_x.to_bytes_be();
+                    // For best compatibility with H-uru/Plasma and DirtSand, the keys
+                    // are stored in Big Endian byte order
+                    let bytes_n = key_n.to_bytes_be();
+                    let bytes_k = key_k.to_bytes_be();
+                    let bytes_x = key_x.to_bytes_be();
 
-                if bytes_n.len() != 64 || bytes_k.len() != 64 || bytes_x.len() != 64 {
-                    // We generated a bad length key.  Somehow, this can happen
-                    // despite the "exactly 512 bits" requested above.  So now
-                    // we need to start over :(
-                    continue;
+                    if bytes_n.len() != 64 || bytes_k.len() != 64 || bytes_x.len() != 64 {
+                        // We generated a bad length key.  Somehow, this can happen
+                        // despite the "exactly 512 bits" requested above.  So now
+                        // we need to start over :(
+                        continue;
+                    }
+
+                    let stype_lower = stype.to_ascii_lowercase();
+                    return (
+                        format!("{}.n = \"{}\"", stype_lower, base64::encode(&bytes_n)),
+                        format!("{}.k = \"{}\"", stype_lower, base64::encode(&bytes_k)),
+                        format!("Server.{}.N \"{}\"", stype, base64::encode(&bytes_n)),
+                        format!("Server.{}.X \"{}\"", stype, base64::encode(&bytes_x)),
+                    );
                 }
-
-                let stype_lower = stype.to_ascii_lowercase();
-                server_lines.push(format!("{}.n = \"{}\"", stype_lower, base64::encode(bytes_n.clone())));
-                server_lines.push(format!("{}.k = \"{}\"", stype_lower, base64::encode(bytes_k)));
-                client_lines.push(format!("Server.{}.N \"{}\"", stype, base64::encode(bytes_n)));
-                client_lines.push(format!("Server.{}.X \"{}\"", stype, base64::encode(bytes_x)));
-                break;
-            }
+            }));
+        }
+        let mut server_lines = Vec::with_capacity(6);
+        let mut client_lines = Vec::with_capacity(6);
+        for thread in keygen_threads {
+            let (srv_n, srv_k, cli_n, cli_x) = thread.join().unwrap();
+            server_lines.extend([srv_n, srv_k]);
+            client_lines.extend([cli_n, cli_x]);
         }
         println!("\n----------------------------");
         println!("Server keys: (moulars.toml)");
