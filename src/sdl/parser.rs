@@ -31,7 +31,7 @@ enum Token {
     Identifier(String),     // Also used for keywords, since they are context-sensitive
     TypeReference(String),
     StringLiteral(String),
-    CharToken(char),        // Parens, braces, etc
+    Char(char),             // Parens, braces, etc
     Invalid(char),
     IncompleteString,
 }
@@ -152,7 +152,7 @@ impl<S: BufRead> Parser<S> {
 
                 // Single-char tokens
                 b'(' | b')' | b'[' | b']' | b'{' | b'}' | b'=' | b',' | b';' => {
-                    self.push_token(Token::CharToken(line_buf[start] as char), start);
+                    self.push_token(Token::Char(line_buf[start] as char), start);
                     start += 1;
                 }
 
@@ -198,7 +198,7 @@ impl<S: BufRead> Parser<S> {
 
     fn parse_statedesc(&mut self) -> Result<StateDescriptor> {
         let name = self.expect_identifier(KW_STATEDESC)?;
-        self.expect_token(&Token::CharToken('{'), KW_STATEDESC)?;
+        self.expect_token(&Token::Char('{'), KW_STATEDESC)?;
         let start_line = self.line_no;
 
         let mut opt_version = None;
@@ -212,7 +212,7 @@ impl<S: BufRead> Parser<S> {
                     KW_VAR => vars.push(self.parse_var()?),
                     _ => return Err(general_error!("Unexpected {:?} at {}", token, location))
                 }
-                Token::CharToken('}') => {
+                Token::Char('}') => {
                     let version = match opt_version {
                         Some(version) => version,
                         None => {
@@ -262,17 +262,17 @@ impl<S: BufRead> Parser<S> {
             None => return Err(general_error!("Unexpected EOF while parsing VAR"))
         };
         let var_name = self.expect_identifier(KW_VAR)?;
-        self.expect_token(&Token::CharToken('['), KW_VAR)?;
+        self.expect_token(&Token::Char('['), KW_VAR)?;
         let var_count = match self.next_token()? {
             Some((Token::Number(value), location)) => {
                 let count = value.parse::<usize>().map_err(|err| {
                     general_error!("Invalid var count '{}' at {}: {}",
                                    value, location, err)
                 })?;
-                self.expect_token(&Token::CharToken(']'), KW_VAR)?;
+                self.expect_token(&Token::Char(']'), KW_VAR)?;
                 Some(count)
             }
-            Some((Token::CharToken(']'), _)) => None,
+            Some((Token::Char(']'), _)) => None,
             Some((token, location)) => {
                 return Err(general_error!("Unexpected {:?} at {}", token, location))
             }
@@ -290,12 +290,12 @@ impl<S: BufRead> Parser<S> {
                     }
                     KW_DEFAULTOPTION => {
                         // Ignored for now
-                        self.expect_token(&Token::CharToken('='), KW_DEFAULTOPTION)?;
+                        self.expect_token(&Token::Char('='), KW_DEFAULTOPTION)?;
                         let _ = self.expect_identifier(KW_DEFAULTOPTION)?;
                     }
                     KW_DISPLAYOPTION => {
                         // Ignored for now
-                        self.expect_token(&Token::CharToken('='), KW_DISPLAYOPTION)?;
+                        self.expect_token(&Token::Char('='), KW_DISPLAYOPTION)?;
                         let _ = self.expect_identifier(KW_DISPLAYOPTION)?;
                     }
                     _ => {
@@ -305,7 +305,7 @@ impl<S: BufRead> Parser<S> {
                 }
                 // At least one SDL file has a stray ; at the end of a line...
                 // We just ignore it here.
-                Token::CharToken(';') => (),
+                Token::Char(';') => (),
                 _ => {
                     self.tok_buffer.push_front((token, location));
                     return Ok(VarDescriptor::new(var_name, var_type, var_count, default))
@@ -317,7 +317,7 @@ impl<S: BufRead> Parser<S> {
     }
 
     fn parse_default(&mut self, var_type: &VarType) -> Result<Option<VarDefault>> {
-        self.expect_token(&Token::CharToken('='), KW_DEFAULT)?;
+        self.expect_token(&Token::Char('='), KW_DEFAULT)?;
         match var_type {
             VarType::Bool => Ok(Some(VarDefault::Bool(self.expect_bool(true, KW_DEFAULT)?))),
             VarType::Byte => Ok(Some(VarDefault::Byte(self.expect_number::<u8>(true, KW_DEFAULT)?))),
@@ -431,9 +431,9 @@ impl<S: BufRead> Parser<S> {
                                    value, location, err)
                 })
             }
-            Some((Token::CharToken('('), _)) if seq_ok => {
+            Some((Token::Char('('), _)) if seq_ok => {
                 let inner = self.expect_number::<T>(false, context)?;
-                self.expect_token(&Token::CharToken(')'), context)?;
+                self.expect_token(&Token::Char(')'), context)?;
                 Ok(inner)
             }
             Some((token, location)) => {
@@ -459,9 +459,9 @@ impl<S: BufRead> Parser<S> {
                     _ => Err(general_error!("Invalid boolean literal '{}' at {}", value, location))
                 }
             }
-            Some((Token::CharToken('('), _)) if seq_ok => {
+            Some((Token::Char('('), _)) if seq_ok => {
                 let inner = self.expect_bool(false, context)?;
-                self.expect_token(&Token::CharToken(')'), context)?;
+                self.expect_token(&Token::Char(')'), context)?;
                 Ok(inner)
             }
             Some((token, location)) => {
@@ -475,12 +475,12 @@ impl<S: BufRead> Parser<S> {
         where T: FromStr, <T as FromStr>::Err: Display
     {
         let mut result = Vec::new();
-        let start = self.expect_token(&Token::CharToken('('), context)?;
+        let start = self.expect_token(&Token::Char('('), context)?;
         loop {
             result.push(self.expect_number::<T>(false, context)?);
             match self.next_token()? {
-                Some((Token::CharToken(','), _)) => (),
-                Some((Token::CharToken(')'), _)) => return Ok((result, start)),
+                Some((Token::Char(','), _)) => (),
+                Some((Token::Char(')'), _)) => return Ok((result, start)),
                 Some((token, location)) => {
                     return Err(general_error!("Unexpected {:?} at {}", token, location));
                 }
@@ -566,15 +566,15 @@ fn test_tokenizer() {
     {
         let misc_chars = b"[({=,;})]";
         let mut parser = Parser::new(Cursor::new(misc_chars));
-        check_token!(parser, Token::CharToken('['), @(1, 1));
-        check_token!(parser, Token::CharToken('('), @(1, 2));
-        check_token!(parser, Token::CharToken('{'), @(1, 3));
-        check_token!(parser, Token::CharToken('='), @(1, 4));
-        check_token!(parser, Token::CharToken(','), @(1, 5));
-        check_token!(parser, Token::CharToken(';'), @(1, 6));
-        check_token!(parser, Token::CharToken('}'), @(1, 7));
-        check_token!(parser, Token::CharToken(')'), @(1, 8));
-        check_token!(parser, Token::CharToken(']'), @(1, 9));
+        check_token!(parser, Token::Char('['), @(1, 1));
+        check_token!(parser, Token::Char('('), @(1, 2));
+        check_token!(parser, Token::Char('{'), @(1, 3));
+        check_token!(parser, Token::Char('='), @(1, 4));
+        check_token!(parser, Token::Char(','), @(1, 5));
+        check_token!(parser, Token::Char(';'), @(1, 6));
+        check_token!(parser, Token::Char('}'), @(1, 7));
+        check_token!(parser, Token::Char(')'), @(1, 8));
+        check_token!(parser, Token::Char(']'), @(1, 9));
         check_token!(parser, None);
     }
 
@@ -703,7 +703,7 @@ fn test_parser() {
         let incomplete_var = b"STATEDESC incomplete_var { VERSION 1 VAR }";
         let result = Parser::new(Cursor::new(incomplete_var)).parse();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Unexpected CharToken('}')"));
+        assert!(result.unwrap_err().to_string().contains("Unexpected Char('}')"));
     }
 
     {
@@ -717,14 +717,14 @@ fn test_parser() {
         let incomplete_var = b"STATEDESC incomplete_var { VERSION 1 VAR BOOL name }";
         let result = Parser::new(Cursor::new(incomplete_var)).parse();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Unexpected CharToken('}')"));
+        assert!(result.unwrap_err().to_string().contains("Unexpected Char('}')"));
     }
 
     {
         let incomplete_var = b"STATEDESC incomplete_var { VERSION 1 VAR BOOL name[1 }";
         let result = Parser::new(Cursor::new(incomplete_var)).parse();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Unexpected CharToken('}')"));
+        assert!(result.unwrap_err().to_string().contains("Unexpected Char('}')"));
     }
 
     {
@@ -779,7 +779,7 @@ fn test_parser() {
         let incomplete_default = b"STATEDESC incomplete_default { VERSION 1 VAR BOOL foobar[1] DEFAULT= }";
         let result = Parser::new(Cursor::new(incomplete_default)).parse();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Unexpected CharToken('}')"));
+        assert!(result.unwrap_err().to_string().contains("Unexpected Char('}')"));
     }
 
     {
@@ -793,7 +793,7 @@ fn test_parser() {
         let incomplete_default = b"STATEDESC incomplete_default { VERSION 1 VAR Vector3 foobar[1] DEFAULT=(1, 2, 3 }";
         let result = Parser::new(Cursor::new(incomplete_default)).parse();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Unexpected CharToken('}')"));
+        assert!(result.unwrap_err().to_string().contains("Unexpected Char('}')"));
     }
 
     {
