@@ -14,14 +14,13 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{Write, Result};
+use std::io::Write;
 use std::mem::size_of;
 
+use anyhow::{anyhow, Context, Result};
 use byteorder::{ByteOrder, LittleEndian, WriteBytesExt};
 use tokio::io::{AsyncRead, AsyncReadExt};
 use uuid::Uuid;
-
-use crate::general_error;
 
 pub async fn read_utf16_str<S>(stream: &mut S) -> Result<String>
     where S: AsyncRead + Unpin
@@ -38,7 +37,7 @@ pub async fn read_utf16_str<S>(stream: &mut S) -> Result<String>
 pub fn write_utf16_str(stream: &mut dyn Write, value: &str) -> Result<()> {
     let value_utf16: Vec<u16> = value.encode_utf16().collect();
     let utf_len = u16::try_from(value_utf16.len())
-            .map_err(|_| general_error!("UTF-16 string too long for stream"))?;
+            .context("UTF-16 string too long for stream")?;
     stream.write_u16::<LittleEndian>(utf_len)?;
     for ch in value_utf16 {
         stream.write_u16::<LittleEndian>(ch)?;
@@ -60,8 +59,8 @@ pub async fn read_sized_buffer<S>(stream: &mut S, max_size: u32) -> Result<Vec<u
 {
     let data_size = stream.read_u32_le().await?;
     if data_size > max_size {
-        return Err(general_error!("Message payload too large ({} bytes, limit {})",
-                                  data_size, max_size));
+        return Err(anyhow!("Message payload too large ({} bytes, limit {})",
+                           data_size, max_size));
     }
     let mut buffer = vec![0; data_size as usize];
     stream.read_exact(buffer.as_mut_slice()).await?;
@@ -71,8 +70,8 @@ pub async fn read_sized_buffer<S>(stream: &mut S, max_size: u32) -> Result<Vec<u
 pub fn write_sized_buffer(stream: &mut dyn Write, buffer: &Vec<u8>) -> Result<()>
 {
     let buffer_size = u32::try_from(buffer.len())
-            .map_err(|_| general_error!("Buffer too large for 32-bit stream ({} bytes)",
-                                        buffer.len()))?;
+            .map_err(|_| anyhow!("Buffer too large for 32-bit stream ({} bytes)",
+                                 buffer.len()))?;
     stream.write_u32::<LittleEndian>(buffer_size)?;
-    stream.write_all(buffer.as_slice())
+    Ok(stream.write_all(buffer.as_slice())?)
 }

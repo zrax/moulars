@@ -14,8 +14,9 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{Write, Result};
+use std::io::Write;
 
+use anyhow::Result;
 use byteorder::{LittleEndian, WriteBytesExt};
 
 use crate::plasma::StreamWrite;

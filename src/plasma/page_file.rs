@@ -15,11 +15,11 @@
  */
 
 use std::collections::HashMap;
-use std::io::{BufRead, Seek, SeekFrom, Cursor, Result};
+use std::io::{BufRead, Seek, SeekFrom, Cursor};
 
+use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, ReadBytesExt};
 
-use crate::general_error;
 use crate::plasma::{Creatable, StreamRead};
 use crate::plasma::key::{Uoid, Location};
 use crate::plasma::safe_string::{read_safe_str, StringFormat};
@@ -49,7 +49,7 @@ impl PageFile {
 
         let page_version = stream.read_u32::<LittleEndian>()?;
         if page_version != 6 {
-            return Err(general_error!("Unexpected page version {}", page_version));
+            return Err(anyhow!("Unexpected page version {}", page_version));
         }
         let location = Location::stream_read(stream)?;
         let age_name = read_safe_str(stream, StringFormat::Utf8)?;
@@ -115,13 +115,12 @@ impl PageFile {
 
                 let stream_class = obj_stream.read_u16::<LittleEndian>()?;
                 if stream_class != ObType::static_class_id() {
-                    return Err(general_error!("Unexpected class ID 0x{:04x} encountered",
-                                              stream_class));
+                    return Err(anyhow!("Unexpected class ID 0x{:04x} encountered", stream_class));
                 }
                 return ObType::stream_read(&mut obj_stream)
             }
         }
-        Err(general_error!("Could not find object {:?} in this page file", uoid))
+        Err(anyhow!("Could not find object {:?} in this page file", uoid))
     }
 }
 

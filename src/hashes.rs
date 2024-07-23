@@ -14,9 +14,10 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{Write, Result};
+use std::io::Write;
 use std::mem::size_of;
 
+use anyhow::Result;
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 use crate::plasma::StreamWrite;
@@ -156,7 +157,7 @@ impl ShaDigest {
 
 impl StreamWrite for ShaDigest {
     fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
-        stream.write_all(&self.data)
+        Ok(stream.write_all(&self.data)?)
     }
 }
 

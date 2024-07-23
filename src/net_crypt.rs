@@ -14,17 +14,17 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Write, Cursor, Result};
+use std::io::{self, BufRead, Write, Cursor};
 use std::net::SocketAddr;
 use std::task::{Context, Poll};
 use std::pin::Pin;
 
+use anyhow::{anyhow, Result};
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use num_bigint::{BigUint, RandBigInt};
 use tokio::net::TcpStream;
 use tokio::io::{AsyncRead, BufReader, ReadBuf};
 
-use crate::general_error;
 use crate::plasma::StreamRead;
 
 pub const CRYPT_BASE_AUTH: u32 = 41;
@@ -53,7 +53,7 @@ impl CryptTcpStream {
 
     // Don't use AsyncWrite, because we'd have to keep track of what bytes
     // were already encrypted separately from the send buffer...
-    pub async fn write_all(&mut self, buf: &[u8]) -> Result<()> {
+    pub async fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
         use rc4::StreamCipher;
         use tokio::io::AsyncWriteExt;
 
@@ -62,14 +62,14 @@ impl CryptTcpStream {
         self.stream.write_all(crypt_buf.as_slice()).await
     }
 
-    pub fn peer_addr(&self) -> Result<SocketAddr> {
+    pub fn peer_addr(&self) -> io::Result<SocketAddr> {
         self.stream.peer_addr()
     }
 }
 
 impl AsyncRead for CryptTcpStream {
     fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context, buf: &mut ReadBuf)
-        -> Poll<Result<()>>
+        -> Poll<io::Result<()>>
     {
         use rc4::StreamCipher;
 
@@ -174,13 +174,13 @@ pub async fn init_crypt(mut sock: TcpStream, key_n: &BigUint, key_k: &BigUint)
     } else if crypt_header.msg_size != CryptConnectHeader::FIXED_SIZE {
         let reply = create_error_reply()?;
         sock.write_all(&reply).await?;
-        return Err(general_error!("Invalid encryption header size {}", crypt_header.msg_size));
+        return Err(anyhow!("Invalid encryption header size {}", crypt_header.msg_size));
     }
 
     if crypt_header.msg_id != CLI_TO_SRV_CONNECT {
         let reply = create_error_reply()?;
         sock.write_all(&reply).await?;
-        return Err(general_error!("Invalid encrypt message type {}", crypt_header.msg_id));
+        return Err(anyhow!("Invalid encrypt message type {}", crypt_header.msg_id));
     }
 
     let key_y = BigUint::from_bytes_le(&crypt_header.key_seed);

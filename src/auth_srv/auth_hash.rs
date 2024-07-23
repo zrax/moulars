@@ -14,8 +14,9 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{Cursor, Write, Result};
+use std::io::{Cursor, Write};
 
+use anyhow::Result;
 use byteorder::{LittleEndian, WriteBytesExt};
 use once_cell::sync::Lazy;
 use regex::Regex;

@@ -14,11 +14,10 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Write, Result};
+use std::io::{BufRead, Write};
 
+use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-
-use crate::general_error;
 
 #[derive(Eq, PartialEq, Copy, Clone)]
 pub enum StringFormat {
@@ -72,7 +71,7 @@ pub fn write_safe_str(stream: &mut dyn Write, value: &str, format: StringFormat)
         let buffer: Vec<u16> = value.encode_utf16().collect();
         let length_key = buffer.len();
         if length_key > 0x0FFF {
-            return Err(general_error!("String too large for SafeString encoding"));
+            return Err(anyhow!("String too large for SafeString encoding ({})", length_key));
         }
         #[allow(clippy::cast_possible_truncation)]
         stream.write_u16::<LittleEndian>(length_key as u16 | 0xF000)?;
@@ -88,7 +87,7 @@ pub fn write_safe_str(stream: &mut dyn Write, value: &str, format: StringFormat)
         };
         let length_key = buffer.len();
         if length_key > 0x0FFF {
-            return Err(general_error!("String too large for SafeString encoding"));
+            return Err(anyhow!("String too large for SafeString encoding ({})", length_key));
         }
         #[allow(clippy::cast_possible_truncation)]
         stream.write_u16::<LittleEndian>(length_key as u16 | 0xF000)?;

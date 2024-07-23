@@ -15,16 +15,15 @@
  */
 
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Result, ErrorKind};
+use std::io::{self, BufReader, BufWriter};
 use std::path::{Path, PathBuf};
 
+use anyhow::{anyhow, Context, Result};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use num_bigint::BigUint;
 use once_cell::sync::OnceCell;
 use rand::Rng;
 use serde_derive::Deserialize;
-
-use crate::general_error;
 
 pub enum VaultDbBackend {
     None,
@@ -67,12 +66,11 @@ pub struct ServerConfig {
 
 fn decode_crypt_key(value: &str) -> Result<BigUint> {
     let bytes = base64::decode(value)
-            .map_err(|err| general_error!("Could not parse Base64 key '{}': {}",
-                                          value, err))?;
+            .with_context(|| format!("Could not parse Base64 key '{}'", value))?;
     if bytes.len() == 64 {
         Ok(BigUint::from_bytes_be(&bytes))
     } else {
-        Err(general_error!("Invalid key length for key '{}'", value))
+        Err(anyhow!("Invalid key length for key '{}'", value))
     }
 }
 
@@ -82,7 +80,7 @@ impl ServerConfig {
 
         let config_file = std::fs::read_to_string(path)?;
         let config: StructuredConfig = toml::from_str(&config_file)
-                .map_err(|err| general_error!("Failed to parse config file: {}", err))?;
+                .context("Failed to parse config file")?;
 
         let server_section = config.server.unwrap_or_default();
 
@@ -98,7 +96,7 @@ impl ServerConfig {
                 PathBuf::from(data_root)
             } else {
                 std::env::current_dir()
-                    .map_err(|err| general_error!("Failed to determine current working directory: {}", err))?
+                    .context("Failed to determine current working directory")?
                     .join("data")
             };
 
@@ -130,7 +128,7 @@ impl ServerConfig {
                 "none" => VaultDbBackend::None,
                 "sqlite" => VaultDbBackend::Sqlite,
                 "postgres" => VaultDbBackend::Postgres,
-                _ => return Err(general_error!("Unknown database type: {}", type_str))
+                _ => return Err(anyhow!("Unknown database type: {}", type_str))
             }
         } else {
             VaultDbBackend::None
@@ -157,7 +155,7 @@ impl ServerConfig {
         })
     }
 
-    pub fn get_ntd_key(&self) -> Result<[u32; 4]> {
+    pub fn get_ntd_key(&self) -> io::Result<[u32; 4]> {
         load_or_create_ntd_key(&self.data_root)
     }
 }
@@ -203,7 +201,7 @@ struct VaultDbConfig {
 
 // NOTE: This file stores the keys in Big Endian format for easier debugging
 // with tools like PlasmaShop
-pub fn load_or_create_ntd_key(data_root: &Path) -> Result<[u32; 4]> {
+pub fn load_or_create_ntd_key(data_root: &Path) -> io::Result<[u32; 4]> {
     static NTD_KEY: OnceCell<[u32; 4]> = OnceCell::new();
     if let Some(key) = NTD_KEY.get() {
         return Ok(*key);
@@ -218,7 +216,7 @@ pub fn load_or_create_ntd_key(data_root: &Path) -> Result<[u32; 4]> {
             key_buffer
         }
         Err(err) => {
-            if err.kind() == ErrorKind::NotFound {
+            if err.kind() == io::ErrorKind::NotFound {
                 let mut rng = rand::thread_rng();
                 let mut stream = BufWriter::new(File::create(&key_path)?);
                 for v in &mut key_buffer {

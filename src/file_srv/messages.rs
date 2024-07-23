@@ -14,16 +14,16 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Write, Cursor, Result};
+use std::io::{BufRead, Write, Cursor};
 use std::mem::size_of;
 
+use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use tokio::io::BufReader;
 use tokio::net::TcpStream;
 
-use crate::general_error;
 use crate::netcli::NetResultCode;
 use crate::plasma::{StreamRead, StreamWrite, net_io};
 use super::manifest::Manifest;
@@ -109,7 +109,7 @@ impl CliToFile {
 
         let msg_size = stream.read_u32_le().await?;
         if (msg_size as usize) < size_of::<u32>() {
-            return Err(general_error!("Message size too small"));
+            return Err(anyhow!("Message size too small"));
         }
         let mut msg_buf = vec![0u8; (msg_size as usize) - size_of::<u32>()];
         stream.read_exact(&mut msg_buf).await?;
@@ -153,7 +153,7 @@ impl StreamRead for CliToFile {
                 let reader_id = stream.read_u32::<LittleEndian>()?;
                 Ok(CliToFile::DownloadChunkAck { trans_id, reader_id })
             }
-            None => Err(general_error!("Bad message ID {}", msg_id))
+            None => Err(anyhow!("Bad message ID {}", msg_id))
         }
     }
 }
@@ -170,9 +170,9 @@ impl FileToCli {
         };
 
         let msg_size = u32::try_from(size_of::<u32>() + buffer.len())
-                .map_err(|_| general_error!("Message too large for stream"))?;
+                .context("Message too large for stream")?;
         stream.write_u32_le(msg_size).await?;
-        stream.write_all(&buffer).await
+        Ok(stream.write_all(&buffer).await?)
     }
 
     pub fn manifest_error(trans_id: u32, result: NetResultCode) -> Self {

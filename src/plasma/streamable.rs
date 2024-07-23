@@ -14,8 +14,9 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Write, Result};
+use std::io::{BufRead, Write};
 
+use anyhow::Result;
 use uuid::Uuid;
 
 pub trait StreamRead {
@@ -39,6 +40,6 @@ impl StreamRead for Uuid {
 
 impl StreamWrite for Uuid {
     fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
-        stream.write_all(self.to_bytes_le().as_slice())
+        Ok(stream.write_all(self.to_bytes_le().as_slice())?)
     }
 }

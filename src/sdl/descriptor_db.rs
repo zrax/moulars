@@ -17,10 +17,11 @@
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::OsStr;
 use std::fs::File;
-use std::io::{BufReader, Result};
+use std::io::BufReader;
 use std::path::Path;
 use std::sync::Arc;
 
+use anyhow::Result;
 use log::warn;
 use unicase::UniCase;
 

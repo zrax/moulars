@@ -14,18 +14,18 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, BufReader, Write, BufWriter, Cursor, Result};
+use std::io::{self, BufRead, BufReader, Write, BufWriter, Cursor};
 use std::ffi::OsStr;
 use std::fs::File;
 use std::mem::size_of;
 use std::path::{Path, PathBuf};
 
+use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use flate2::write::GzEncoder;
 use log::debug;
 use md5::{Md5, Digest};
 
-use crate::general_error;
 use crate::path_utils;
 use crate::plasma::{StreamRead, StreamWrite};
 use crate::plasma::audio::SoundBuffer;
@@ -128,7 +128,7 @@ impl FileInfo {
             debug!("Updating {}", src_path.display());
             self.file_hash = updated_file_hash;
             self.file_size = u32::try_from(src_metadata.len())
-                    .map_err(|_| general_error!("Source file is too large"))?;
+                    .context("Source file is too large")?;
 
             // Try compressing the file.  If we don't get at least 10% savings,
             // it's not worth compressing and we should send it uncompressed.
@@ -148,7 +148,7 @@ impl FileInfo {
                 // the manifest cache to reference it.
                 self.download_path = path_utils::to_windows(
                         &gz_path.strip_prefix(data_root)
-                        .map_err(|_| general_error!("Path '{}' is not in the data root", gz_path.display()))?
+                        .with_context(|| format!("Path '{}' is not in the data root", gz_path.display()))?
                         .to_string_lossy());
                 self.download_hash = md5_hash_file(&gz_path)?;
                 // Already verified to be less than the (checked) size of the
@@ -162,7 +162,7 @@ impl FileInfo {
                 // match the hash and size of the destination file.
                 self.download_path = path_utils::to_windows(
                         &src_path.strip_prefix(data_root)
-                        .map_err(|_| general_error!("Path '{}' is not in the data root", src_path.display()))?
+                        .with_context(|| format!("Path '{}' is not in the data root", src_path.display()))?
                         .to_string_lossy());
                 self.download_hash = self.file_hash;
                 self.download_size = self.file_size;
@@ -209,11 +209,11 @@ pub fn read_utf16z_md5_hash<S>(stream: &mut S) -> Result<[u8; 16]>
     let mut buffer = [0; 32];
     stream.read_u16_into::<LittleEndian>(&mut buffer)?;
     if stream.read_u16::<LittleEndian>()? != 0 {
-        return Err(general_error!("MD5 hash was not nul-terminated"));
+        return Err(anyhow!("MD5 hash was not nul-terminated"));
     }
     let mut result = [0; 16];
     hex::decode_to_slice(String::from_utf16_lossy(&buffer), &mut result)
-            .map_err(|err| general_error!("Invalid hex literal: {}", err))?;
+            .map_err(|err| anyhow!("Invalid hex literal: {}", err))?;
     Ok(result)
 }
 
@@ -224,7 +224,7 @@ pub fn read_utf16z_u32<S>(stream: &mut S) -> Result<u32>
     let value = u32::from(stream.read_u16::<LittleEndian>()?) << 16
               | u32::from(stream.read_u16::<LittleEndian>()?);
     if stream.read_u16::<LittleEndian>()? != 0 {
-        return Err(general_error!("uint32 value was not nul-terminated"));
+        return Err(anyhow!("uint32 value was not nul-terminated"));
     }
     Ok(value)
 }
@@ -248,7 +248,7 @@ impl StreamRead for FileInfo {
     }
 }
 
-pub fn write_utf16z_text(stream: &mut dyn Write, value: &str) -> Result<()> {
+pub fn write_utf16z_text(stream: &mut dyn Write, value: &str) -> io::Result<()> {
     for ch in value.encode_utf16() {
         stream.write_u16::<LittleEndian>(ch)?;
     }
@@ -256,7 +256,7 @@ pub fn write_utf16z_text(stream: &mut dyn Write, value: &str) -> Result<()> {
 }
 
 pub fn write_utf16z_md5_hash(stream: &mut dyn Write, value: &[u8; 16])
-    -> Result<()>
+    -> io::Result<()>
 {
     // Convert binary hash to a UTF-16 hex representation
     for ch in hex::encode(value).encode_utf16() {
@@ -266,7 +266,7 @@ pub fn write_utf16z_md5_hash(stream: &mut dyn Write, value: &[u8; 16])
 }
 
 // Yes, it's as dumb as it sounds...
-pub fn write_utf16z_u32(stream: &mut dyn Write, value: u32) -> Result<()> {
+pub fn write_utf16z_u32(stream: &mut dyn Write, value: u32) -> io::Result<()> {
     stream.write_u16::<LittleEndian>((value >> 16) as u16)?;
     stream.write_u16::<LittleEndian>((value & 0xFFFF) as u16)?;
     stream.write_u16::<LittleEndian>(0)
@@ -299,7 +299,7 @@ impl Manifest {
         let mut stream = BufReader::new(File::open(path)?);
         let cache_magic = stream.read_u32::<LittleEndian>()?;
         if cache_magic != Self::CACHE_MAGIC {
-            return Err(general_error!("Unknown/invalid cache file magic '{:08x}'", cache_magic));
+            return Err(anyhow!("Unknown/invalid cache file magic '{:08x}'", cache_magic));
         }
 
         Manifest::stream_read(&mut stream)
@@ -309,7 +309,7 @@ impl Manifest {
         let mut stream = BufWriter::new(File::create(path)?);
         stream.write_u32::<LittleEndian>(Self::CACHE_MAGIC)?;
         self.stream_write(&mut stream)?;
-        stream.flush()
+        Ok(stream.flush()?)
     }
 
     pub fn files(&self) -> &Vec<FileInfo> { &self.files }
@@ -337,7 +337,7 @@ impl StreamRead for Manifest {
             files.push(FileInfo::stream_read(&mut file_stream)?);
         }
         if file_stream.read_u16::<LittleEndian>()? != 0 {
-            return Err(general_error!("FileInfo array was not nul-terminated"));
+            return Err(anyhow!("FileInfo array was not nul-terminated"));
         }
 
         Ok(Manifest { files })
@@ -349,8 +349,7 @@ impl StreamWrite for Manifest {
         // Don't write deleted files.  We need to keep them around in the
         // cache though so the check for updated records still works properly.
         let write_files: Vec<&FileInfo> = self.files.iter().filter(|f| !f.deleted).collect();
-        let num_files = u32::try_from(write_files.len())
-                .map_err(|_| general_error!("Too many files for stream"))?;
+        let num_files = u32::try_from(write_files.len()).context("Too many files for stream")?;
         stream.write_u32::<LittleEndian>(num_files)?;
 
         let mut file_stream = Cursor::new(Vec::new());
@@ -362,8 +361,8 @@ impl StreamWrite for Manifest {
         let file_buf = file_stream.into_inner();
         assert_eq!(file_buf.len() % size_of::<u16>(), 0);
         let entry_size = u32::try_from(file_buf.len() / size_of::<u16>())
-                .map_err(|_| general_error!("Manifest entry too large for stream"))?;
+                .context("Manifest entry too large for stream")?;
         stream.write_u32::<LittleEndian>(entry_size)?;
-        stream.write_all(file_buf.as_slice())
+        Ok(stream.write_all(file_buf.as_slice())?)
     }
 }

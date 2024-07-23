@@ -14,14 +14,14 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{Write, Result};
+use std::io::Write;
 
+use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, WriteBytesExt};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use tokio::io::{AsyncReadExt, BufReader};
 
-use crate::general_error;
 use crate::net_crypt::CryptTcpStream;
 use crate::plasma::{StreamWrite, net_io};
 
@@ -96,7 +96,7 @@ impl CliToGateKeeper {
                 let trans_id = stream.read_u32_le().await?;
                 Ok(CliToGateKeeper::AuthServIpAddressRequest { trans_id })
             }
-            None => Err(general_error!("Bad message ID {}", msg_id))
+            None => Err(anyhow!("Bad message ID {}", msg_id))
         }
     }
 }

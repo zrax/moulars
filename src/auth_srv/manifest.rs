@@ -15,14 +15,14 @@
  */
 
 use std::ffi::OsStr;
-use std::io::{BufRead, Write, Cursor, Result};
+use std::io::{BufRead, Write, Cursor};
 use std::mem::size_of;
 use std::path::Path;
 
+use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use log::warn;
 
-use crate::general_error;
 use crate::plasma::{StreamRead, StreamWrite};
 use crate::file_srv::manifest::{read_utf16z_text, write_utf16z_text,
                                 read_utf16z_u32, write_utf16z_u32};
@@ -100,7 +100,7 @@ impl StreamRead for Manifest {
             files.push(FileInfo::stream_read(&mut file_stream)?);
         }
         if file_stream.read_u16::<LittleEndian>()? != 0 {
-            return Err(general_error!("FileInfo array was not nul-terminated"));
+            return Err(anyhow!("FileInfo array was not nul-terminated"));
         }
 
         Ok(Manifest { files })
@@ -118,8 +118,8 @@ impl StreamWrite for Manifest {
         let file_buf = file_stream.into_inner();
         assert_eq!(file_buf.len() % size_of::<u16>(), 0);
         let entry_size = u32::try_from(file_buf.len() / size_of::<u16>())
-                .map_err(|_| general_error!("Manifest entry too large for stream"))?;
+                .context("Manifest entry too large for stream")?;
         stream.write_u32::<LittleEndian>(entry_size)?;
-        stream.write_all(file_buf.as_slice())
+        Ok(stream.write_all(file_buf.as_slice())?)
     }
 }

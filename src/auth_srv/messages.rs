@@ -14,15 +14,15 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{Write, Result};
+use std::io::Write;
 
+use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, WriteBytesExt};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use tokio::io::{AsyncReadExt, BufReader};
 use uuid::Uuid;
 
-use crate::general_error;
 use crate::hashes::ShaDigest;
 use crate::net_crypt::CryptTcpStream;
 use crate::netcli::NetResultCode;
@@ -655,11 +655,11 @@ impl CliToAuth {
             }
             Some(ClientMsgId::AcctSetEulaVersion) => {
                 // This message is never defined in the client
-                Err(general_error!("Unsupported message AcctSetEulaVersion"))
+                Err(anyhow!("Unsupported message AcctSetEulaVersion"))
             }
             Some(ClientMsgId::AcctSetDataRequest) => {
                 // This message is never defined in the client
-                Err(general_error!("Unsupported message AcctSetDataRequest"))
+                Err(anyhow!("Unsupported message AcctSetDataRequest"))
             }
             Some(ClientMsgId::AcctSetPlayerRequest) => {
                 let trans_id = stream.read_u32_le().await?;
@@ -723,15 +723,15 @@ impl CliToAuth {
             }
             Some(ClientMsgId::PlayerUndeleteRequest) => {
                 // This message is never defined in the client
-                Err(general_error!("Unsupported message PlayerUndeleteRequest"))
+                Err(anyhow!("Unsupported message PlayerUndeleteRequest"))
             }
             Some(ClientMsgId::PlayerSelectRequest) => {
                 // This message is never defined in the client
-                Err(general_error!("Unsupported message PlayerSelectRequest"))
+                Err(anyhow!("Unsupported message PlayerSelectRequest"))
             }
             Some(ClientMsgId::PlayerRenameRequest) => {
                 // This message is never defined in the client
-                Err(general_error!("Unsupported message PlayerRenameRequest"))
+                Err(anyhow!("Unsupported message PlayerRenameRequest"))
             }
             Some(ClientMsgId::PlayerCreateRequest) => {
                 let trans_id = stream.read_u32_le().await?;
@@ -744,11 +744,11 @@ impl CliToAuth {
             }
             Some(ClientMsgId::PlayerSetStatus) => {
                 // This message is never defined in the client
-                Err(general_error!("Unsupported message PlayerSetStatus"))
+                Err(anyhow!("Unsupported message PlayerSetStatus"))
             }
             Some(ClientMsgId::PlayerChat) => {
                 // This message is never defined in the client
-                Err(general_error!("Unsupported message PlayerChat"))
+                Err(anyhow!("Unsupported message PlayerChat"))
             }
             Some(ClientMsgId::UpgradeVisitorRequest) => {
                 let trans_id = stream.read_u32_le().await?;
@@ -972,7 +972,7 @@ impl CliToAuth {
             }
             Some(ClientMsgId::AgeRequestEx) => {
                 // This message is never defined in the client
-                Err(general_error!("Unsupported message AgeRequestEx"))
+                Err(anyhow!("Unsupported message AgeRequestEx"))
             }
             Some(ClientMsgId::ScoreGetHighScores) => {
                 let trans_id = stream.read_u32_le().await?;
@@ -983,7 +983,7 @@ impl CliToAuth {
                     trans_id, age_id, max_scores, game_name
                 })
             }
-            None => Err(general_error!("Bad message ID {}", msg_id))
+            None => Err(anyhow!("Bad message ID {}", msg_id))
         }
     }
 }
@@ -1176,7 +1176,7 @@ impl StreamWrite for AuthToCli {
                 stream.write_u32::<LittleEndian>(*trans_id)?;
                 stream.write_i32::<LittleEndian>(*result)?;
                 let num_refs = u32::try_from(refs.len())
-                        .map_err(|_| general_error!("Too many refs for stream"))?;
+                        .map_err(|_| anyhow!("Too many refs for stream"))?;
                 stream.write_u32::<LittleEndian>(num_refs)?;
                 for node_ref in refs {
                     node_ref.stream_write(stream)?;
@@ -1194,8 +1194,7 @@ impl StreamWrite for AuthToCli {
                 stream.write_u16::<LittleEndian>(ServerMsgId::VaultNodeFindReply as u16)?;
                 stream.write_u32::<LittleEndian>(*trans_id)?;
                 stream.write_i32::<LittleEndian>(*result)?;
-                let num_nodes = u32::try_from(node_ids.len())
-                        .map_err(|_| general_error!("Too many nodes for stream"))?;
+                let num_nodes = u32::try_from(node_ids.len()).context("Too many nodes for stream")?;
                 stream.write_u32::<LittleEndian>(num_nodes)?;
                 for id in node_ids {
                     stream.write_u32::<LittleEndian>(*id)?;
@@ -1255,7 +1254,7 @@ impl StreamWrite for AuthToCli {
                 stream.write_u32::<LittleEndian>(*trans_id)?;
                 stream.write_i32::<LittleEndian>(*result)?;
                 let num_ages = u32::try_from(ages.len())
-                        .map_err(|_| general_error!("Too many age results for stream"))?;
+                        .context("Too many age results for stream")?;
                 stream.write_u32::<LittleEndian>(num_ages)?;
                 for age in ages {
                     age.stream_write(stream)?;

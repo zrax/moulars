@@ -14,13 +14,13 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{Cursor, BufRead, Write, Result};
+use std::io::{Cursor, BufRead, Write};
 use std::sync::Arc;
 
+use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use log::warn;
 
-use crate::general_error;
 use crate::plasma::{Uoid, StreamRead, StreamWrite};
 use crate::plasma::safe_string::{read_safe_str, write_safe_str, StringFormat};
 use super::{DescriptorDb, StateDescriptor, VarType, Variable};
@@ -70,7 +70,7 @@ impl State {
         self.flags = stream.read_u16::<LittleEndian>()?;
         let io_version = stream.read_u8()?;
         if io_version != Self::IO_VERSION {
-            return Err(general_error!("Unexpected IO version {}", io_version));
+            return Err(anyhow!("Unexpected IO version {}", io_version));
         }
 
         let max_hint = self.descriptor.vars().len();
@@ -84,7 +84,7 @@ impl State {
                 idx
             };
             if idx >= self.simple_vars.len() {
-                return Err(general_error!("Invalid variable index {}", idx));
+                return Err(anyhow!("Invalid variable index {}", idx));
             }
             self.simple_vars[idx].read(stream, db)?;
         }
@@ -98,7 +98,7 @@ impl State {
                 idx
             };
             if idx >= self.statedesc_vars.len() {
-                return Err(general_error!("Invalid variable index {}", idx));
+                return Err(anyhow!("Invalid variable index {}", idx));
             }
             self.statedesc_vars[idx].read(stream, db)?;
         }
@@ -143,7 +143,7 @@ impl State {
         let mut stream = Cursor::new(blob);
         let read_flags = stream.read_u16::<LittleEndian>()?;
         if (read_flags & VAR_LENGTH_IO) == 0 {
-            return Err(general_error!("Unsupported blob format"));
+            return Err(anyhow!("Unsupported blob format"));
         }
 
         let descriptor_name = read_safe_str(&mut stream, StringFormat::Latin1)?;
@@ -161,8 +161,8 @@ impl State {
             }
             Ok(state)
         } else {
-            Err(general_error!("Could not find descriptor {} version {}",
-                descriptor_name, version))
+            Err(anyhow!("Could not find descriptor {} version {}",
+                        descriptor_name, version))
         }
     }
 
@@ -228,8 +228,7 @@ pub(super) fn read_compressed_size<S>(stream: &mut S, max_hint: usize) -> Result
         Ok(usize::from(stream.read_u16::<LittleEndian>()?))
     } else {
         let size = stream.read_u32::<LittleEndian>()?;
-        usize::try_from(size)
-                .map_err(|_| general_error!("Size {} is too large for usize type", size))
+        Ok(usize::try_from(size)?)
     }
 }
 
@@ -238,16 +237,16 @@ pub(super) fn write_compressed_size(stream: &mut dyn Write, max_hint: usize, val
 {
     if max_hint < 0x100 {
         if let Ok(value8) = u8::try_from(value) {
-            return stream.write_u8(value8);
+            return Ok(stream.write_u8(value8)?);
         }
     } else if max_hint < 0x10000 {
         if let Ok(value16) = u16::try_from(value) {
-            return stream.write_u16::<LittleEndian>(value16);
+            return Ok(stream.write_u16::<LittleEndian>(value16)?);
         }
     } else if let Ok(value32) = u32::try_from(value) {
-        return stream.write_u32::<LittleEndian>(value32);
+        return Ok(stream.write_u32::<LittleEndian>(value32)?);
     }
-    Err(general_error!("Size {} is too large for stream", value))
+    Err(anyhow!("Size {} is too large for stream", value))
 }
 
 #[cfg(test)]

@@ -15,13 +15,13 @@
  */
 
 use std::fs::File;
-use std::io::{Cursor, BufRead, BufReader, Write, Result};
+use std::io::{Cursor, BufRead, BufReader, Write};
 use std::mem::size_of;
 use std::path::Path;
 
+use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use crate::general_error;
 use crate::plasma::{StreamRead, StreamWrite};
 use crate::plasma::safe_string::{read_safe_str, write_safe_str, StringFormat};
 
@@ -81,8 +81,7 @@ impl StreamRead for PakFile {
 
 impl StreamWrite for PakFile {
     fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
-        let num_files = u32::try_from(self.files.len())
-                .map_err(|_| general_error!("Too many files for stream"))?;
+        let num_files = u32::try_from(self.files.len()).context("Too many files for stream")?;
         stream.write_u32::<LittleEndian>(num_files)?;
         let mut offset_accum = size_of::<u32>();
 
@@ -96,7 +95,7 @@ impl StreamWrite for PakFile {
         // Write the table of contents with computed offsets
         for file in &self.files {
             let cur_offset = u32::try_from(offset_accum)
-                    .map_err(|_| general_error!("Pak file contents too large"))?;
+                    .context("Pak file contents too large")?;
             write_safe_str(stream, &file.name, StringFormat::Utf8)?;
             stream.write_u32::<LittleEndian>(cur_offset)?;
 
@@ -106,8 +105,7 @@ impl StreamWrite for PakFile {
 
         // Write the file content
         for file in &self.files {
-            let file_size = u32::try_from(file.data.len())
-                    .map_err(|_| general_error!("Pak file contents too large"))?;
+            let file_size = u32::try_from(file.data.len()).context("Pak file contents too large")?;
             stream.write_u32::<LittleEndian>(file_size)?;
             stream.write_all(file.data.as_slice())?;
         }
@@ -133,7 +131,7 @@ fn skip_pyc_headers<S>(stream: &mut S) -> Result<()>
     // version, which can be simplified by looking at the magic number.
     let magic = stream.read_u32::<LittleEndian>()?;
     if !(MAGIC_PY_MIN..=MAGIC_PY_MAX).contains(&magic) {
-        return Err(general_error!("Unsupported Python version or not a pyc file"));
+        return Err(anyhow!("Unsupported Python version or not a pyc file"));
     }
 
     let flags = if (MAGIC_PY_3_7..MAGIC_PY2_MIN).contains(&magic) {

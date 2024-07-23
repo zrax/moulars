@@ -16,10 +16,11 @@
 
 use std::collections::VecDeque;
 use std::fmt::{Display, Formatter};
-use std::io::{BufRead, Result};
+use std::io::BufRead;
 use std::str::FromStr;
 
-use crate::general_error;
+use anyhow::{anyhow, Result};
+
 use crate::plasma::UnifiedTime;
 use crate::plasma::color::{Color32, ColorRGBA};
 use crate::plasma::geometry::{Vector3, Quaternion};
@@ -188,9 +189,9 @@ impl<S: BufRead> Parser<S> {
             match &token {
                 Token::Identifier(ident) => match ident.as_ref() {
                     KW_STATEDESC => descriptors.push(self.parse_statedesc()?),
-                    _ => return Err(general_error!("Unexpected {:?} at {}", token, location))
+                    _ => return Err(anyhow!("Unexpected {:?} at {}", token, location))
                 }
-                _ => return Err(general_error!("Unexpected {:?} at {}", token, location))
+                _ => return Err(anyhow!("Unexpected {:?} at {}", token, location))
             }
         }
         Ok(descriptors)
@@ -210,24 +211,24 @@ impl<S: BufRead> Parser<S> {
                         opt_version = Some(self.expect_number::<u16>(false, KW_STATEDESC)?);
                     },
                     KW_VAR => vars.push(self.parse_var()?),
-                    _ => return Err(general_error!("Unexpected {:?} at {}", token, location))
+                    _ => return Err(anyhow!("Unexpected {:?} at {}", token, location))
                 }
                 Token::Char('}') => {
                     let version = match opt_version {
                         Some(version) => version,
                         None => {
-                            return Err(general_error!(
+                            return Err(anyhow!(
                                 "Missing version for state descriptor {} on line {}",
                                 name, start_line));
                         }
                     };
                     return Ok(StateDescriptor::new(name, version, vars));
                 }
-                _ => return Err(general_error!("Unexpected {:?} at {}", token, location))
+                _ => return Err(anyhow!("Unexpected {:?} at {}", token, location))
             }
         }
 
-        Err(general_error!("Unexpected EOF while parsing STATEDESC"))
+        Err(anyhow!("Unexpected EOF while parsing STATEDESC"))
     }
 
     fn parse_var(&mut self) -> Result<VarDescriptor> {
@@ -252,31 +253,31 @@ impl<S: BufRead> Parser<S> {
                     "string32" => VarType::String32,
                     "time" => VarType::Time,
                     "vector3" => VarType::Vector3,
-                    _ => return Err(general_error!("Unknown type {} at {}", ident, location)),
+                    _ => return Err(anyhow!("Unknown type {} at {}", ident, location)),
                 }
             }
             Some((Token::TypeReference(ident), _)) => VarType::StateDesc(ident),
             Some((token, location)) => {
-                return Err(general_error!("Unexpected {:?} at {}", token, location))
+                return Err(anyhow!("Unexpected {:?} at {}", token, location))
             }
-            None => return Err(general_error!("Unexpected EOF while parsing VAR"))
+            None => return Err(anyhow!("Unexpected EOF while parsing VAR"))
         };
         let var_name = self.expect_identifier(KW_VAR)?;
         self.expect_token(&Token::Char('['), KW_VAR)?;
         let var_count = match self.next_token()? {
             Some((Token::Number(value), location)) => {
                 let count = value.parse::<usize>().map_err(|err| {
-                    general_error!("Invalid var count '{}' at {}: {}",
-                                   value, location, err)
+                    anyhow!("Invalid var count '{}' at {}: {}",
+                            value, location, err)
                 })?;
                 self.expect_token(&Token::Char(']'), KW_VAR)?;
                 Some(count)
             }
             Some((Token::Char(']'), _)) => None,
             Some((token, location)) => {
-                return Err(general_error!("Unexpected {:?} at {}", token, location))
+                return Err(anyhow!("Unexpected {:?} at {}", token, location))
             }
-            None => return Err(general_error!("Unexpected EOF while parsing VAR"))
+            None => return Err(anyhow!("Unexpected EOF while parsing VAR"))
         };
 
         let mut default = None;
@@ -313,7 +314,7 @@ impl<S: BufRead> Parser<S> {
             }
         }
 
-        Err(general_error!("Unexpected EOF while parsing VAR"))
+        Err(anyhow!("Unexpected EOF while parsing VAR"))
     }
 
     fn parse_default(&mut self, var_type: &VarType) -> Result<Option<VarDefault>> {
@@ -336,19 +337,19 @@ impl<S: BufRead> Parser<S> {
                     Some((Token::Identifier(ident), location)) => {
                         match ident.as_ref() {
                             "nil" => Ok(None),
-                            _ => Err(general_error!("Unexpected plKey value '{}' at {}", ident, location))
+                            _ => Err(anyhow!("Unexpected plKey value '{}' at {}", ident, location))
                         }
                     }
                     Some((token, location)) => {
-                        Err(general_error!("Unexpected {:?} at {}", token, location))
+                        Err(anyhow!("Unexpected {:?} at {}", token, location))
                     }
-                    None => Err(general_error!("Unexpected EOF while parsing DEFAULT"))
+                    None => Err(anyhow!("Unexpected EOF while parsing DEFAULT"))
                 }
             }
             VarType::Point3 | VarType::Vector3 => {
                 let (values, location) = self.expect_sequence::<f32>(KW_DEFAULT)?;
                 if values.len() != 3 {
-                    return Err(general_error!("Incorrect number of elements for Point3 at {}",
+                    return Err(anyhow!("Incorrect number of elements for Point3 at {}",
                                location));
                 }
                 let vector = Vector3 { x: values[0], y: values[1], z: values[2] };
@@ -357,7 +358,7 @@ impl<S: BufRead> Parser<S> {
             VarType::Quat => {
                 let (values, location) = self.expect_sequence::<f32>(KW_DEFAULT)?;
                 if values.len() != 4 {
-                    return Err(general_error!("Incorrect number of elements for Quaternion at {}",
+                    return Err(anyhow!("Incorrect number of elements for Quaternion at {}",
                                location));
                 }
                 let quat = Quaternion { x: values[0], y: values[1], z: values[2], w: values[3] };
@@ -366,7 +367,7 @@ impl<S: BufRead> Parser<S> {
             VarType::Rgb => {
                 let (values, location) = self.expect_sequence::<f32>(KW_DEFAULT)?;
                 if values.len() != 3 {
-                    return Err(general_error!("Incorrect number of elements for RGB at {}",
+                    return Err(anyhow!("Incorrect number of elements for RGB at {}",
                                location));
                 }
                 let color = ColorRGBA { r: values[0], g: values[1], b: values[2], a: 1.0 };
@@ -375,7 +376,7 @@ impl<S: BufRead> Parser<S> {
             VarType::Rgb8 => {
                 let (values, location) = self.expect_sequence::<u8>(KW_DEFAULT)?;
                 if values.len() != 3 {
-                    return Err(general_error!("Incorrect number of elements for RGB8 at {}",
+                    return Err(anyhow!("Incorrect number of elements for RGB8 at {}",
                                location));
                 }
                 let color = Color32 { r: values[0], g: values[1], b: values[2], a: 255 };
@@ -384,7 +385,7 @@ impl<S: BufRead> Parser<S> {
             VarType::Rgba => {
                 let (values, location) = self.expect_sequence::<f32>(KW_DEFAULT)?;
                 if values.len() != 4 {
-                    return Err(general_error!("Incorrect number of elements for RGBA at {}",
+                    return Err(anyhow!("Incorrect number of elements for RGBA at {}",
                                location));
                 }
                 let color = ColorRGBA { r: values[0], g: values[1], b: values[2], a: values[3] };
@@ -393,20 +394,20 @@ impl<S: BufRead> Parser<S> {
             VarType::Rgba8 => {
                 let (values, location) = self.expect_sequence::<u8>(KW_DEFAULT)?;
                 if values.len() != 4 {
-                    return Err(general_error!("Incorrect number of elements for RGBA8 at {}",
+                    return Err(anyhow!("Incorrect number of elements for RGBA8 at {}",
                                location));
                 }
                 let color = Color32 { r: values[0], g: values[1], b: values[2], a: values[3] };
                 Ok(Some(VarDefault::Rgba8(color)))
             }
             VarType::AgeTimeOfDay => {
-                Err(general_error!("AgeTimeOfDay variables cannot have a default"))
+                Err(anyhow!("AgeTimeOfDay variables cannot have a default"))
             }
             VarType::Creatable => {
-                Err(general_error!("Creatable variables cannot have a default"))
+                Err(anyhow!("Creatable variables cannot have a default"))
             }
             VarType::StateDesc(_) => {
-                Err(general_error!("StateDesc variables cannot have a default"))
+                Err(anyhow!("StateDesc variables cannot have a default"))
             }
         }
     }
@@ -415,9 +416,9 @@ impl<S: BufRead> Parser<S> {
         match self.next_token()? {
             Some((Token::Identifier(ident), _)) => Ok(ident),
             Some((token, location)) => {
-                Err(general_error!("Unexpected {:?} at {}", token, location))
+                Err(anyhow!("Unexpected {:?} at {}", token, location))
             }
-            None => Err(general_error!("Unexpected EOF while parsing {}", context))
+            None => Err(anyhow!("Unexpected EOF while parsing {}", context))
         }
     }
 
@@ -427,8 +428,8 @@ impl<S: BufRead> Parser<S> {
         match self.next_token()? {
             Some((Token::Number(value), location)) => {
                 value.parse::<T>().map_err(|err| {
-                    general_error!("Invalid numeric literal '{}' at {}: {}",
-                                   value, location, err)
+                    anyhow!("Invalid numeric literal '{}' at {}: {}",
+                            value, location, err)
                 })
             }
             Some((Token::Char('('), _)) if seq_ok => {
@@ -437,9 +438,9 @@ impl<S: BufRead> Parser<S> {
                 Ok(inner)
             }
             Some((token, location)) => {
-                Err(general_error!("Unexpected {:?} at {}", token, location))
+                Err(anyhow!("Unexpected {:?} at {}", token, location))
             }
-            None => Err(general_error!("Unexpected EOF while parsing {}", context))
+            None => Err(anyhow!("Unexpected EOF while parsing {}", context))
         }
     }
 
@@ -449,14 +450,14 @@ impl<S: BufRead> Parser<S> {
                 match value.to_ascii_lowercase().as_ref() {
                     "false" => Ok(false),
                     "true" => Ok(true),
-                    _ => Err(general_error!("Invalid boolean literal '{}' at {}", value, location))
+                    _ => Err(anyhow!("Invalid boolean literal '{}' at {}", value, location))
                 }
             }
             Some((Token::Number(value), location)) => {
                 match value.as_ref() {
                     "0" => Ok(false),
                     "1" => Ok(true),
-                    _ => Err(general_error!("Invalid boolean literal '{}' at {}", value, location))
+                    _ => Err(anyhow!("Invalid boolean literal '{}' at {}", value, location))
                 }
             }
             Some((Token::Char('('), _)) if seq_ok => {
@@ -465,9 +466,9 @@ impl<S: BufRead> Parser<S> {
                 Ok(inner)
             }
             Some((token, location)) => {
-                Err(general_error!("Unexpected {:?} at {}", token, location))
+                Err(anyhow!("Unexpected {:?} at {}", token, location))
             }
-            None => Err(general_error!("Unexpected EOF while parsing {}", context))
+            None => Err(anyhow!("Unexpected EOF while parsing {}", context))
         }
     }
 
@@ -482,9 +483,9 @@ impl<S: BufRead> Parser<S> {
                 Some((Token::Char(','), _)) => (),
                 Some((Token::Char(')'), _)) => return Ok((result, start)),
                 Some((token, location)) => {
-                    return Err(general_error!("Unexpected {:?} at {}", token, location));
+                    return Err(anyhow!("Unexpected {:?} at {}", token, location));
                 }
-                None => return Err(general_error!("Unexpected EOF while parsing {}", context))
+                None => return Err(anyhow!("Unexpected EOF while parsing {}", context))
             }
         }
     }
@@ -495,10 +496,10 @@ impl<S: BufRead> Parser<S> {
                 if &token == expected {
                     Ok(location)
                 } else {
-                    Err(general_error!("Unexpected {:?} at {}", token, location))
+                    Err(anyhow!("Unexpected {:?} at {}", token, location))
                 }
             }
-            None => Err(general_error!("Unexpected EOF while parsing {}", context))
+            None => Err(anyhow!("Unexpected EOF while parsing {}", context))
         }
     }
 
@@ -507,9 +508,9 @@ impl<S: BufRead> Parser<S> {
             // String literal or single word value
             Some((Token::StringLiteral(value) | Token::Identifier(value), _)) => Ok(value),
             Some((token, location)) => {
-                Err(general_error!("Unexpected {:?} at {}", token, location))
+                Err(anyhow!("Unexpected {:?} at {}", token, location))
             }
-            None => Err(general_error!("Unexpected EOF while parsing {}", context))
+            None => Err(anyhow!("Unexpected EOF while parsing {}", context))
         }
     }
 }

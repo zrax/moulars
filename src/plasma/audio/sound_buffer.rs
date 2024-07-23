@@ -14,8 +14,9 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Result, Write};
+use std::io::{BufRead, Write};
 
+use anyhow::Result;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::plasma::{Key, StreamRead, StreamWrite};

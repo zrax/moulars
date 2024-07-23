@@ -23,11 +23,12 @@
 #![allow(clippy::uninlined_format_args)]    // Added in Rust 1.66
 
 use std::fs::File;
-use std::io::{Cursor, BufReader, BufWriter, Result, Error, ErrorKind};
+use std::io::{Cursor, BufReader, BufWriter};
 use std::mem::size_of;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use anyhow::{anyhow, Result};
 use clap::{Command, Arg, ArgAction};
 use clap::builder::PathBufValueParser;
 use log::{error, warn};
@@ -139,9 +140,8 @@ fn main() -> ExitCode {
 fn get_key(key_opt: Option<&str>) -> Result<[u32; 4]> {
     if let Some(key_str) = key_opt {
         let mut buffer = [0; 16];
-        hex::decode_to_slice(key_str, &mut buffer).map_err(|err| {
-            Error::new(ErrorKind::Other, format!("Invalid key value: {}", err))
-        })?;
+        hex::decode_to_slice(key_str, &mut buffer)
+                .map_err(|err| anyhow!("Invalid key value: {}", err))?;
         let mut key = [0; 4];
         for (src, dest) in buffer.chunks_exact(size_of::<u32>()).zip(key.iter_mut()) {
             *dest = u32::from_be_bytes(src.try_into().unwrap());

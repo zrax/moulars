@@ -14,12 +14,12 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Result, Write};
+use std::io::{BufRead, Write};
 
+use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use uuid::Uuid;
 
-use crate::general_error;
 use crate::plasma::{UnifiedTime, StreamRead, StreamWrite};
 
 pub struct NetMessage {
@@ -73,8 +73,7 @@ impl StreamRead for NetMessage {
             if (protocol_maj != NETMSG_PROTOCOL_MAJ)
                     || (protocol_min != NETMSG_PROTOCOL_MIN)
             {
-                return Err(general_error!("Invalid protocol version: {}.{}",
-                                          protocol_maj, protocol_min));
+                return Err(anyhow!("Invalid protocol version: {}.{}", protocol_maj, protocol_min));
             }
         }
 

@@ -14,12 +14,12 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Write, Result};
+use std::io::{BufRead, Write};
 
+use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use num_traits::FromPrimitive;
 
-use crate::general_error;
 use crate::plasma::StreamRead;
 use super::creatable::{Creatable, ClassID};
 use super::messages::MessageInterface;
@@ -44,15 +44,15 @@ impl Factory {
 
         match ClassID::from_u16(class_id) {
             Some(ClassID::SoundBuffer) =>
-                Err(general_error!("SoundBuffer only supported for Manifest generation")),
+                Err(anyhow!("SoundBuffer only supported for Manifest generation")),
             Some(ClassID::RelevanceRegion) =>
-                Err(general_error!("RelevanceRegion only supported for Manifest generation")),
+                Err(anyhow!("RelevanceRegion only supported for Manifest generation")),
             Some(ClassID::MessageWithCallbacks) =>
                 Ok(Some(Box::new(MessageWithCallbacks::stream_read(stream)?))),
             Some(ClassID::CreatableGenericValue) =>
                 Ok(Some(Box::new(CreatableGenericValue::stream_read(stream)?))),
             Some(ClassID::Nil) => Ok(None),
-            None => Err(general_error!("Unknown creatable type 0x{:04x}", class_id)),
+            None => Err(anyhow!("Unknown creatable type 0x{:04x}", class_id)),
         }
     }
 
@@ -64,8 +64,7 @@ impl Factory {
             if let Some(msg) = creatable.as_message() {
                 Ok(Some(msg))
             } else {
-                Err(general_error!("Unexpected creatable type 0x{:04x} (expected Message)",
-                    msg_type))
+                Err(anyhow!("Unexpected creatable type 0x{:04x} (expected Message)", msg_type))
             }
         } else {
             Ok(None)

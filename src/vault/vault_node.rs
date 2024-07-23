@@ -15,15 +15,15 @@
  */
 
 use std::fmt::{Debug, Formatter};
-use std::io::{BufRead, Write, Cursor, Result};
+use std::io::{BufRead, Write, Cursor};
 use std::mem::size_of;
 use std::sync::Arc;
 
+use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use paste::paste;
 use uuid::Uuid;
 
-use crate::general_error;
 use crate::plasma::{StreamRead, StreamWrite};
 
 #[repr(i32)]
@@ -470,12 +470,12 @@ fn read_vault_string<S>(stream: &mut S) -> Result<String>
 {
     let size = stream.read_u32::<LittleEndian>()? as usize;
     if (size % size_of::<u16>()) != 0 || size < size_of::<u16>() {
-        return Err(general_error!("Bad UTF-16 data size ({} bytes)", size));
+        return Err(anyhow!("Bad UTF-16 data size ({} bytes)", size));
     }
     let mut buffer = vec![0; (size - 1) / size_of::<u16>()];
     stream.read_u16_into::<LittleEndian>(&mut buffer)?;
     if stream.read_u16::<LittleEndian>()? != 0 {
-        return Err(general_error!("Vault string was not nul-terminated"));
+        return Err(anyhow!("Vault string was not nul-terminated"));
     }
 
     Ok(String::from_utf16_lossy(&buffer))
@@ -484,12 +484,12 @@ fn read_vault_string<S>(stream: &mut S) -> Result<String>
 fn write_vault_string(stream: &mut dyn Write, value: &str) -> Result<()> {
     let buffer: Vec<u16> = value.encode_utf16().collect();
     let buffer_size = u32::try_from((buffer.len() + 1) * size_of::<u16>())
-            .map_err(|_| general_error!("Buffer too large for stream"))?;
+            .context("Buffer too large for stream")?;
     stream.write_u32::<LittleEndian>(buffer_size)?;
     for ch in buffer {
         stream.write_u16::<LittleEndian>(ch)?;
     }
-    stream.write_u16::<LittleEndian>(0)
+    Ok(stream.write_u16::<LittleEndian>(0)?)
 }
 
 macro_rules! f_read_i32 {

@@ -14,12 +14,12 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Result, Write};
+use std::io::{BufRead, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use anyhow::{Context, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use crate::general_error;
 use crate::plasma::{StreamRead, StreamWrite};
 
 #[derive(Eq, PartialEq, Copy, Clone, Debug, Default)]
@@ -43,7 +43,7 @@ impl UnifiedTime {
         Ok(Self {
             // Warning: This will fail in Feb 2106
             secs: u32::try_from(now.as_secs())
-                    .map_err(|_| general_error!("Can't encode timestamp {:?}", now))?,
+                    .with_context(|| format!("Can't encode timestamp {:?}", now))?,
             micros: now.subsec_micros()
         })
     }

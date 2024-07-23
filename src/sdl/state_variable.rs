@@ -14,14 +14,14 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{Cursor, BufRead, Write, Result};
+use std::io::{Cursor, BufRead, Write};
 use std::sync::Arc;
 
+use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use log::warn;
 use paste::paste;
 
-use crate::general_error;
 use crate::plasma::{Uoid, Creatable, UnifiedTime, Factory, StreamRead, StreamWrite};
 use crate::plasma::color::{Color32, ColorRGBA};
 use crate::plasma::creatable::ClassID;
@@ -101,10 +101,10 @@ macro_rules! var_accessors {
                         if let Some(element) = values.get(index) {
                             Ok(*element)
                         } else {
-                            Err(general_error!("Variable index {} out of range", index))
+                            Err(anyhow!("Variable index {} out of range", index))
                         }
                     }
-                    _ => Err(general_error!("Cannot get {} from {:?} variable",
+                    _ => Err(anyhow!("Cannot get {} from {:?} variable",
                              stringify!($type_name), self.descriptor.var_type()))
                 }
             }
@@ -116,10 +116,10 @@ macro_rules! var_accessors {
                             self.dirty = true;
                             Ok(())
                         } else {
-                            Err(general_error!("Variable index {} out of range", index))
+                            Err(anyhow!("Variable index {} out of range", index))
                         }
                     }
-                    _ => Err(general_error!("Cannot assign {} to {:?} variable",
+                    _ => Err(anyhow!("Cannot assign {} to {:?} variable",
                              stringify!($type_name), self.descriptor.var_type()))
                 }
             }
@@ -335,7 +335,7 @@ impl Variable {
             VarType::StateDesc(name) => {
                 let statedesc = match db.get_latest(name) {
                     Some(statedesc) => statedesc,
-                    None => return Err(general_error!("No such descriptor {}", name)),
+                    None => return Err(anyhow!("No such descriptor {}", name)),
                 };
                 self.read_statedesc(stream, db, &statedesc)?;
             }
@@ -354,7 +354,7 @@ impl Variable {
             None => stream.read_u32::<LittleEndian>()? as usize
         };
         if var_count >= 10000 {
-            Err(general_error!("Too many elements in SDL variable ({})", var_count))
+            Err(anyhow!("Too many elements in SDL variable ({})", var_count))
         } else {
             Ok(var_count)
         }
@@ -542,7 +542,7 @@ impl Variable {
                 idx
             };
             if idx >= values.len() {
-                return Err(general_error!("Invalid value index {}", idx));
+                return Err(anyhow!("Invalid value index {}", idx));
             }
             values[idx].read(stream, db)?;
         }
@@ -575,7 +575,7 @@ impl Variable {
             _ => unreachable!()
         };
         let num_values = u32::try_from(values.len())
-                .map_err(|_| general_error!("Too many values for stream: {}", values.len()))?;
+                .map_err(|_| anyhow!("Too many values for stream: {}", values.len()))?;
 
         if self.descriptor.count().is_none() {
             stream.write_u32::<LittleEndian>(num_values)?;
@@ -733,11 +733,11 @@ impl Variable {
 
     fn write_var_count(&self, stream: &mut dyn Write, count: usize) -> Result<()> {
         if count > 10000 {
-            return Err(general_error!("Too many elements in SDL variable ({})", count));
+            return Err(anyhow!("Too many elements in SDL variable ({})", count));
         }
         if self.descriptor.count().is_none() {
             #[allow(clippy::cast_possible_truncation)]
-            stream.write_u32::<LittleEndian>(count as u32)
+            Ok(stream.write_u32::<LittleEndian>(count as u32)?)
         } else {
             Ok(())
         }
@@ -752,7 +752,7 @@ impl Variable {
             creatable.stream_write(&mut creatable_stream)?;
             let creatable_buf = creatable_stream.into_inner();
             let creatable_size = u32::try_from(creatable_buf.len())
-                    .map_err(|_| general_error!("Creatable too large for stream"))?;
+                    .context("Creatable too large for stream")?;
             stream.write_u32::<LittleEndian>(creatable_size)?;
             stream.write_all(creatable_buf.as_slice())?;
         } else {

@@ -14,11 +14,11 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Write, Result};
+use std::io::{BufRead, Write};
 
+use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use crate::general_error;
 use crate::plasma::{StreamRead, StreamWrite};
 use crate::plasma::Factory;
 use crate::plasma::creatable::derive_creatable;
@@ -42,7 +42,7 @@ impl StreamRead for MessageWithCallbacks {
             if let Some(msg) = Factory::read_message(stream)? {
                 callbacks.push(msg);
             } else {
-                return Err(general_error!("Unexpected null message in callbacks"));
+                return Err(anyhow!("Unexpected null message in callbacks"));
             }
         }
 
@@ -53,7 +53,7 @@ impl StreamRead for MessageWithCallbacks {
 impl StreamWrite for MessageWithCallbacks {
     fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
         let num_callbacks = u32::try_from(self.callbacks.len())
-                .map_err(|_| general_error!("Too many messages for stream"))?;
+                .context("Too many messages for stream")?;
 
         self.base.stream_write(stream)?;
         stream.write_u32::<LittleEndian>(num_callbacks)?;

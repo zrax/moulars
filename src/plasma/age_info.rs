@@ -15,10 +15,11 @@
  */
 
 use std::fs::File;
-use std::io::{BufRead, BufReader, Result};
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-use crate::general_error;
+use anyhow::{anyhow, Result};
+
 use super::file_crypt::{self, EncryptedReader};
 use super::UnifiedTime;
 
@@ -69,44 +70,44 @@ impl AgeInfo {
 
             let parts: Vec<&str> = line.splitn(2, '=').collect();
             if parts.len() != 2 {
-                return Err(general_error!("Malformed line in .age file: {}", line));
+                return Err(anyhow!("Malformed line in .age file: {}", line));
             }
             if parts[0].eq_ignore_ascii_case("StartDateTime") {
                 let value = parts[1].parse::<u32>()
-                        .map_err(|_| general_error!("Invalid StartDateTime value: {}", parts[1]))?;
+                        .map_err(|_| anyhow!("Invalid StartDateTime value: {}", parts[1]))?;
                 info.start_date_time = UnifiedTime::from_secs(value);
             } else if parts[0].eq_ignore_ascii_case("DayLength") {
                 let value = parts[1].parse::<f32>()
-                        .map_err(|_| general_error!("Invalid DayLength value: {}", parts[1]))?;
+                        .map_err(|_| anyhow!("Invalid DayLength value: {}", parts[1]))?;
                 info.day_length = value;
             } else if parts[0].eq_ignore_ascii_case("MaxCapacity") {
                 let value = parts[1].parse::<u32>()
-                        .map_err(|_| general_error!("Invalid MaxCapacity value: {}", parts[1]))?;
+                        .map_err(|_| anyhow!("Invalid MaxCapacity value: {}", parts[1]))?;
                 info.max_capacity = value;
             } else if parts[0].eq_ignore_ascii_case("LingerTime") {
                 let value = parts[1].parse::<u32>()
-                        .map_err(|_| general_error!("Invalid LingerTime value: {}", parts[1]))?;
+                        .map_err(|_| anyhow!("Invalid LingerTime value: {}", parts[1]))?;
                 info.linger_time = value;
             } else if parts[0].eq_ignore_ascii_case("SequencePrefix") {
                 let value = parts[1].parse::<i32>()
-                        .map_err(|_| general_error!("Invalid SequencePrefix value: {}", parts[1]))?;
+                        .map_err(|_| anyhow!("Invalid SequencePrefix value: {}", parts[1]))?;
                 info.seq_prefix = value;
             } else if parts[0].eq_ignore_ascii_case("ReleaseVersion") {
                 let value = parts[1].parse::<u32>()
-                        .map_err(|_| general_error!("Invalid ReleaseVersion value: {}", parts[1]))?;
+                        .map_err(|_| anyhow!("Invalid ReleaseVersion value: {}", parts[1]))?;
                 info.release_version = value;
             } else if parts[0].eq_ignore_ascii_case("Page") {
                 let page_parts: Vec<&str> = parts[1].split(',').collect();
                 let name = page_parts[0];
                 let seq_suffix_str = *page_parts.get(1).unwrap_or(&"0");
                 let seq_suffix = seq_suffix_str.parse::<u32>()
-                        .map_err(|_| general_error!("Invalid Page sequence: {}", seq_suffix_str))?;
+                        .map_err(|_| anyhow!("Invalid Page sequence: {}", seq_suffix_str))?;
                 let flags_str = *page_parts.get(2).unwrap_or(&"0");
                 let flags = flags_str.parse::<u32>()
-                        .map_err(|_| general_error!("Invalid Page flags: {}", flags_str))?;
+                        .map_err(|_| anyhow!("Invalid Page flags: {}", flags_str))?;
                 info.pages.push(PageInfo { name: name.to_string(), seq_suffix, flags });
             } else {
-                return Err(general_error!("Invalid AgeInfo line: {}", line));
+                return Err(anyhow!("Invalid AgeInfo line: {}", line));
             }
         }
 

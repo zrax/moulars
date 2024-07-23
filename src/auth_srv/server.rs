@@ -14,11 +14,12 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Cursor, Result, ErrorKind};
+use std::io::{self, BufRead, Cursor};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, ReadBytesExt};
 use log::{error, warn, info, debug};
 use tokio::io::{AsyncReadExt, BufReader};
@@ -26,7 +27,6 @@ use tokio::sync::{mpsc, broadcast};
 use tokio::net::TcpStream;
 use uuid::Uuid;
 
-use crate::general_error;
 use crate::config::ServerConfig;
 use crate::hashes::ShaDigest;
 use crate::net_crypt::CryptTcpStream;
@@ -67,7 +67,7 @@ fn read_conn_header<S>(stream: &mut S) -> Result<()>
     // Everything here is discarded...
     let header_size = stream.read_u32::<LittleEndian>()?;
     if header_size != CONN_HEADER_SIZE {
-        return Err(general_error!("Invalid connection header size {}", header_size));
+        return Err(anyhow!("Invalid connection header size {}", header_size));
     }
     // Null UUID
     let _ = Uuid::stream_read(stream)?;
@@ -193,7 +193,7 @@ impl AuthServerWorker {
         });
     }
 
-    fn peer_addr(&self) -> Result<SocketAddr> { self.stream.get_ref().peer_addr() }
+    fn peer_addr(&self) -> io::Result<SocketAddr> { self.stream.get_ref().peer_addr() }
 
     async fn send_caps(&mut self) -> Result<()> {
         let mut caps = BitVector::new();
@@ -204,7 +204,7 @@ impl AuthServerWorker {
             caps_buffer: caps_buffer.into_inner()
         };
         if !self.send_message(caps_msg).await {
-            return Err(general_error!("Failed to send message to client"));
+            return Err(anyhow!("Failed to send message to client"));
         }
         Ok(())
     }
@@ -237,11 +237,12 @@ impl AuthServerWorker {
                         }
                     }
                     Err(err) => {
-                        if matches!(err.kind(), ErrorKind::ConnectionReset
-                                                | ErrorKind::UnexpectedEof) {
-                            debug!("Client {} disconnected", self.peer_addr().unwrap());
-                        } else {
-                            warn!("Error reading message from client: {}", err);
+                        match err.downcast_ref::<io::Error>() {
+                            Some(io_err) if matches!(io_err.kind(), io::ErrorKind::ConnectionReset
+                                                                    | io::ErrorKind::UnexpectedEof) => {
+                                debug!("Client {} disconnected", self.peer_addr().unwrap());
+                            }
+                            _ => warn!("Error reading message from client: {}", err),
                         }
                         return;
                     }

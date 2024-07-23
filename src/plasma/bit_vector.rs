@@ -14,11 +14,11 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Result, Write};
+use std::io::{BufRead, Write};
 
+use anyhow::Result;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use crate::general_error;
 use crate::plasma::{StreamRead, StreamWrite};
 
 #[derive(Default)]
@@ -64,8 +64,7 @@ impl StreamRead for BitVector {
 
 impl StreamWrite for BitVector {
     fn stream_write(&self, stream: &mut dyn Write) -> Result<()> {
-        let bits_size = u32::try_from(self.bits.len())
-                .map_err(|_| general_error!("Waaaaaay too many bits..."))?;
+        let bits_size = u32::try_from(self.bits.len())?;
         stream.write_u32::<LittleEndian>(bits_size)?;
         for bitfield in &self.bits {
             stream.write_u32::<LittleEndian>(*bitfield)?;

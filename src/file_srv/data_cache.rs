@@ -17,15 +17,16 @@
 use std::collections::{HashSet, HashMap};
 use std::ffi::OsStr;
 use std::fs::File;
-use std::io::{Cursor, BufReader, BufWriter, Write, Result, ErrorKind};
+use std::io::{self, Cursor, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use anyhow::{anyhow, Context, Result};
 use log::{warn, info};
 use once_cell::sync::Lazy;
 use tempfile::{NamedTempFile, TempDir};
 
-use crate::{general_error, path_utils};
+use crate::path_utils;
 use crate::config::load_or_create_ntd_key;
 use crate::plasma::{AgeInfo, PageFile, PakFile, StreamWrite};
 use crate::plasma::audio::SoundBuffer;
@@ -310,12 +311,13 @@ fn update_cache_file<'dc>(data_cache: &'dc mut HashMap<PathBuf, FileInfo>,
     data_cache.entry(file.source_path(data_root)).or_insert_with(|| {
         let mut file = file.clone();
         if let Err(err) = file.update(data_root) {
-            if err.kind() == ErrorKind::NotFound {
-                warn!("Removing {}", file.client_path());
-                file.mark_deleted();
-            } else {
-                warn!("Failed to update cache for file {}: {}",
-                      file.client_path(), err);
+            match err.downcast_ref::<io::Error>() {
+                Some(io_err) if io_err.kind() == io::ErrorKind::NotFound => {
+                    warn!("Removing {}", file.client_path());
+                    file.mark_deleted();
+                }
+                _ => warn!("Failed to update cache for file {}: {}",
+                           file.client_path(), err)
             }
         }
         file
@@ -397,9 +399,7 @@ fn compyle_dir(python_dir: &Path, subdir_limit: Option<&Vec<&OsStr>>,
             temp_src.write_all(glue_source.as_bytes())?;
 
             // NOTE: into_inner() will also flush the buffer
-            let temp_src = temp_src.into_inner().map_err(|err| {
-                general_error!("Failed to extract buffered stream: {}", err)
-            })?;
+            let temp_src = temp_src.into_inner().context("Failed to extract buffered stream: {}")?;
             (temp_src.path().to_path_buf(), Some(temp_src))
         };
 
@@ -409,9 +409,7 @@ fn compyle_dir(python_dir: &Path, subdir_limit: Option<&Vec<&OsStr>>,
     }
 
     // NOTE: into_inner() will also flush the buffer
-    let compyle_src = compyle_src.into_inner().map_err(|err| {
-        general_error!("Failed to extract buffered stream: {}", err)
-    })?;
+    let compyle_src = compyle_src.into_inner().context("Failed to extract buffered stream: {}")?;
     match Command::new(python_exe).args([OsStr::new("-OO"),
                 compyle_src.path().as_os_str()]).status()?.code()
     {
@@ -438,8 +436,8 @@ fn get_python_system_lib(python_exe: &Path) -> Result<PathBuf> {
     eprint!("{}", String::from_utf8_lossy(&output.stderr));
     match output.status.code() {
         Some(0) => (),
-        Some(code) => return Err(general_error!("python exited with status {}", code)),
-        None => return Err(general_error!("python process killed by signal")),
+        Some(code) => return Err(anyhow!("python exited with status {}", code)),
+        None => return Err(anyhow!("python process killed by signal")),
     }
 
     let path = String::from_utf8_lossy(&output.stdout);

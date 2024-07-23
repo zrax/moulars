@@ -15,15 +15,13 @@
  */
 
 use std::fs::File;
-use std::io::{Read, BufRead, Write, Seek, SeekFrom, Result, ErrorKind};
+use std::io::{self, Read, BufRead, Write, Seek, SeekFrom};
 use std::mem::size_of;
 use std::path::Path;
 use std::{mem, ptr};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use log::warn;
-
-use crate::general_error;
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum EncryptionType {
@@ -39,14 +37,14 @@ pub enum EncryptionType {
 const TEA_BLOCK_SIZE: usize = 2;
 
 impl EncryptionType {
-    pub fn from_stream<S>(stream: &mut S) -> Result<Self>
+    pub fn from_stream<S>(stream: &mut S) -> io::Result<Self>
         where S: Read + Seek
     {
         let start_pos = stream.stream_position()?;
 
         let mut buffer = [0; 12];
         if let Err(err) = stream.read_exact(&mut buffer) {
-            if err.kind() == ErrorKind::UnexpectedEof {
+            if err.kind() == io::ErrorKind::UnexpectedEof {
                 // The stream is too small for the encryption marker
                 stream.seek(SeekFrom::Start(start_pos))?;
                 return Ok(Self::Unencrypted);
@@ -63,12 +61,12 @@ impl EncryptionType {
         }
     }
 
-    pub fn from_file(path: &Path) -> Result<Self> {
+    pub fn from_file(path: &Path) -> io::Result<Self> {
         let mut file = File::open(path)?;
         Self::from_stream(&mut file)
     }
 
-    pub fn write_magic(self, stream: &mut dyn Write) -> Result<()> {
+    pub fn write_magic(self, stream: &mut dyn Write) -> io::Result<()> {
         match self {
             EncryptionType::Unencrypted => (),
             EncryptionType::TEA => {
@@ -95,7 +93,7 @@ pub struct EncryptedReader<S: BufRead> {
 }
 
 impl<S: BufRead + Seek> EncryptedReader<S> {
-    pub fn new(mut base_stream: S, key: &[u32; 4]) -> Result<Self> {
+    pub fn new(mut base_stream: S, key: &[u32; 4]) -> io::Result<Self> {
         let encryption_type = EncryptionType::from_stream(&mut base_stream)?;
         let base_size = if encryption_type != EncryptionType::Unencrypted {
             base_stream.read_u32::<LittleEndian>()? as usize
@@ -115,7 +113,7 @@ impl<S: BufRead + Seek> EncryptedReader<S> {
 }
 
 impl<S: BufRead> EncryptedReader<S> {
-    fn next_block(&mut self) -> Result<()> {
+    fn next_block(&mut self) -> io::Result<()> {
         let mut block = [0; TEA_BLOCK_SIZE];
         self.base.read_u32_into::<LittleEndian>(&mut block)?;
         match self.encryption_type {
@@ -135,7 +133,7 @@ impl<S: BufRead> EncryptedReader<S> {
 }
 
 impl<S: BufRead> Read for EncryptedReader<S> {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if self.encryption_type == EncryptionType::Unencrypted {
             return self.base.read(buf);
         }
@@ -176,7 +174,7 @@ pub struct EncryptedWriter<S: Write + Seek> {
 
 impl<S: Write + Seek> EncryptedWriter<S> {
     pub fn new(mut base_stream: S, encryption_type: EncryptionType, key: &[u32; 4])
-        -> Result<Self>
+        -> io::Result<Self>
     {
         encryption_type.write_magic(&mut base_stream)?;
         // Stream size -- This will be updated later
@@ -194,7 +192,7 @@ impl<S: Write + Seek> EncryptedWriter<S> {
         })
     }
 
-    fn write_block(&mut self) -> Result<()> {
+    fn write_block(&mut self) -> io::Result<()> {
         let mut block = [0; TEA_BLOCK_SIZE];
         for (src, dest) in self.buffer.chunks_exact(size_of::<u32>()).zip(block.iter_mut()) {
             *dest = u32::from_le_bytes(src.try_into().unwrap());
@@ -224,7 +222,7 @@ impl<S: Write + Seek> EncryptedWriter<S> {
 }
 
 impl<S: Write + Seek> Write for EncryptedWriter<S> {
-    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if self.encryption_type == EncryptionType::Unencrypted {
             return self.base.write(buf);
         }
@@ -249,7 +247,7 @@ impl<S: Write + Seek> Write for EncryptedWriter<S> {
         Ok(src_pos)
     }
 
-    fn flush(&mut self) -> Result<()> {
+    fn flush(&mut self) -> io::Result<()> {
         if self.encryption_type == EncryptionType::Unencrypted {
             return self.base.flush();
         }
@@ -257,7 +255,9 @@ impl<S: Write + Seek> Write for EncryptedWriter<S> {
         self.write_block()?;
         self.base.seek(SeekFrom::Start(self.size_pos))?;
         let base_size = u32::try_from(self.base_size)
-                .map_err(|_| general_error!("Stream too large for encrypted header"))?;
+                .map_err(|_| io::Error::new(
+                        io::ErrorKind::Other,
+                        "Stream too large for encrypted header"))?;
         self.base.write_u32::<LittleEndian>(base_size)?;
         self.base.seek(SeekFrom::Start(sync_pos))?;
         Ok(())

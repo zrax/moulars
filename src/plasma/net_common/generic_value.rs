@@ -14,13 +14,13 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Result, Write};
+use std::io::{BufRead, Write};
 
+use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
-use crate::general_error;
 use crate::plasma::{StreamRead, StreamWrite};
 use crate::plasma::creatable::derive_creatable;
 use crate::plasma::safe_string::{read_safe_str, write_safe_str, StringFormat};
@@ -90,7 +90,7 @@ impl StreamRead for CreatableGenericValue {
                 Ok(Self { value: GenericType::Double(value) })
             }
             Some(TypeID::None) => Ok(Self { value: GenericType::None }),
-            None => Err(general_error!("Invalid type ID {}", type_id))
+            None => Err(anyhow!("Invalid type ID {}", type_id))
         }
     }
 }
