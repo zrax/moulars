@@ -330,7 +330,7 @@ impl AuthServerWorker {
                 }).await
             }
             CliToAuth::AcctSetBillingTypeRequest { trans_id, .. } => {
-                self.send_message(AuthToCli::AcctSetRolesReply {
+                self.send_message(AuthToCli::AcctSetBillingTypeReply {
                     trans_id,
                     result: NetResultCode::NetNotSupported as i32,
                 }).await

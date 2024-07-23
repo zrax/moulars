@@ -638,7 +638,8 @@ macro_rules! f_write_uuid {
 macro_rules! f_write_blob {
     ($stream:ident, $fields:expr, $field:ident, $value:expr) => {
         if ($fields & $field) != 0 {
-            $stream.write_u32::<LittleEndian>($value.len() as u32)?;
+            $stream.write_u32::<LittleEndian>(u32::try_from($value.len())
+                    .context("Blob too large for stream")?)?;
             $stream.write_all($value.as_slice())?;
         }
     }
