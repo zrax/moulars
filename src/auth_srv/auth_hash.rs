@@ -15,10 +15,10 @@
  */
 
 use std::io::{Cursor, Write};
+use std::sync::OnceLock;
 
 use anyhow::Result;
 use byteorder::{LittleEndian, WriteBytesExt};
-use once_cell::sync::Lazy;
 use regex::Regex;
 
 use crate::hashes::ShaDigest;
@@ -36,11 +36,12 @@ fn write_truncated_utf16(value: &str, stream: &mut dyn Write) -> Result<()> {
 }
 
 pub fn use_email_auth(account_name: &str) -> bool {
-    static RE_DOMAIN: Lazy<Regex> = Lazy::new(|| {
+    static RE_DOMAIN: OnceLock<Regex> = OnceLock::new();
+    let re_domain = RE_DOMAIN.get_or_init(|| {
         Regex::new("[^@]+@([^.]+\\.)*([^.]+)\\.[^.]+").unwrap()
     });
 
-    if let Some(caps) = RE_DOMAIN.captures(account_name) {
+    if let Some(caps) = re_domain.captures(account_name) {
         !caps[2].eq_ignore_ascii_case("gametap")
     } else {
         false

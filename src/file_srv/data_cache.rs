@@ -20,10 +20,10 @@ use std::fs::File;
 use std::io::{self, Cursor, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
 
 use anyhow::{anyhow, Context, Result};
 use log::{warn, info};
-use once_cell::sync::Lazy;
 use tempfile::{NamedTempFile, TempDir};
 
 use crate::path_utils;
@@ -71,7 +71,8 @@ fn scan_python_dir(python_root: &Path, subdir_limit: Option<&Vec<&OsStr>>)
 }
 
 pub fn cache_clients(data_root: &Path, python_exe: Option<&Path>) -> Result<()> {
-    static CLIENT_TYPES: Lazy<Vec<(&str, &str, PathBuf)>> = Lazy::new(|| vec![
+    static CLIENT_TYPES: OnceLock<Vec<(&str, &str, PathBuf)>> = OnceLock::new();
+    let client_types = CLIENT_TYPES.get_or_init(|| vec![
         ("Internal", "", ["client", "windows_ia32", "internal"].iter().collect()),
         ("External", "", ["client", "windows_ia32", "external"].iter().collect()),
         ("Internal", "_x64", ["client", "windows_x64", "internal"].iter().collect()),
@@ -211,7 +212,7 @@ pub fn cache_clients(data_root: &Path, python_exe: Option<&Path>) -> Result<()> 
         secure_preloader_mfs.write_cache(&secure_preloader_mfs_path)?;
     }
 
-    for (build, suffix, client_data_dir) in CLIENT_TYPES.iter() {
+    for (build, suffix, client_data_dir) in client_types.iter() {
         let src_dir = data_root.join(client_data_dir);
         if !src_dir.exists() || !src_dir.is_dir() {
             warn!("{} does not exist.  Skipping manifest for {}{}",

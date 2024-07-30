@@ -17,11 +17,11 @@
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use anyhow::{anyhow, Context, Result};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use num_bigint::BigUint;
-use once_cell::sync::OnceCell;
 use rand::Rng;
 use serde_derive::Deserialize;
 
@@ -202,7 +202,7 @@ struct VaultDbConfig {
 // NOTE: This file stores the keys in Big Endian format for easier debugging
 // with tools like PlasmaShop
 pub fn load_or_create_ntd_key(data_root: &Path) -> io::Result<[u32; 4]> {
-    static NTD_KEY: OnceCell<[u32; 4]> = OnceCell::new();
+    static NTD_KEY: OnceLock<[u32; 4]> = OnceLock::new();
     if let Some(key) = NTD_KEY.get() {
         return Ok(*key);
     }
