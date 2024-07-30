@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::sync::Arc;
 
+use base64::prelude::*;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Server, Request, Response, Method, Body, StatusCode};
 use hyper::header::CONTENT_TYPE;
@@ -107,8 +108,8 @@ async fn api_router(request: Request<Body>, api: Arc<ApiInterface>)
                 let key_x = key_g.to_biguint().unwrap().modpow(key_k, key_n);
                 let bytes_n = key_n.to_bytes_be();
                 let bytes_x = key_x.to_bytes_be();
-                let _ = writeln!(lines, "Server.{}.N \"{}\"", stype, base64::encode(bytes_n));
-                let _ = writeln!(lines, "Server.{}.X \"{}\"", stype, base64::encode(bytes_x));
+                let _ = writeln!(lines, "Server.{}.N \"{}\"", stype, BASE64_STANDARD.encode(bytes_n));
+                let _ = writeln!(lines, "Server.{}.X \"{}\"", stype, BASE64_STANDARD.encode(bytes_x));
             }
             Response::builder().body(Body::from(lines)).unwrap()
         }

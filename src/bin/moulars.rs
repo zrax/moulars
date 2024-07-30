@@ -23,6 +23,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use base64::prelude::*;
 use clap::{Command, Arg};
 use log::error;
 use num_bigint::{BigUint, ToBigUint};
@@ -83,8 +84,8 @@ fn main() -> ExitCode {
             let key_x = key_g.to_biguint().unwrap().modpow(key_k, key_n);
             let bytes_n = key_n.to_bytes_be();
             let bytes_x = key_x.to_bytes_be();
-            println!("Server.{}.N \"{}\"", stype, base64::encode(bytes_n));
-            println!("Server.{}.X \"{}\"", stype, base64::encode(bytes_x));
+            println!("Server.{}.N \"{}\"", stype, BASE64_STANDARD.encode(bytes_n));
+            println!("Server.{}.X \"{}\"", stype, BASE64_STANDARD.encode(bytes_x));
         }
 
         return ExitCode::SUCCESS;
@@ -195,10 +196,10 @@ fn generate_keys() {
 
                 let stype_lower = stype.to_ascii_lowercase();
                 return (
-                    format!("{}.n = \"{}\"", stype_lower, base64::encode(&bytes_n)),
-                    format!("{}.k = \"{}\"", stype_lower, base64::encode(&bytes_k)),
-                    format!("Server.{}.N \"{}\"", stype, base64::encode(&bytes_n)),
-                    format!("Server.{}.X \"{}\"", stype, base64::encode(&bytes_x)),
+                    format!("{}.n = \"{}\"", stype_lower, BASE64_STANDARD.encode(&bytes_n)),
+                    format!("{}.k = \"{}\"", stype_lower, BASE64_STANDARD.encode(&bytes_k)),
+                    format!("Server.{}.N \"{}\"", stype, BASE64_STANDARD.encode(&bytes_n)),
+                    format!("Server.{}.X \"{}\"", stype, BASE64_STANDARD.encode(&bytes_x)),
                 );
             }
         }));
