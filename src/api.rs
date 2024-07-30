@@ -15,16 +15,24 @@
  */
 
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::io::Write;
 use std::sync::Arc;
+use std::time::Duration;
 
 use base64::prelude::*;
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{Server, Request, Response, Method, Body, StatusCode};
+use http_body_util::Full;
+use hyper::body::{Bytes, Incoming};
 use hyper::header::CONTENT_TYPE;
+use hyper::server::conn::http1;
+use hyper::service::service_fn;
+use hyper::{Request, Response, Method, StatusCode};
+use hyper_util::rt::TokioIo;
+use hyper_util::server::graceful::GracefulShutdown;
 use log::{warn, info};
 use num_bigint::ToBigUint;
 use serde_derive::Serialize;
+use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 
 use crate::config::ServerConfig;
@@ -67,24 +75,24 @@ impl ApiInterface {
     }
 }
 
-fn gen_unauthorized() -> Response<Body> {
+fn gen_unauthorized() -> Response<Full<Bytes>> {
     Response::builder()
         .status(StatusCode::UNAUTHORIZED)
         .header(CONTENT_TYPE, "application/json")
-        .body(Body::from(r#"{"error": "Unauthorized"}"#))
+        .body(Full::from(Bytes::from_static(br#"{"error": "Unauthorized"}"#)))
         .unwrap()
 }
 
-fn gen_server_error() -> Response<Body> {
+fn gen_server_error() -> Response<Full<Bytes>> {
     Response::builder()
         .status(StatusCode::INTERNAL_SERVER_ERROR)
         .header(CONTENT_TYPE, "application/json")
-        .body(Body::from(r#"{"error": "Internal Server Error"}"#))
+        .body(Full::from(Bytes::from_static(br#"{"error": "Internal Server Error"}"#)))
         .unwrap()
 }
 
-async fn api_router(request: Request<Body>, api: Arc<ApiInterface>)
-        -> Result<Response<Body>, hyper::Error>
+async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
+        -> Result<Response<Full<Bytes>>, Infallible>
 {
     let query_params = if let Some(query) = request.uri().query() {
         form_urlencoded::parse(query.as_bytes()).into_owned()
@@ -96,7 +104,7 @@ async fn api_router(request: Request<Body>, api: Arc<ApiInterface>)
     let response = match (request.method(), request.uri().path()) {
         (&Method::GET, "/") => {
             // Basic status check
-            Response::builder().body(Body::from("OK")).unwrap()
+            Response::builder().body(Full::from(Bytes::from_static(b"OK"))).unwrap()
         }
         (&Method::GET, "/client_keys") => {
             let mut lines = Vec::with_capacity(6 * 105);
@@ -108,10 +116,10 @@ async fn api_router(request: Request<Body>, api: Arc<ApiInterface>)
                 let key_x = key_g.to_biguint().unwrap().modpow(key_k, key_n);
                 let bytes_n = key_n.to_bytes_be();
                 let bytes_x = key_x.to_bytes_be();
-                let _ = writeln!(lines, "Server.{}.N \"{}\"", stype, BASE64_STANDARD.encode(bytes_n));
-                let _ = writeln!(lines, "Server.{}.X \"{}\"", stype, BASE64_STANDARD.encode(bytes_x));
+                let _ = writeln!(lines, "Server.{stype}.N \"{}\"", BASE64_STANDARD.encode(bytes_n));
+                let _ = writeln!(lines, "Server.{stype}.X \"{}\"", BASE64_STANDARD.encode(bytes_x));
             }
-            Response::builder().body(Body::from(lines)).unwrap()
+            Response::builder().body(Full::from(lines)).unwrap()
         }
         (&Method::GET, "/online") => {
             // Return JSON object containing the names and locations of online players
@@ -125,7 +133,7 @@ async fn api_router(request: Request<Body>, api: Arc<ApiInterface>)
             match serde_json::to_string(&online_players) {
                 Ok(json) => Response::builder()
                     .header(CONTENT_TYPE, "application/json")
-                    .body(Body::from(json))
+                    .body(Full::from(json))
                     .unwrap(),
                 Err(err) => {
                     warn!("Failed to generate JSON: {}", err);
@@ -139,7 +147,7 @@ async fn api_router(request: Request<Body>, api: Arc<ApiInterface>)
                 let _ = api.shutdown_send.send(());
                 Response::builder()
                     .header(CONTENT_TYPE, "application/json")
-                    .body(Body::from(r#"{"status": "ok"}"#))
+                    .body(Full::from(Bytes::from_static(br#"{"status": "ok"}"#)))
                     .unwrap()
             } else {
                 gen_unauthorized()
@@ -149,7 +157,7 @@ async fn api_router(request: Request<Body>, api: Arc<ApiInterface>)
             Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .header(CONTENT_TYPE, "application/json")
-                .body(Body::from(r#"{"error": "Invalid API Request"}"#))
+                .body(Full::from(Bytes::from_static(br#"{"error": "Invalid API Request"}"#)))
                 .unwrap()
         }
     };
@@ -160,37 +168,66 @@ pub fn start_api(shutdown_send: broadcast::Sender<()>, vault: Arc<VaultServer>,
                  server_config: Arc<ServerConfig>)
 {
     tokio::spawn(async move {
-        let api_address = match server_config.api_address.parse() {
-            Ok(addr) => addr,
-            Err(err) => {
-                warn!("Failed to parse API address: {}", err);
-                return;
-            }
-        };
-
         let mut shutdown_recv = shutdown_send.subscribe();
         let api = Arc::new(ApiInterface {
             server_config,
             shutdown_send,
             vault,
         });
-        let api_service = make_service_fn(|_| {
-            let api = api.clone();
-            async {
-                Ok::<_, hyper::Error>(service_fn(move |request| {
-                    api_router(request, api.clone())
-                }))
+
+        let listener = match TcpListener::bind(&api.server_config.api_address).await {
+            Ok(listener) => listener,
+            Err(err) => {
+                warn!("Failed to bind API service: {err}");
+                return;
             }
-        });
+        };
 
-        let server = Server::bind(&api_address).serve(api_service)
-                .with_graceful_shutdown(async { let _ = shutdown_recv.recv().await; });
-        info!("Starting API service on http://{}", api_address);
+        info!("Starting API service on http://{}", api.server_config.api_address);
+        let server = http1::Builder::new();
+        let graceful = GracefulShutdown::new();
 
-        if let Err(err) = server.await {
-            warn!("API service error: {}", err);
+        loop {
+            tokio::select! {
+                client = listener.accept() => {
+                    let (stream, _remote_addr) = match client {
+                        Ok(accepted) => accepted,
+                        Err(err) => {
+                            warn!("Failed to accept API connection: {}", err);
+                            continue;
+                        }
+                    };
+
+                    let io = TokioIo::new(stream);
+                    let conn = {
+                        let api = api.clone();
+                        server.serve_connection(io, service_fn(move |request| {
+                            api_router(request, api.clone())
+                        }))
+                    };
+
+                    let graceful_fut = graceful.watch(conn);
+                    tokio::spawn(async move {
+                        if let Err(err) = graceful_fut.await {
+                            warn!("API service error: {err}");
+                        }
+                    });
+                }
+
+                _ = shutdown_recv.recv() => {
+                    drop(listener);
+                    break;
+                }
+            }
         }
+
         info!("Shutting down API service");
+        tokio::select! {
+            () = graceful.shutdown() => (),
+            () = tokio::time::sleep(Duration::from_secs(10)) => {
+                warn!("API service did not shut down gracefully after 10 seconds; terminating service.");
+            }
+        }
     });
 }
 
