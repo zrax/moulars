@@ -43,7 +43,7 @@ impl UnifiedTime {
         Ok(Self {
             // Warning: This will fail in Feb 2106
             secs: u32::try_from(now.as_secs())
-                    .with_context(|| format!("Can't encode timestamp {:?}", now))?,
+                    .with_context(|| format!("Can't encode timestamp {now:?}"))?,
             micros: now.subsec_micros()
         })
     }

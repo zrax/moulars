@@ -189,16 +189,13 @@ impl VaultServer {
         -> NetResult<T>
     {
         if let Err(err) = self.msg_send.send(msg).await {
-            panic!("Failed to send message to vault: {}", err);
+            panic!("Failed to send message to vault: {err}");
         }
 
-        match recv.await {
-            Ok(response) => response,
-            Err(err) => {
-                warn!("Failed to recieve response from Vault: {}", err);
-                Err(NetResultCode::NetInternalError)
-            }
-        }
+        recv.await.unwrap_or_else(|err| {
+            warn!("Failed to recieve response from Vault: {err}");
+            Err(NetResultCode::NetInternalError)
+        })
     }
 
     pub async fn get_account(&self, account_name: &str) -> NetResult<Option<AccountInfo>> {

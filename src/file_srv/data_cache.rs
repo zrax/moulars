@@ -87,8 +87,8 @@ pub fn cache_clients(data_root: &Path, python_exe: Option<&Path>) -> Result<()> 
         if src_dir.exists() && src_dir.is_dir() {
             scan_dir(&src_dir, &mut game_data_files)?;
         } else {
-            warn!("{} does not exist.  Skipping {} files for manifests.",
-                  src_dir.display(), data_dir);
+            warn!("{} does not exist.  Skipping {data_dir} files for manifests.",
+                  src_dir.display());
         }
     }
 
@@ -97,7 +97,7 @@ pub fn cache_clients(data_root: &Path, python_exe: Option<&Path>) -> Result<()> 
         let python_pak = python_dir.join("Python.pak");
         if let Some(python_exe) = python_exe {
             if let Err(err) = process_python(&python_dir, python_exe, &python_pak, &ntd_key) {
-                warn!("Failed to build Python.pak: {}", err);
+                warn!("Failed to build Python.pak: {err}");
             }
         } else {
             warn!("No Python compiler specified.  Skipping Python files.");
@@ -143,7 +143,7 @@ pub fn cache_clients(data_root: &Path, python_exe: Option<&Path>) -> Result<()> 
         let mut has_relevance = false;
         for page in age_info.pages() {
             let page_path = data_root.join("dat")
-                    .join(format!("{}_District_{}.prp", age_name, page.name()));
+                    .join(format!("{age_name}_District_{}.prp", page.name()));
             if page_path.exists() {
                 expected_files.insert(page_path.clone());
 
@@ -176,7 +176,7 @@ pub fn cache_clients(data_root: &Path, python_exe: Option<&Path>) -> Result<()> 
             expected_files.insert(csv_path);
         }
 
-        let age_mfs_path = data_root.join(format!("{}.mfs_cache", age_name));
+        let age_mfs_path = data_root.join(format!("{age_name}.mfs_cache"));
         let mut age_mfs = load_or_create_manifest(&age_mfs_path)?;
         for file in age_mfs.files_mut() {
             *file = update_cache_file(&mut data_cache, file, data_root).clone();
@@ -215,8 +215,8 @@ pub fn cache_clients(data_root: &Path, python_exe: Option<&Path>) -> Result<()> 
     for (build, suffix, client_data_dir) in client_types {
         let src_dir = data_root.join(client_data_dir);
         if !src_dir.exists() || !src_dir.is_dir() {
-            warn!("{} does not exist.  Skipping manifest for {}{}",
-                  client_data_dir.display(), build, suffix);
+            warn!("{} does not exist.  Skipping manifest for {build}{suffix}",
+                  client_data_dir.display());
             continue;
         }
 
@@ -224,12 +224,9 @@ pub fn cache_clients(data_root: &Path, python_exe: Option<&Path>) -> Result<()> 
         let mut client_files = game_data_files.clone();
         scan_dir(&src_dir, &mut client_files)?;
 
-        let patcher_mfs_path = data_root.join(
-                format!("{}Patcher{}.mfs_cache", build, suffix));
-        let thin_mfs_path = data_root.join(
-                format!("Thin{}{}.mfs_cache", build, suffix));
-        let full_mfs_path = data_root.join(
-                format!("{}{}.mfs_cache", build, suffix));
+        let patcher_mfs_path = data_root.join(format!("{build}Patcher{suffix}.mfs_cache"));
+        let thin_mfs_path = data_root.join(format!("Thin{build}{suffix}.mfs_cache"));
+        let full_mfs_path = data_root.join(format!("{build}{suffix}.mfs_cache"));
 
         let mut patcher_mfs = load_or_create_manifest(&patcher_mfs_path)?;
         let mut thin_mfs = load_or_create_manifest(&thin_mfs_path)?;

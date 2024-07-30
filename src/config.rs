@@ -67,11 +67,11 @@ pub struct ServerConfig {
 
 fn decode_crypt_key(value: &str) -> Result<BigUint> {
     let bytes = BASE64_STANDARD.decode(value)
-            .with_context(|| format!("Could not parse Base64 key '{}'", value))?;
+            .with_context(|| format!("Could not parse Base64 key '{value}'"))?;
     if bytes.len() == 64 {
         Ok(BigUint::from_bytes_be(&bytes))
     } else {
-        Err(anyhow!("Invalid key length for key '{}'", value))
+        Err(anyhow!("Invalid key length for key '{value}'"))
     }
 }
 

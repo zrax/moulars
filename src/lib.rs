@@ -16,7 +16,6 @@
 
 #![deny(clippy::all)]
 #![deny(clippy::pedantic)]
-#![allow(clippy::uninlined_format_args)]    // Added in Rust 1.66
 
 // TODO: Clean up some or all of these exceptions
 #![allow(clippy::if_not_else)]

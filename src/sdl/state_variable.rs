@@ -210,7 +210,7 @@ impl Variable {
                     }
                     VarValues::StateDesc(states)
                 } else {
-                    panic!("Unknown state descriptor '{}'", name);
+                    panic!("Unknown state descriptor '{name}'");
                 }
             }
         };

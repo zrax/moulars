@@ -16,7 +16,6 @@
 
 #![deny(clippy::all)]
 #![deny(clippy::pedantic)]
-#![allow(clippy::uninlined_format_args)]    // Added in Rust 1.66
 
 use std::ffi::OsStr;
 use std::io::{self, Write};
@@ -84,8 +83,8 @@ fn main() -> ExitCode {
             let key_x = key_g.to_biguint().unwrap().modpow(key_k, key_n);
             let bytes_n = key_n.to_bytes_be();
             let bytes_x = key_x.to_bytes_be();
-            println!("Server.{}.N \"{}\"", stype, BASE64_STANDARD.encode(bytes_n));
-            println!("Server.{}.X \"{}\"", stype, BASE64_STANDARD.encode(bytes_x));
+            println!("Server.{stype}.N \"{}\"", BASE64_STANDARD.encode(bytes_n));
+            println!("Server.{stype}.X \"{}\"", BASE64_STANDARD.encode(bytes_x));
         }
 
         return ExitCode::SUCCESS;
@@ -117,7 +116,7 @@ fn load_config() -> Result<ServerConfig, ExitCode> {
     let exe_path = match std::env::current_exe() {
         Ok(path) => path.parent().unwrap().to_owned(),
         Err(err) => {
-            error!("Failed to get executable path: {}", err);
+            error!("Failed to get executable path: {err}");
             return Err(ExitCode::FAILURE);
         }
     };
@@ -196,10 +195,10 @@ fn generate_keys() {
 
                 let stype_lower = stype.to_ascii_lowercase();
                 return (
-                    format!("{}.n = \"{}\"", stype_lower, BASE64_STANDARD.encode(&bytes_n)),
-                    format!("{}.k = \"{}\"", stype_lower, BASE64_STANDARD.encode(&bytes_k)),
-                    format!("Server.{}.N \"{}\"", stype, BASE64_STANDARD.encode(&bytes_n)),
-                    format!("Server.{}.X \"{}\"", stype, BASE64_STANDARD.encode(&bytes_x)),
+                    format!("{stype_lower}.n = \"{}\"", BASE64_STANDARD.encode(&bytes_n)),
+                    format!("{stype_lower}.k = \"{}\"", BASE64_STANDARD.encode(&bytes_k)),
+                    format!("Server.{stype}.N \"{}\"", BASE64_STANDARD.encode(&bytes_n)),
+                    format!("Server.{stype}.X \"{}\"", BASE64_STANDARD.encode(&bytes_x)),
                 );
             }
         }));
@@ -216,12 +215,12 @@ fn generate_keys() {
     println!("----------------------------");
     println!("[crypt_keys]");
     for line in server_lines {
-        println!("{}", line);
+        println!("{line}");
     }
     println!("\n----------------------------");
     println!("Client keys: (server.ini)");
     println!("----------------------------");
     for line in client_lines {
-        println!("{}", line);
+        println!("{line}");
     }
 }

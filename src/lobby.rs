@@ -90,7 +90,7 @@ fn connection_type_name(conn_type: u8) -> String {
         CONN_CLI_TO_FILE => "Cli2File".to_string(),
         CONN_CLI_TO_CSR => "Cli2Csr".to_string(),
         CONN_CLI_TO_GATE_KEEPER => "Cli2GateKeeper".to_string(),
-        _ => format!("Unknown ({})", conn_type)
+        _ => format!("Unknown ({conn_type})")
     }
 }
 
@@ -107,7 +107,7 @@ impl LobbyServer {
         tokio::spawn(async move {
             match tokio::signal::ctrl_c().await {
                 Ok(()) => (),
-                Err(err) => panic!("Failed to wait for Ctrl+C signal: {}", err),
+                Err(err) => panic!("Failed to wait for Ctrl+C signal: {err}"),
             }
             info!("Shutdown initiated by Ctrl+C");
             let _ = ctrl_c_send.send(());
