@@ -109,6 +109,7 @@ impl LobbyServer {
                 Ok(()) => (),
                 Err(err) => panic!("Failed to wait for Ctrl+C signal: {}", err),
             }
+            info!("Shutdown initiated by Ctrl+C");
             let _ = ctrl_c_send.send(());
         });
 
@@ -118,15 +119,12 @@ impl LobbyServer {
                                server_config.listen_address, err),
         };
 
-        let ntd_key = match server_config.get_ntd_key() {
-            Ok(key) => key,
-            Err(err) => {
-                // This is not a fatal error, because the SDL files can still
-                // be loaded successfully if they are not encrypted.
-                warn!("Failed to get encryption key: {}", err);
-                [0; 4]
-            }
-        };
+        let ntd_key = server_config.get_ntd_key().unwrap_or_else(|err| {
+            // This is not a fatal error, because the SDL files can still
+            // be loaded successfully if they are not encrypted.
+            warn!("Failed to get encryption key: {}", err);
+            [0; 4]
+        });
 
         let sdl_path = server_config.data_root.join("SDL");
         let sdl_db = match DescriptorDb::from_dir(&sdl_path, &ntd_key) {

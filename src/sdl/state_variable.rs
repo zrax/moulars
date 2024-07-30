@@ -333,9 +333,8 @@ impl Variable {
 
         match self.descriptor.var_type() {
             VarType::StateDesc(name) => {
-                let statedesc = match db.get_latest(name) {
-                    Some(statedesc) => statedesc,
-                    None => return Err(anyhow!("No such descriptor {}", name)),
+                let Some(statedesc) = db.get_latest(name) else {
+                    return Err(anyhow!("No such descriptor {name}"));
                 };
                 self.read_statedesc(stream, db, &statedesc)?;
             }
@@ -570,9 +569,8 @@ impl Variable {
     pub fn write_statedesc(&self, stream: &mut dyn Write) -> Result<()> {
         stream.write_u8(0)?;    // Unused: SD Var read flags
 
-        let values = match &self.values {
-            VarValues::StateDesc(values) => values,
-            _ => unreachable!()
+        let VarValues::StateDesc(values) = &self.values else {
+            unreachable!()
         };
         let num_values = u32::try_from(values.len())
                 .map_err(|_| anyhow!("Too many values for stream: {}", values.len()))?;

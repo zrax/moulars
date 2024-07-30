@@ -788,9 +788,7 @@ impl AuthServerWorker {
     async fn player_create(&mut self, trans_id: u32, player_name: &str,
                            avatar_shape: &str) -> bool
     {
-        let account_id = if let Some(uuid) = self.account_id {
-            uuid
-        } else {
+        let Some(account_id) = self.account_id else {
             warn!("{} cannot create player: Not logged in", self.peer_addr().unwrap());
             return self.send_message(AuthToCli::player_create_error(trans_id,
                                         NetResultCode::NetAuthenticationFailed)).await;
@@ -832,9 +830,7 @@ impl AuthServerWorker {
     }
 
     async fn do_set_player(&mut self, trans_id: u32, player_id: u32) -> bool {
-        let account_id = if let Some(uuid) = self.account_id {
-            uuid
-        } else {
+        let Some(account_id) = self.account_id else {
             warn!("{} cannot set player: Not logged in", self.peer_addr().unwrap());
             return self.send_message(AuthToCli::AcctSetPlayerReply {
                 trans_id,

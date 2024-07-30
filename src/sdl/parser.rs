@@ -214,13 +214,9 @@ impl<S: BufRead> Parser<S> {
                     _ => return Err(anyhow!("Unexpected {:?} at {}", token, location))
                 }
                 Token::Char('}') => {
-                    let version = match opt_version {
-                        Some(version) => version,
-                        None => {
-                            return Err(anyhow!(
-                                "Missing version for state descriptor {} on line {}",
-                                name, start_line));
-                        }
+                    let Some(version) = opt_version else {
+                        return Err(anyhow!(
+                            "Missing version for state descriptor {name} on line {start_line}"));
                     };
                     return Ok(StateDescriptor::new(name, version, vars));
                 }

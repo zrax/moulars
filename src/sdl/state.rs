@@ -195,9 +195,7 @@ impl State {
     }
 
     pub fn upgrade(&self, db: &DescriptorDb) -> Option<Self> {
-        let new_desc = if let Some(desc) = db.get_latest(self.descriptor.name()) {
-            desc
-        } else {
+        let Some(new_desc) = db.get_latest(self.descriptor.name()) else {
             // This can't happen unless the descriptor db provided here is
             // different from the one we originally constructed this state with.
             panic!("Descriptor database is missing descriptors for {}",

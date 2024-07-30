@@ -212,7 +212,7 @@ pub fn cache_clients(data_root: &Path, python_exe: Option<&Path>) -> Result<()> 
         secure_preloader_mfs.write_cache(&secure_preloader_mfs_path)?;
     }
 
-    for (build, suffix, client_data_dir) in client_types.iter() {
+    for (build, suffix, client_data_dir) in client_types {
         let src_dir = data_root.join(client_data_dir);
         if !src_dir.exists() || !src_dir.is_dir() {
             warn!("{} does not exist.  Skipping manifest for {}{}",

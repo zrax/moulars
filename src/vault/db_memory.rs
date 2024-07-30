@@ -174,9 +174,8 @@ impl DbInterface for DbMemory {
     fn update_node(&self, node: VaultNode) -> NetResult<Vec<u32>> {
         let mut db = self.db.borrow_mut();
         let node_id = node.node_id();
-        let old_node = match db.vault.get(&node_id) {
-            Some(node) => node,
-            None => return Err(NetResultCode::NetVaultNodeNotFound),
+        let Some(old_node) = db.vault.get(&node_id) else {
+            return Err(NetResultCode::NetVaultNodeNotFound);
         };
         let new_node = update_node(old_node, &node);
         db.vault.insert(node_id, new_node);
