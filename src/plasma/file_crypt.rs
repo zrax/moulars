@@ -66,7 +66,7 @@ impl EncryptionType {
         Self::from_stream(&mut file)
     }
 
-    pub fn write_magic(self, stream: &mut dyn Write) -> io::Result<()> {
+    fn write_magic(self, stream: &mut dyn Write) -> io::Result<()> {
         match self {
             EncryptionType::Unencrypted => (),
             EncryptionType::TEA => {
@@ -248,19 +248,18 @@ impl<S: Write + Seek> Write for EncryptedWriter<S> {
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        if self.encryption_type == EncryptionType::Unencrypted {
-            return self.base.flush();
+        if self.encryption_type != EncryptionType::Unencrypted {
+            let sync_pos = self.base.stream_position()?;
+            self.write_block()?;
+            let base_size = u32::try_from(self.base_size)
+                    .map_err(|_| io::Error::new(
+                            io::ErrorKind::Other,
+                            "Stream too large for encrypted header"))?;
+            self.base.seek(SeekFrom::Start(self.size_pos))?;
+            self.base.write_u32::<LittleEndian>(base_size)?;
+            self.base.seek(SeekFrom::Start(sync_pos))?;
         }
-        let sync_pos = self.base.stream_position()?;
-        self.write_block()?;
-        self.base.seek(SeekFrom::Start(self.size_pos))?;
-        let base_size = u32::try_from(self.base_size)
-                .map_err(|_| io::Error::new(
-                        io::ErrorKind::Other,
-                        "Stream too large for encrypted header"))?;
-        self.base.write_u32::<LittleEndian>(base_size)?;
-        self.base.seek(SeekFrom::Start(sync_pos))?;
-        Ok(())
+        self.base.flush()
     }
 }
 
