@@ -20,7 +20,7 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
-use base64::prelude::*;
+use data_encoding::BASE64;
 use http_body_util::Full;
 use hyper::body::{Bytes, Incoming};
 use hyper::header::CONTENT_TYPE;
@@ -116,8 +116,8 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
                 let key_x = key_g.to_biguint().unwrap().modpow(key_k, key_n);
                 let bytes_n = key_n.to_bytes_be();
                 let bytes_x = key_x.to_bytes_be();
-                let _ = writeln!(lines, "Server.{stype}.N \"{}\"", BASE64_STANDARD.encode(bytes_n));
-                let _ = writeln!(lines, "Server.{stype}.X \"{}\"", BASE64_STANDARD.encode(bytes_x));
+                let _ = writeln!(lines, "Server.{stype}.N \"{}\"", BASE64.encode(&bytes_n));
+                let _ = writeln!(lines, "Server.{stype}.X \"{}\"", BASE64.encode(&bytes_x));
             }
             Response::builder().body(Full::from(lines)).unwrap()
         }

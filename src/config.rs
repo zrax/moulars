@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use anyhow::{anyhow, Context, Result};
-use base64::prelude::*;
+use data_encoding::BASE64;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use num_bigint::BigUint;
 use rand::Rng;
@@ -66,7 +66,7 @@ pub struct ServerConfig {
 }
 
 fn decode_crypt_key(value: &str) -> Result<BigUint> {
-    let bytes = BASE64_STANDARD.decode(value)
+    let bytes = BASE64.decode(value.as_bytes())
             .with_context(|| format!("Could not parse Base64 key '{value}'"))?;
     if bytes.len() == 64 {
         Ok(BigUint::from_bytes_be(&bytes))
