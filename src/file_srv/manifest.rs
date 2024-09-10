@@ -22,6 +22,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use data_encoding::{HEXLOWER, HEXLOWER_PERMISSIVE};
 use flate2::write::GzEncoder;
 use log::debug;
 use md5::{Md5, Digest};
@@ -183,7 +184,7 @@ impl FileInfo {
 
     pub fn as_ds_mfs(&self) -> String {
         format!("{},{},{},{},{},{},{}", self.client_path, self.download_path,
-                hex::encode(self.file_hash), hex::encode(self.download_hash),
+                HEXLOWER.encode(&self.file_hash), HEXLOWER.encode(&self.download_hash),
                 self.file_size, self.download_size, self.flags)
     }
 }
@@ -211,10 +212,9 @@ pub fn read_utf16z_md5_hash<S>(stream: &mut S) -> Result<[u8; 16]>
     if stream.read_u16::<LittleEndian>()? != 0 {
         return Err(anyhow!("MD5 hash was not nul-terminated"));
     }
-    let mut result = [0; 16];
-    hex::decode_to_slice(String::from_utf16_lossy(&buffer), &mut result)
+    let result = HEXLOWER_PERMISSIVE.decode(String::from_utf16_lossy(&buffer).as_bytes())
             .map_err(|err| anyhow!("Invalid hex literal: {}", err))?;
-    Ok(result)
+    Ok(result.try_into().map_err(|_| anyhow!("Invalid MD5 hash length"))?)
 }
 
 // Yes, it's as dumb as it sounds...
@@ -259,7 +259,7 @@ pub fn write_utf16z_md5_hash(stream: &mut dyn Write, value: &[u8; 16])
     -> io::Result<()>
 {
     // Convert binary hash to a UTF-16 hex representation
-    for ch in hex::encode(value).encode_utf16() {
+    for ch in HEXLOWER.encode(value).encode_utf16() {
         stream.write_u16::<LittleEndian>(ch)?;
     }
     stream.write_u16::<LittleEndian>(0)

@@ -18,6 +18,7 @@ use std::io::Write;
 use std::mem::size_of;
 
 use anyhow::Result;
+use data_encoding::HEXLOWER;
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 use crate::plasma::StreamWrite;
@@ -42,7 +43,7 @@ macro_rules! sha_common {
 
 impl ShaDigest {
     pub fn as_hex(&self) -> String {
-        hex::encode(self.data)
+        HEXLOWER.encode(&self.data)
     }
 
     pub async fn read<S>(stream: &mut S) -> Result<Self>

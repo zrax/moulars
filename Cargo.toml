@@ -28,7 +28,6 @@ data-encoding = "2.0"
 env_logger = "0.10"
 flate2 = "1.0"
 form_urlencoded = "1.1"
-hex = "0.4.3"
 http-body-util = "0.1"
 hyper = { version = "1.0", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["http1", "server", "server-graceful", "tokio"] }

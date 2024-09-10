@@ -21,6 +21,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use data_encoding::HEXLOWER;
 use paste::paste;
 use uuid::Uuid;
 
@@ -457,8 +458,8 @@ impl Debug for VaultNode {
         debug_field!(fmt, fields, istring64_2, self.istring64_2);
         debug_field!(fmt, fields, text_1, self.text_1);
         debug_field!(fmt, fields, text_2, self.text_2);
-        debug_field!(fmt, fields, blob_1, hex::encode(&self.blob_1));
-        debug_field!(fmt, fields, blob_2, hex::encode(&self.blob_2));
+        debug_field!(fmt, fields, blob_1, HEXLOWER.encode(&self.blob_1));
+        debug_field!(fmt, fields, blob_2, HEXLOWER.encode(&self.blob_2));
         write!(fmt, " }}")
     }
 }
