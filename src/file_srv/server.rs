@@ -71,7 +71,7 @@ async fn init_client(mut sock: TcpStream) -> Result<BufReader<TcpStream>> {
 }
 
 fn fetch_manifest(manifest_name: &str, data_path: &Path) -> Option<Manifest> {
-    if manifest_name.contains(|ch| ch == '/' || ch == '\\' || ch == ':' || ch == '.') {
+    if manifest_name.contains(['/', '\\', ':', '.']) {
         // Reject anything that looks like a path
         return None;
     }

@@ -214,7 +214,7 @@ pub fn read_utf16z_md5_hash<S>(stream: &mut S) -> Result<[u8; 16]>
     }
     let result = HEXLOWER_PERMISSIVE.decode(String::from_utf16_lossy(&buffer).as_bytes())
             .map_err(|err| anyhow!("Invalid hex literal: {}", err))?;
-    Ok(result.try_into().map_err(|_| anyhow!("Invalid MD5 hash length"))?)
+    result.try_into().map_err(|_| anyhow!("Invalid MD5 hash length"))
 }
 
 // Yes, it's as dumb as it sounds...

@@ -30,6 +30,7 @@ use std::process::ExitCode;
 use anyhow::{anyhow, Result};
 use clap::{Command, Arg, ArgAction};
 use clap::builder::PathBufValueParser;
+use data_encoding::HEXLOWER_PERMISSIVE;
 use log::{error, warn};
 
 use moulars::file_srv::Manifest;
@@ -138,9 +139,9 @@ fn main() -> ExitCode {
 
 fn get_key(key_opt: Option<&str>) -> Result<[u32; 4]> {
     if let Some(key_str) = key_opt {
-        let mut buffer = [0; 16];
-        hex::decode_to_slice(key_str, &mut buffer)
-                .map_err(|err| anyhow!("Invalid key value: {}", err))?;
+        let buffer: [u8; 16] = HEXLOWER_PERMISSIVE.decode(key_str.as_bytes())
+                .map_err(|err| anyhow!("Invalid hex literal: {}", err))?
+                .try_into().map_err(|_| anyhow!("Invalid key length"))?;
         let mut key = [0; 4];
         for (src, dest) in buffer.chunks_exact(size_of::<u32>()).zip(key.iter_mut()) {
             *dest = u32::from_be_bytes(src.try_into().unwrap());
