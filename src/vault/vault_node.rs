@@ -687,29 +687,33 @@ impl StreamWrite for VaultNode {
     }
 }
 
-pub struct VaultPlayerNode {
-    node: Arc<VaultNode>
-}
-impl VaultPlayerNode {
-    pub fn node_id(&self) -> u32 { self.node.node_id() }
-    pub fn player_name_ci(&self) -> &String { self.node.istring64_1() }
-    pub fn avatar_shape(&self) -> &String { self.node.string64_1() }
-    pub fn disabled(&self) -> i32 { self.node.int32_1() }
-    pub fn explorer(&self) -> i32 { self.node.int32_2() }
-    pub fn online_time(&self) -> u32 { self.node.uint32_1() }
-    pub fn account_id(&self) -> &Uuid { self.node.uuid_1() }
-    pub fn invite_uuid(&self) -> &Uuid { self.node.uuid_2() }
+macro_rules! vnode_access {
+    ($struct_name:ident { $($name:ident: $type:ty => $field:ident),* $(,)? }) => {
+        pub struct $struct_name {
+            node: Arc<VaultNode>
+        }
+        impl $struct_name {
+            pub fn node_id(&self) -> u32 { self.node.node_id() }
+            $(pub fn $name(&self) -> $type { self.node.$field() })*
+        }
+    };
 }
 
-pub struct VaultPlayerInfoNode {
-    node: Arc<VaultNode>
-}
-impl VaultPlayerInfoNode {
-    pub fn node_id(&self) -> u32 { self.node.node_id() }
-    pub fn player_id(&self) -> u32 { self.node.uint32_1() }
-    pub fn player_name_ci(&self) -> &String { self.node.istring64_1() }
-    pub fn age_instance_name(&self) -> &String { self.node.string64_1() }
-    pub fn age_instance_uuid(&self) -> &Uuid { self.node.uuid_1() }
-    pub fn online(&self) -> i32 { self.node.int32_1() }
-    pub fn ccr_level(&self) -> i32 { self.node.int32_2() }
-}
+vnode_access!(VaultPlayerNode {
+    player_name_ci: &String => istring64_1,
+    avatar_shape: &String => string64_1,
+    disabled: i32 => int32_1,
+    explorer: i32 => int32_2,
+    online_time: u32 => uint32_1,
+    account_id: &Uuid => uuid_1,
+    invite_uuid: &Uuid => uuid_2,
+});
+
+vnode_access!(VaultPlayerInfoNode {
+    player_id: u32 => uint32_1,
+    player_name_ci: &String => istring64_1,
+    age_instance_name: &String => string64_1,
+    age_instance_uuid: &Uuid => uuid_1,
+    online: i32 => int32_1,
+    ccr_level: i32 => int32_2
+});
