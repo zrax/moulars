@@ -19,14 +19,14 @@ use std::io::{BufRead, Write};
 use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use crate::plasma::{StreamRead, StreamWrite};
+use crate::plasma::{Creatable, StreamRead, StreamWrite};
 use crate::plasma::Factory;
 use crate::plasma::creatable::derive_creatable;
-use super::{Message, MessageInterface};
+use super::{Message, NetSafety};
 
 pub struct MessageWithCallbacks {
     base: Message,
-    callbacks: Vec<Box<dyn MessageInterface>>,
+    callbacks: Vec<Box<dyn Creatable>>,
 }
 
 derive_creatable!(MessageWithCallbacks, Message);
@@ -39,7 +39,8 @@ impl StreamRead for MessageWithCallbacks {
         let num_callbacks = stream.read_u32::<LittleEndian>()?;
         let mut callbacks = Vec::with_capacity(num_callbacks as usize);
         for _ in 0..num_callbacks {
-            if let Some(msg) = Factory::read_message(stream)? {
+            if let Some(msg) = Factory::read_creatable(stream)? {
+                // TODO: Check that these actually implement the Message interface
                 callbacks.push(msg);
             } else {
                 return Err(anyhow!("Unexpected null message in callbacks"));
@@ -64,10 +65,10 @@ impl StreamWrite for MessageWithCallbacks {
     }
 }
 
-impl MessageInterface for MessageWithCallbacks {
+impl NetSafety for MessageWithCallbacks {
     fn make_net_safe(&mut self) -> bool {
         for msg in &mut self.callbacks {
-            if !msg.make_net_safe() {
+            if !msg.net_safety_mut().map_or(true, NetSafety::make_net_safe) {
                 return false;
             }
         }

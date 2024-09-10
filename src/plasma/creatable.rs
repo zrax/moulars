@@ -19,7 +19,7 @@ use std::fmt::{Debug, Formatter};
 use num_derive::FromPrimitive;
 
 use super::{StreamRead, StreamWrite};
-use super::messages::MessageInterface;
+use super::messages::NetSafety;
 
 pub trait Creatable: StreamRead + StreamWrite {
     fn class_id(&self) -> u16;
@@ -27,7 +27,7 @@ pub trait Creatable: StreamRead + StreamWrite {
         where Self: Sized;
 
     fn as_creatable(&self) -> &dyn Creatable;
-    fn as_message(self: Box<Self>) -> Option<Box<dyn MessageInterface>> { None }
+    fn net_safety_mut(&mut self) -> Option<&mut dyn NetSafety> { None }
 }
 
 impl Debug for dyn Creatable {
@@ -120,7 +120,7 @@ macro_rules! derive_creatable {
     };
     ($name:ident, Message) => {
         derive_creatable! { $name @lines[
-            fn as_message(self: Box<Self>) -> Option<Box<dyn MessageInterface>> { Some(self) }
+            fn net_safety_mut(&mut self) -> Option<&mut dyn NetSafety> { Some(self) }
         ] }
     };
     ($name:ident @lines[ $($lines:tt)* ]) => {

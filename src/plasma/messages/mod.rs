@@ -15,7 +15,7 @@
  */
 
 mod message;
-pub use message::{Message, MessageInterface};
+pub use message::{Message, NetSafety};
 
 mod message_with_callbacks;
 pub use message_with_callbacks::MessageWithCallbacks;

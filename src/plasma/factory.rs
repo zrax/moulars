@@ -22,7 +22,6 @@ use num_traits::FromPrimitive;
 
 use crate::plasma::StreamRead;
 use super::creatable::{Creatable, ClassID};
-use super::messages::MessageInterface;
 
 // Just used for namespace familiarity...
 pub struct Factory { }
@@ -53,21 +52,6 @@ impl Factory {
                 Ok(Some(Box::new(CreatableGenericValue::stream_read(stream)?))),
             Some(ClassID::Nil) => Ok(None),
             None => Err(anyhow!("Unknown creatable type 0x{:04x}", class_id)),
-        }
-    }
-
-    pub fn read_message<S>(stream: &mut S) -> Result<Option<Box<dyn MessageInterface>>>
-        where S: BufRead
-    {
-        if let Some(creatable) = Self::read_creatable(stream)? {
-            let msg_type = creatable.class_id();
-            if let Some(msg) = creatable.as_message() {
-                Ok(Some(msg))
-            } else {
-                Err(anyhow!("Unexpected creatable type 0x{:04x} (expected Message)", msg_type))
-            }
-        } else {
-            Ok(None)
         }
     }
 

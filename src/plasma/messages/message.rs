@@ -19,7 +19,7 @@ use std::io::{BufRead, Write};
 use anyhow::{Context, Result};
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 
-use crate::plasma::{Key, Creatable, StreamRead, StreamWrite};
+use crate::plasma::{Key, StreamRead, StreamWrite};
 
 pub struct Message {
     sender: Key,
@@ -86,7 +86,7 @@ impl StreamWrite for Message {
     }
 }
 
-pub trait MessageInterface: Creatable {
+pub trait NetSafety {
     // Call this to make a Message safe for transmission to other clients
     // over the network.  If it cannot be made safe, or should not be
     // transmitted, this should return `false` so the server will reject it.
