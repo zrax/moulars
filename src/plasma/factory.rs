@@ -24,7 +24,7 @@ use crate::plasma::StreamRead;
 use super::creatable::{Creatable, ClassID};
 
 // Just used for namespace familiarity...
-pub struct Factory { }
+pub struct Factory;
 
 impl Factory {
     pub fn read_creatable<S>(stream: &mut S) -> Result<Option<Box<dyn Creatable>>>
@@ -46,6 +46,8 @@ impl Factory {
                 Err(anyhow!("SoundBuffer only supported for Manifest generation")),
             Some(ClassID::RelevanceRegion) =>
                 Err(anyhow!("RelevanceRegion only supported for Manifest generation")),
+            Some(ClassID::Message) =>
+                Err(anyhow!("Message is an abstract base class")),
             Some(ClassID::MessageWithCallbacks) =>
                 Ok(Some(Box::new(MessageWithCallbacks::stream_read(stream)?))),
             Some(ClassID::CreatableGenericValue) =>

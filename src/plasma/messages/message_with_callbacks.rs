@@ -21,7 +21,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::plasma::{Creatable, StreamRead, StreamWrite};
 use crate::plasma::Factory;
-use crate::plasma::creatable::derive_creatable;
+use crate::plasma::creatable::{derive_creatable, ClassID};
 use super::{Message, NetSafety};
 
 pub struct MessageWithCallbacks {
@@ -29,7 +29,7 @@ pub struct MessageWithCallbacks {
     callbacks: Vec<Box<dyn Creatable>>,
 }
 
-derive_creatable!(MessageWithCallbacks, Message);
+derive_creatable!(MessageWithCallbacks, NetSafety, (Message));
 
 impl StreamRead for MessageWithCallbacks {
     fn stream_read<S>(stream: &mut S) -> Result<Self>
@@ -40,7 +40,7 @@ impl StreamRead for MessageWithCallbacks {
         let mut callbacks = Vec::with_capacity(num_callbacks as usize);
         for _ in 0..num_callbacks {
             if let Some(msg) = Factory::read_creatable(stream)? {
-                // TODO: Check that these actually implement the Message interface
+                msg.check_interface(ClassID::Message)?;
                 callbacks.push(msg);
             } else {
                 return Err(anyhow!("Unexpected null message in callbacks"));
