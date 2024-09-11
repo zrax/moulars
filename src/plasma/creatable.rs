@@ -87,7 +87,7 @@ pub enum ClassID {
     //ParticleKillMsg = 0x0334,
     //AvatarInputStateMsg = 0x0347,
     //AgeInfoStruct = 0x0348,
-    //LinkingMgrMsg = 0x034B,
+    LinkingMgrMsg = 0x034B,
     //ClothingMsg = 0x0357,
     //AvBrainHuman = 0x035C,
     //AvBrainCritter = 0x035D,

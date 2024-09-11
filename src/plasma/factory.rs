@@ -39,7 +39,7 @@ impl Factory {
         where S: BufRead
     {
         use super::net_common::CreatableGenericValue;
-        use super::messages::{AnimCmdMsg, MessageWithCallbacks};
+        use super::messages::{AnimCmdMsg, LinkingMgrMsg, MessageWithCallbacks};
 
         match ClassID::from_u16(class_id) {
             Some(ClassID::SoundBuffer) =>
@@ -52,6 +52,8 @@ impl Factory {
                 Ok(Some(Box::new(AnimCmdMsg::stream_read(stream)?))),
             Some(ClassID::MessageWithCallbacks) =>
                 Ok(Some(Box::new(MessageWithCallbacks::stream_read(stream)?))),
+            Some(ClassID::LinkingMgrMsg) =>
+                Ok(Some(Box::new(LinkingMgrMsg::stream_read(stream)?))),
             Some(ClassID::CreatableGenericValue) =>
                 Ok(Some(Box::new(CreatableGenericValue::stream_read(stream)?))),
             Some(ClassID::Nil) => Ok(None),

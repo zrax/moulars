@@ -20,5 +20,8 @@ pub use message::{Message, NetSafety};
 mod anim_cmd_msg;
 pub use anim_cmd_msg::AnimCmdMsg;
 
+mod linking_mgr_msg;
+pub use linking_mgr_msg::LinkingMgrMsg;
+
 mod message_with_callbacks;
 pub use message_with_callbacks::MessageWithCallbacks;
