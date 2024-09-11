@@ -39,7 +39,7 @@ impl Factory {
         where S: BufRead
     {
         use super::net_common::CreatableGenericValue;
-        use super::messages::MessageWithCallbacks;
+        use super::messages::{AnimCmdMsg, MessageWithCallbacks};
 
         match ClassID::from_u16(class_id) {
             Some(ClassID::SoundBuffer) =>
@@ -48,6 +48,8 @@ impl Factory {
                 Err(anyhow!("RelevanceRegion only supported for Manifest generation")),
             Some(ClassID::Message) =>
                 Err(anyhow!("Message is an abstract base class")),
+            Some(ClassID::AnimCmdMsg) =>
+                Ok(Some(Box::new(AnimCmdMsg::stream_read(stream)?))),
             Some(ClassID::MessageWithCallbacks) =>
                 Ok(Some(Box::new(MessageWithCallbacks::stream_read(stream)?))),
             Some(ClassID::CreatableGenericValue) =>

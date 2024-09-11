@@ -48,13 +48,13 @@ impl Debug for dyn Creatable {
 }
 
 #[repr(u16)]
-#[derive(FromPrimitive, Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(FromPrimitive, Debug, Copy, Clone)]
 pub enum ClassID {
     SoundBuffer = 0x0029,
     //CoopCoordinator = 0x011B,
     RelevanceRegion = 0x011E,
     Message = 0x0202,
-    //AnimCmdMsg = 0x0206,
+    AnimCmdMsg = 0x0206,
     //InputEventMsg = 0x020B,
     //ControlEventMsg = 0x0210,
     //NetMsgPagingRoom = 0x0218,
@@ -131,16 +131,16 @@ macro_rules! derive_creatable {
     ($name:ident, ($($have_ifc:ident),* $(,)?)) => {
         derive_creatable! { $name @lines[
             fn have_interface(&self, class_id: $crate::plasma::creatable::ClassID) -> bool {
-                $crate::plasma::creatable::ClassID::$name == class_id
-                    $(|| $crate::plasma::creatable::ClassID::$have_ifc == class_id)*
+                matches!(class_id, $crate::plasma::creatable::ClassID::$name
+                                   $(| $crate::plasma::creatable::ClassID::$have_ifc)*)
             }
         ] }
     };
     ($name:ident, NetSafety, ($($have_ifc:ident),+ $(,)?)) => {
         derive_creatable! { $name @lines[
             fn have_interface(&self, class_id: $crate::plasma::creatable::ClassID) -> bool {
-                $crate::plasma::creatable::ClassID::$name == class_id
-                    $(|| $crate::plasma::creatable::ClassID::$have_ifc == class_id)*
+                matches!(class_id, $crate::plasma::creatable::ClassID::$name
+                                   $(| $crate::plasma::creatable::ClassID::$have_ifc)*)
             }
             fn net_safety_mut(&mut self) -> Option<&mut dyn NetSafety> { Some(self) }
         ] }
