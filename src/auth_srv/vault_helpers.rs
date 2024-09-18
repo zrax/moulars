@@ -19,68 +19,72 @@ use uuid::Uuid;
 
 use crate::netcli::{NetResult, NetResultCode};
 use crate::sdl;
-use crate::vault::{VaultServer, VaultNode, StandardNode, PlayerInfo, GameServer};
+use crate::vault::{
+    VaultServer, VaultPlayerInfoNode, VaultAgeNode, VaultFolderNode,
+    VaultSdlNode, VaultAgeLinkNode, VaultPlayerInfoListNode, VaultAgeInfoNode,
+    VaultAgeInfoListNode, StandardNode, PlayerInfo, GameServer
+};
 
 pub async fn create_player_nodes(account_id: &Uuid, player: &PlayerInfo,
                                  vault: &VaultServer) -> NetResult<()>
 {
-    let node = VaultNode::new_player_info(account_id, player.player_id, &player.player_name);
+    let node = VaultPlayerInfoNode::new(account_id, player.player_id, &player.player_name);
     let player_info = vault.create_node(node).await?;
 
-    let node = VaultNode::new_player_info_list(account_id, player.player_id,
-                                               StandardNode::BuddyListFolder);
+    let node = VaultPlayerInfoListNode::new(account_id, player.player_id,
+                                            StandardNode::BuddyListFolder);
     let buddy_list = vault.create_node(node).await?;
 
-    let node = VaultNode::new_player_info_list(account_id, player.player_id,
-                                               StandardNode::IgnoreListFolder);
+    let node = VaultPlayerInfoListNode::new(account_id, player.player_id,
+                                            StandardNode::IgnoreListFolder);
     let ignore_list = vault.create_node(node).await?;
 
-    let node = VaultNode::new_folder(account_id, player.player_id,
-                                     StandardNode::PlayerInviteFolder);
+    let node = VaultFolderNode::new(account_id, player.player_id,
+                                    StandardNode::PlayerInviteFolder);
     let invite_folder = vault.create_node(node).await?;
 
-    let node = VaultNode::new_age_info_list(account_id, player.player_id,
-                                            StandardNode::AgesIOwnFolder);
+    let node = VaultAgeInfoListNode::new(account_id, player.player_id,
+                                         StandardNode::AgesIOwnFolder);
     let owned_ages = vault.create_node(node).await?;
 
-    let node = VaultNode::new_folder(account_id, player.player_id,
-                                     StandardNode::AgeJournalsFolder);
+    let node = VaultFolderNode::new(account_id, player.player_id,
+                                    StandardNode::AgeJournalsFolder);
     let journals_folder = vault.create_node(node).await?;
 
-    let node = VaultNode::new_folder(account_id, player.player_id,
-                                     StandardNode::ChronicleFolder);
+    let node = VaultFolderNode::new(account_id, player.player_id,
+                                    StandardNode::ChronicleFolder);
     let chronicle_folder = vault.create_node(node).await?;
 
-    let node = VaultNode::new_age_info_list(account_id, player.player_id,
-                                            StandardNode::AgesICanVisitFolder);
+    let node = VaultAgeInfoListNode::new(account_id, player.player_id,
+                                         StandardNode::AgesICanVisitFolder);
     let visit_ages = vault.create_node(node).await?;
 
-    let node = VaultNode::new_folder(account_id, player.player_id,
-                                     StandardNode::AvatarOutfitFolder);
+    let node = VaultFolderNode::new(account_id, player.player_id,
+                                    StandardNode::AvatarOutfitFolder);
     let outfit_folder = vault.create_node(node).await?;
 
-    let node = VaultNode::new_folder(account_id, player.player_id,
-                                     StandardNode::AvatarClosetFolder);
+    let node = VaultFolderNode::new(account_id, player.player_id,
+                                    StandardNode::AvatarClosetFolder);
     let closet_folder = vault.create_node(node).await?;
 
-    let node = VaultNode::new_folder(account_id, player.player_id,
-                                     StandardNode::InboxFolder);
+    let node = VaultFolderNode::new(account_id, player.player_id,
+                                    StandardNode::InboxFolder);
     let inbox = vault.create_node(node).await?;
 
-    let node = VaultNode::new_player_info_list(account_id, player.player_id,
-                                               StandardNode::PeopleIKnowAboutFolder);
+    let node = VaultPlayerInfoListNode::new(account_id, player.player_id,
+                                            StandardNode::PeopleIKnowAboutFolder);
     let people_list = vault.create_node(node).await?;
 
-    let node = VaultNode::new_age_link(account_id, player.player_id,
-                                       "Default:LinkInPointDefault:;");
+    let node = VaultAgeLinkNode::new(account_id, player.player_id,
+                                     b"Default:LinkInPointDefault:;");
     let relto_link = vault.create_node(node).await?;
 
-    let node = VaultNode::new_age_link(account_id, player.player_id,
-                                       "Default:LinkInPointDefault:;");
+    let node = VaultAgeLinkNode::new(account_id, player.player_id,
+                                     b"Default:LinkInPointDefault:;");
     let hood_link = vault.create_node(node).await?;
 
-    let node = VaultNode::new_age_link(account_id, player.player_id,
-                                       "Ferry Terminal:LinkInPointFerry:;");
+    let node = VaultAgeLinkNode::new(account_id, player.player_id,
+                                     b"Ferry Terminal:LinkInPointFerry:;");
     let city_link = vault.create_node(node).await?;
 
     let user_name = format!("{}'s", player.player_name);
@@ -127,7 +131,7 @@ pub async fn find_age_instance(age_uuid: &Uuid, parent_uuid: &Uuid,
         sequence_number: i32, language: i32, vault: &VaultServer)
         -> NetResult<(u32, u32)>
 {
-    let template = VaultNode::age_lookup(Some(age_uuid));
+    let template = VaultAgeNode::new_lookup(Some(age_uuid));
     let age_id = match vault.find_nodes(template).await?.first() {
         Some(node_id) => *node_id,
         None => return create_age_nodes(age_uuid, parent_uuid, age_filename,
@@ -135,7 +139,7 @@ pub async fn find_age_instance(age_uuid: &Uuid, parent_uuid: &Uuid,
                             sequence_number, language, None, false, vault).await,
     };
 
-    let template = VaultNode::age_info_lookup(Some(age_uuid));
+    let template = VaultAgeInfoNode::new_lookup(Some(age_uuid));
     let age_info = if let Some(node_id) = vault.find_nodes(template).await?.first() {
         *node_id
     } else {
@@ -152,29 +156,29 @@ pub async fn create_age_nodes(age_uuid: &Uuid, parent_uuid: &Uuid,
         sequence_number: i32, language: i32, add_owner: Option<(u32, u32)>, public: bool,
         vault: &VaultServer) -> NetResult<(u32, u32)>
 {
-    let node = VaultNode::new_age(age_uuid, parent_uuid, age_filename);
+    let node = VaultAgeNode::new(age_uuid, parent_uuid, age_filename);
     let age_id = vault.create_node(node).await?;
 
-    let node = VaultNode::new_folder(age_uuid, age_id, StandardNode::ChronicleFolder);
+    let node = VaultFolderNode::new(age_uuid, age_id, StandardNode::ChronicleFolder);
     let chronicle_folder = vault.create_node(node).await?;
 
-    let node = VaultNode::new_player_info_list(age_uuid, age_id,
-                                               StandardNode::PeopleIKnowAboutFolder);
+    let node = VaultPlayerInfoListNode::new(age_uuid, age_id,
+                                            StandardNode::PeopleIKnowAboutFolder);
     let people_list = vault.create_node(node).await?;
 
-    let node = VaultNode::new_age_info_list(age_uuid, age_id, StandardNode::SubAgesFolder);
+    let node = VaultAgeInfoListNode::new(age_uuid, age_id, StandardNode::SubAgesFolder);
     let sub_ages = vault.create_node(node).await?;
 
-    let node = VaultNode::new_age_info(age_uuid, age_id, sequence_number, public,
-                                       language, parent_uuid, age_filename,
-                                       instance_name, user_name, description);
+    let node = VaultAgeInfoNode::new(age_uuid, age_id, sequence_number, public,
+                                     language, parent_uuid, age_filename,
+                                     instance_name, user_name, description);
     let age_info = vault.create_node(node).await?;
 
-    let node = VaultNode::new_folder(age_uuid, age_id, StandardNode::AgeDevicesFolder);
+    let node = VaultFolderNode::new(age_uuid, age_id, StandardNode::AgeDevicesFolder);
     let devices_folder = vault.create_node(node).await?;
 
-    let node = VaultNode::new_player_info_list(age_uuid, age_id,
-                                               StandardNode::CanVisitFolder);
+    let node = VaultPlayerInfoListNode::new(age_uuid, age_id,
+                                            StandardNode::CanVisitFolder);
     let can_visit = vault.create_node(node).await?;
 
     let sdl_blob = if let Some(descriptor) = vault.sdl_db().get_latest(age_filename) {
@@ -189,15 +193,15 @@ pub async fn create_age_nodes(age_uuid: &Uuid, parent_uuid: &Uuid,
         debug!("Could not find SDL descriptor for {}", age_filename);
         Vec::new()
     };
-    let node = VaultNode::new_sdl(age_uuid, age_id, age_filename, &sdl_blob);
+    let node = VaultSdlNode::new(age_uuid, age_id, age_filename, &sdl_blob);
     let sdl_node = vault.create_node(node).await?;
 
-    let node = VaultNode::new_player_info_list(age_uuid, age_id,
-                                               StandardNode::AgeOwnersFolder);
+    let node = VaultPlayerInfoListNode::new(age_uuid, age_id,
+                                            StandardNode::AgeOwnersFolder);
     let age_owners = vault.create_node(node).await?;
 
-    let node = VaultNode::new_age_info_list(age_uuid, age_id,
-                                            StandardNode::ChildAgesFolder);
+    let node = VaultAgeInfoListNode::new(age_uuid, age_id,
+                                         StandardNode::ChildAgesFolder);
     let child_ages = vault.create_node(node).await?;
 
     let system_node = vault.get_system_node().await?;

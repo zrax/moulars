@@ -29,3 +29,11 @@ pub use server::VaultServer;
 
 mod vault_node;
 pub use vault_node::{VaultNode, StandardNode};
+
+mod vnode_access;
+pub use vnode_access::{
+    VaultPlayerNode, VaultAgeNode, VaultFolderNode, VaultPlayerInfoNode,
+    VaultSystemNode, VaultImageNode, VaultTextNoteNode, VaultSdlNode,
+    VaultAgeLinkNode, VaultChronicleNode, VaultPlayerInfoListNode,
+    VaultAgeInfoNode, VaultAgeInfoListNode, VaultMarkerGameNode
+};

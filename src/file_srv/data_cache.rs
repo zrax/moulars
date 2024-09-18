@@ -427,7 +427,7 @@ fn compyle_dir(python_dir: &Path, subdir_limit: Option<&Vec<&OsStr>>,
 }
 
 fn get_python_system_lib(python_exe: &Path) -> Result<PathBuf> {
-    // This works by geting the path to os.py; this should work in any Python
+    // This works by getting the path to os.py; this should work in any Python
     // version, at least as far back as Python 2.0
     let output = Command::new(python_exe).args([OsStr::new("-c"),
                     OsStr::new("import os; print(os.path.dirname(os.__file__))")]).output()?;

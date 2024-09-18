@@ -26,6 +26,12 @@ use paste::paste;
 use uuid::Uuid;
 
 use crate::plasma::{StreamRead, StreamWrite};
+use super::vnode_access::{
+    VaultPlayerNode, VaultAgeNode, VaultFolderNode, VaultPlayerInfoNode,
+    VaultSystemNode, VaultImageNode, VaultTextNoteNode, VaultSdlNode,
+    VaultAgeLinkNode, VaultChronicleNode, VaultPlayerInfoListNode,
+    VaultAgeInfoNode, VaultAgeInfoListNode, VaultMarkerGameNode
+};
 
 #[repr(i32)]
 pub enum NodeType {
@@ -180,19 +186,6 @@ impl VaultNode {
     node_field!(blob_1, Vec<u8>);
     node_field!(blob_2, Vec<u8>);
 
-    pub fn new_player(account_id: &Uuid, player_name: &str, avatar_shape: &str,
-                      explorer: i32) -> Self
-    {
-        let mut node = Self::default();
-        node.set_node_type(NodeType::Player as i32);
-        node.set_creator_uuid(account_id);
-        node.set_int32_2(explorer);
-        node.set_uuid_1(account_id);
-        node.set_string64_1(avatar_shape);
-        node.set_istring64_1(player_name);
-        node
-    }
-
     pub fn as_player_node(self: &Arc<Self>) -> Option<VaultPlayerNode> {
         if self.node_type == NodeType::Player as i32 {
             Some(VaultPlayerNode { node: self.clone() })
@@ -201,66 +194,22 @@ impl VaultNode {
         }
     }
 
-    pub fn new_age(instance_id: &Uuid, parent_uuid: &Uuid, age_filename: &str) -> Self {
-        let mut node = Self::default();
-        node.set_node_type(NodeType::Age as i32);
-        node.set_creator_uuid(instance_id);
-        node.set_uuid_1(instance_id);
-        if !parent_uuid.is_nil() {
-            node.set_uuid_2(parent_uuid);
+    pub fn as_age_node(self: &Arc<Self>) -> Option<VaultAgeNode> {
+        if self.node_type == NodeType::Age as i32 {
+            Some(VaultAgeNode { node: self.clone() })
+        } else {
+            None
         }
-        node.set_string64_1(age_filename);
-        node
     }
 
-    pub fn age_lookup(instance_id: Option<&Uuid>) -> Self {
-        let mut node = Self::default();
-        node.set_node_type(NodeType::Age as i32);
-        if let Some(uuid) = instance_id {
-            node.set_uuid_1(uuid);
+    pub fn as_folder_node(self: &Arc<Self>) -> Option<VaultFolderNode> {
+        if self.node_type == NodeType::Folder as i32
+                || self.node_type == NodeType::PlayerInfoList as i32
+                || self.node_type == NodeType::AgeInfoList as i32 {
+            Some(VaultFolderNode { node: self.clone() })
+        } else {
+            None
         }
-        node
-    }
-
-    pub fn new_folder(creator_uuid: &Uuid, creator_id: u32,
-                      folder_type: StandardNode) -> Self
-    {
-        let mut node = Self::default();
-        node.set_node_type(NodeType::Folder as i32);
-        node.set_creator_uuid(creator_uuid);
-        node.set_creator_id(creator_id);
-        node.set_int32_1(folder_type as i32);
-        node
-    }
-
-    pub fn new_player_info(creator_uuid: &Uuid, player_id: u32, player_name: &str) -> Self {
-        let mut node = Self::default();
-        node.set_node_type(NodeType::PlayerInfo as i32);
-        node.set_creator_uuid(creator_uuid);
-        node.set_creator_id(player_id);
-        node.set_uint32_1(player_id);
-        node.set_istring64_1(player_name);
-        node
-    }
-
-    pub fn player_info_lookup(online: Option<i32>) -> Self {
-        let mut node = Self::default();
-        node.set_node_type(NodeType::PlayerInfo as i32);
-        if let Some(value) = online {
-            node.set_int32_1(value);
-        }
-        node
-    }
-
-    pub fn player_info_update(node_id: u32, online: i32, age_instance_name: &str,
-                              age_instance_uuid: &Uuid) -> Self
-    {
-        let mut node = Self::default();
-        node.set_node_id(node_id);
-        node.set_int32_1(online);
-        node.set_string64_1(age_instance_name);
-        node.set_uuid_1(age_instance_uuid);
-        node
     }
 
     pub fn as_player_info_node(self: &Arc<Self>) -> Option<VaultPlayerInfoNode> {
@@ -271,95 +220,84 @@ impl VaultNode {
         }
     }
 
-    pub fn new_system() -> Self {
-        let mut node = Self::default();
-        node.set_node_type(NodeType::System as i32);
-        node
-    }
-
-    pub fn new_sdl(creator_uuid: &Uuid, creator_id: u32, sdl_name: &str,
-                   sdl_blob: &[u8]) -> Self
-    {
-        let mut node = Self::default();
-        node.set_node_type(NodeType::Sdl as i32);
-        node.set_creator_uuid(creator_uuid);
-        node.set_creator_id(creator_id);
-        node.set_string64_1(sdl_name);
-        node.set_blob_1(sdl_blob);
-        node
-    }
-
-    pub fn new_age_link(creator_uuid: &Uuid, creator_id: u32, link: &str) -> Self {
-        let mut node = Self::default();
-        node.set_node_type(NodeType::AgeLink as i32);
-        node.set_creator_uuid(creator_uuid);
-        node.set_creator_id(creator_id);
-        node.set_blob_1(link.as_bytes());
-        node
-    }
-
-    pub fn new_player_info_list(creator_uuid: &Uuid, creator_id: u32,
-                                folder_type: StandardNode) -> Self
-    {
-        let mut node = Self::default();
-        node.set_node_type(NodeType::PlayerInfoList as i32);
-        node.set_creator_uuid(creator_uuid);
-        node.set_creator_id(creator_id);
-        node.set_int32_1(folder_type as i32);
-        node
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn new_age_info(instance_id: &Uuid, age_id: u32, seq_number: i32,
-                        public: bool, language: i32, parent_uuid: &Uuid,
-                        age_filename: &str, instance_name: &str, user_name: &str,
-                        description: &str) -> Self
-    {
-        let mut node = Self::default();
-        node.set_node_type(NodeType::AgeInfo as i32);
-        node.set_creator_uuid(instance_id);
-        node.set_creator_id(age_id);
-        node.set_int32_1(seq_number);
-        node.set_int32_2(i32::from(public));
-        node.set_int32_3(language);
-        node.set_uint32_1(age_id);
-        node.set_uint32_2(0);   // Czar ID
-        node.set_uint32_3(0);   // Flags
-        node.set_uuid_1(instance_id);
-        if !parent_uuid.is_nil() {
-            node.set_uuid_2(parent_uuid);
+    pub fn as_system_node(self: &Arc<Self>) -> Option<VaultSystemNode> {
+        if self.node_type == NodeType::System as i32 {
+            Some(VaultSystemNode { node: self.clone() })
+        } else {
+            None
         }
-        node.set_string64_2(age_filename);
-        if !instance_name.is_empty() {
-            node.set_string64_3(instance_name);
-        }
-        if !user_name.is_empty() {
-            node.set_string64_4(user_name);
-        }
-        if !description.is_empty() {
-            node.set_text_1(description);
-        }
-        node
     }
 
-    pub fn age_info_lookup(instance_id: Option<&Uuid>) -> Self {
-        let mut node = Self::default();
-        node.set_node_type(NodeType::AgeInfo as i32);
-        if let Some(uuid) = instance_id {
-            node.set_uuid_1(uuid);
+    pub fn as_image_node(self: &Arc<Self>) -> Option<VaultImageNode> {
+        if self.node_type == NodeType::Image as i32 {
+            Some(VaultImageNode { node: self.clone() })
+        } else {
+            None
         }
-        node
     }
 
-    pub fn new_age_info_list(creator_uuid: &Uuid, creator_id: u32,
-                             folder_type: StandardNode) -> Self
-    {
-        let mut node = Self::default();
-        node.set_node_type(NodeType::AgeInfoList as i32);
-        node.set_creator_uuid(creator_uuid);
-        node.set_creator_id(creator_id);
-        node.set_int32_1(folder_type as i32);
-        node
+    pub fn as_text_note_node(self: &Arc<Self>) -> Option<VaultTextNoteNode> {
+        if self.node_type == NodeType::TextNote as i32 {
+            Some(VaultTextNoteNode { node: self.clone() })
+        } else {
+            None
+        }
+    }
+
+    pub fn as_sdl_node(self: &Arc<Self>) -> Option<VaultSdlNode> {
+        if self.node_type == NodeType::Sdl as i32 {
+            Some(VaultSdlNode { node: self.clone() })
+        } else {
+            None
+        }
+    }
+
+    pub fn as_age_link_node(self: &Arc<Self>) -> Option<VaultAgeLinkNode> {
+        if self.node_type == NodeType::AgeLink as i32 {
+            Some(VaultAgeLinkNode { node: self.clone() })
+        } else {
+            None
+        }
+    }
+
+    pub fn as_chronicle_node(self: &Arc<Self>) -> Option<VaultChronicleNode> {
+        if self.node_type == NodeType::Chronicle as i32 {
+            Some(VaultChronicleNode { node: self.clone() })
+        } else {
+            None
+        }
+    }
+
+    pub fn as_player_info_list_node(self: &Arc<Self>) -> Option<VaultPlayerInfoListNode> {
+        if self.node_type == NodeType::PlayerInfoList as i32 {
+            Some(VaultPlayerInfoListNode { node: self.clone() })
+        } else {
+            None
+        }
+    }
+
+    pub fn as_age_info_node(self: &Arc<Self>) -> Option<VaultAgeInfoNode> {
+        if self.node_type == NodeType::AgeInfo as i32 {
+            Some(VaultAgeInfoNode { node: self.clone() })
+        } else {
+            None
+        }
+    }
+
+    pub fn as_age_info_list_node(self: &Arc<Self>) -> Option<VaultAgeInfoListNode> {
+        if self.node_type == NodeType::AgeInfoList as i32 {
+            Some(VaultAgeInfoListNode { node: self.clone() })
+        } else {
+            None
+        }
+    }
+
+    pub fn as_marker_game_node(self: &Arc<Self>) -> Option<VaultMarkerGameNode> {
+        if self.node_type == NodeType::MarkerGame as i32 {
+            Some(VaultMarkerGameNode { node: self.clone() })
+        } else {
+            None
+        }
     }
 
     pub fn from_blob(blob: &[u8]) -> Result<Self> {
@@ -686,34 +624,3 @@ impl StreamWrite for VaultNode {
         Ok(())
     }
 }
-
-macro_rules! vnode_access {
-    ($struct_name:ident { $($name:ident: $type:ty => $field:ident),* $(,)? }) => {
-        pub struct $struct_name {
-            node: Arc<VaultNode>
-        }
-        impl $struct_name {
-            pub fn node_id(&self) -> u32 { self.node.node_id() }
-            $(pub fn $name(&self) -> $type { self.node.$field() })*
-        }
-    };
-}
-
-vnode_access!(VaultPlayerNode {
-    player_name_ci: &String => istring64_1,
-    avatar_shape: &String => string64_1,
-    disabled: i32 => int32_1,
-    explorer: i32 => int32_2,
-    online_time: u32 => uint32_1,
-    account_id: &Uuid => uuid_1,
-    invite_uuid: &Uuid => uuid_2,
-});
-
-vnode_access!(VaultPlayerInfoNode {
-    player_id: u32 => uint32_1,
-    player_name_ci: &String => istring64_1,
-    age_instance_name: &String => string64_1,
-    age_instance_uuid: &Uuid => uuid_1,
-    online: i32 => int32_1,
-    ccr_level: i32 => int32_2
-});

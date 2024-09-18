@@ -38,7 +38,7 @@ use tokio::sync::broadcast;
 use crate::config::ServerConfig;
 use crate::net_crypt::{CRYPT_BASE_AUTH, CRYPT_BASE_GAME, CRYPT_BASE_GATE_KEEPER};
 use crate::netcli::NetResult;
-use crate::vault::{VaultServer, VaultNode};
+use crate::vault::{VaultServer, VaultPlayerInfoNode};
 
 struct ApiInterface {
     server_config: Arc<ServerConfig>,
@@ -61,7 +61,7 @@ impl ApiInterface {
     }
 
     async fn query_online_players(&self) -> NetResult<Vec<OnlinePlayer>> {
-        let template = VaultNode::player_info_lookup(Some(1));
+        let template = VaultPlayerInfoNode::new_lookup(Some(1));
         let player_list = self.vault.find_nodes(template).await?;
         let mut players = Vec::with_capacity(player_list.len());
         for player_info in player_list {

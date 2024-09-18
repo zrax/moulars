@@ -33,7 +33,7 @@ use crate::net_crypt::CryptTcpStream;
 use crate::netcli::NetResultCode;
 use crate::path_utils;
 use crate::plasma::{StreamRead, StreamWrite, BitVector};
-use crate::vault::{VaultServer, VaultNode};
+use crate::vault::{VaultServer, VaultNode, VaultPlayerInfoNode};
 use crate::vault::messages::VaultBroadcast;
 use super::auth_hash::{hash_password_challenge, use_email_auth};
 use super::manifest::Manifest;
@@ -889,7 +889,7 @@ impl AuthServerWorker {
             }).await;
         }
 
-        let update = VaultNode::player_info_update(player_info.node_id(), 1,
+        let update = VaultPlayerInfoNode::new_update(player_info.node_id(), 1,
                         "Lobby", &Uuid::nil());
         if let Err(err) = self.vault.update_node(update).await {
             warn!("Failed to set player {} online", player_id);
@@ -919,7 +919,7 @@ impl AuthServerWorker {
             }
         };
 
-        let update = VaultNode::player_info_update(player_info.node_id(), 0, "", &Uuid::nil());
+        let update = VaultPlayerInfoNode::new_update(player_info.node_id(), 0, "", &Uuid::nil());
         if let Err(err) = self.vault.update_node(update).await {
             warn!("Failed to set player {} offline: {:?}", player_id, err);
             return;

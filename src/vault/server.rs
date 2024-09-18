@@ -26,7 +26,10 @@ use crate::sdl::DescriptorDb;
 use super::db_interface::{DbInterface, AccountInfo, PlayerInfo, GameServer};
 use super::db_memory::DbMemory;
 use super::messages::{VaultMessage, VaultBroadcast};
-use super::{VaultNode, StandardNode, NodeRef};
+use super::{
+    VaultNode, VaultPlayerNode, VaultFolderNode, VaultSystemNode,
+    VaultPlayerInfoListNode, StandardNode, NodeRef
+};
 
 pub struct VaultServer {
     msg_send: mpsc::Sender<VaultMessage>,
@@ -78,7 +81,7 @@ fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender<Vault
                 Err(err) => return check_send(response_send, Err(err)),
             }
 
-            let node = VaultNode::new_player(&account_id, &player_name, &avatar_shape, 1);
+            let node = VaultPlayerNode::new(&account_id, &player_name, &avatar_shape, 1);
             let player_id = match db.create_node(node) {
                 Ok(node_id) => node_id,
                 Err(err) => return check_send(response_send, Err(err)),
@@ -323,15 +326,15 @@ fn init_vault(db: &dyn DbInterface) -> NetResult<()> {
 
         info!("Initializing empty Vault database");
 
-        let node = VaultNode::new_system();
+        let node = VaultSystemNode::new();
         let system_node = db.create_node(node)?;
 
-        let node = VaultNode::new_folder(&Uuid::nil(), 0, StandardNode::GlobalInboxFolder);
+        let node = VaultFolderNode::new(&Uuid::nil(), 0, StandardNode::GlobalInboxFolder);
         let global_inbox = db.create_node(node)?;
         db.ref_node(system_node, global_inbox, 0)?;
 
-        let node = VaultNode::new_player_info_list(&Uuid::nil(), 0,
-                        StandardNode::AllPlayersFolder);
+        let node = VaultPlayerInfoListNode::new(&Uuid::nil(), 0,
+                                                StandardNode::AllPlayersFolder);
         let _ = db.create_node(node)?;
     }
 
