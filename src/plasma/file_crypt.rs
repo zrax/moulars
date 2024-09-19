@@ -16,9 +16,9 @@
 
 use std::fs::File;
 use std::io::{self, Read, BufRead, Write, Seek, SeekFrom};
-use std::mem::size_of;
+use std::mem::{size_of, ManuallyDrop};
 use std::path::Path;
-use std::{mem, ptr};
+use std::ptr;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use log::warn;
@@ -214,10 +214,8 @@ impl<S: Write + Seek> EncryptedWriter<S> {
         }
 
         // SAFETY: This lets us move the base out of self without dropping it twice
-        let inner = unsafe { ptr::read(&self.base) };
-        mem::forget(self);
-
-        inner
+        let md_self = ManuallyDrop::new(self);
+        unsafe { ptr::read(&md_self.base) }
     }
 }
 
