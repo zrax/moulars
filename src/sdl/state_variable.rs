@@ -628,7 +628,7 @@ impl Variable {
                 VarValues::Creatable(values) => {
                     self.write_var_count(stream, values.len())?;
                     for creatable in values {
-                        Self::write_creatable(stream, creatable)?;
+                        Self::write_creatable(stream, creatable.as_ref())?;
                     }
                 }
                 VarValues::Double(values) => {
@@ -742,7 +742,7 @@ impl Variable {
     }
 
     fn write_creatable(stream: &mut dyn Write,
-                       creatable: &Option<Arc<dyn Creatable>>) -> Result<()>
+                       creatable: Option<&Arc<dyn Creatable>>) -> Result<()>
     {
         if let Some(creatable) = creatable {
             stream.write_u16::<LittleEndian>(creatable.class_id())?;
