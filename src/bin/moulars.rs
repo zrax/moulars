@@ -22,8 +22,8 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use clap::Parser;
 use data_encoding::BASE64;
-use clap::{Command, Arg};
 use log::error;
 use num_bigint::{BigUint, ToBigUint};
 use num_prime::RandPrime;
@@ -37,6 +37,19 @@ const DEFAULT_LOG_LEVEL: &str = "debug";
 
 #[cfg(not(debug_assertions))]
 const DEFAULT_LOG_LEVEL: &str = "warn";
+
+#[derive(Parser)]
+#[command(name = "moulars", version,
+          about = "MOULArs: A Myst Online: Uru Live (Again) server")]
+struct Args {
+    #[arg(long, exclusive = true,
+          help = "Generate a set of Rc4 keys for client/server communication")]
+    keygen: bool,
+
+    #[arg(long, exclusive = true,
+          help = "Show the client Rc4 keys associated with the configured server keys")]
+    show_keys: bool,
+}
 
 fn main() -> ExitCode {
     // See https://docs.rs/env_logger/latest/env_logger/index.html for
@@ -52,21 +65,11 @@ fn main() -> ExitCode {
         default_panic(info);
     }));
 
-    let args = Command::new("moulars")
-        .about("MOULArs: A Myst Online: Uru Live (Again) server")
-        .version("0.1.0")
-        .arg(Arg::new("keygen").long("keygen")
-            .action(clap::ArgAction::SetTrue).exclusive(true)
-            .help("Generate a set of Rc4 keys for client/server communication"))
-        .arg(Arg::new("show-keys").long("show-keys")
-            .action(clap::ArgAction::SetTrue).exclusive(true)
-            .help("Show the client Rc4 keys associated with the configured server keys"))
-        .get_matches();
-
-    if args.get_flag("keygen") {
+    let args = Args::parse();
+    if args.keygen {
         generate_keys();
         return ExitCode::SUCCESS;
-    } else if args.get_flag("show-keys") {
+    } else if args.show_keys {
         let config = match load_config() {
             Ok(config) => config,
             Err(exit_code) => return exit_code,
