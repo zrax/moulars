@@ -61,7 +61,7 @@ fn main() -> ExitCode {
     let default_panic = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         // Ensure panic messages are also captured by the logger
-        error!("{}", info);
+        error!("{info}");
         default_panic(info);
     }));
 

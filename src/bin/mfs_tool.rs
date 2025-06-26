@@ -108,7 +108,7 @@ fn main() -> ExitCode {
                 out_filename.as_deref()
             };
             if let Err(err) = decrypt_file(&filename, out_file, key.as_deref()) {
-                error!("Failed to decrypt {}: {}", filename.display(), err);
+                error!("Failed to decrypt {}: {err}", filename.display());
                 return ExitCode::FAILURE;
             }
         }
@@ -116,7 +116,7 @@ fn main() -> ExitCode {
             let manifest = match Manifest::from_cache(&mfs_cache) {
                 Ok(manifest) => manifest,
                 Err(err) => {
-                    error!("Failed to load manifest cache: {}", err);
+                    error!("Failed to load manifest cache: {err}");
                     return ExitCode::FAILURE;
                 }
             };
@@ -126,13 +126,13 @@ fn main() -> ExitCode {
         }
         Command::LsPak { key, pak_file } => {
             if let Err(err) = list_pak(&pak_file, key.as_deref()) {
-                error!("Failed to load pak file: {}", err);
+                error!("Failed to load pak file: {err}");
                 return ExitCode::FAILURE;
             }
         }
         Command::Update { python_exe, data_root } => {
             if let Err(err) = cache_clients(&data_root, python_exe.as_deref()) {
-                warn!("Failed to update file server cache: {}", err);
+                warn!("Failed to update file server cache: {err}");
             }
         }
     }
@@ -142,11 +142,11 @@ fn main() -> ExitCode {
 fn get_key(key_opt: Option<&str>) -> Result<[u32; 4]> {
     if let Some(key_str) = key_opt {
         let buffer: [u8; 16] = HEXLOWER_PERMISSIVE.decode(key_str.as_bytes())
-                .map_err(|err| anyhow!("Invalid hex literal: {}", err))?
+                .map_err(|err| anyhow!("Invalid hex literal: {err}"))?
                 .try_into().map_err(|_| anyhow!("Invalid key length"))?;
         let mut key = [0; 4];
         for (src, dest) in buffer.chunks_exact(size_of::<u32>()).zip(key.iter_mut()) {
-            *dest = u32::from_be_bytes(src.try_into().unwrap());
+            *dest = u32::from_be_bytes(src.try_into().expect("Wrong chunk size"));
         }
         Ok(key)
     } else {
@@ -172,7 +172,7 @@ fn decrypt_file(path: &Path, out_file: Option<&Path>, key_opt: Option<&str>) -> 
         } else {
             let mut out_stream = BufWriter::new(File::create(out_filename)?);
             std::io::copy(&mut stream, &mut out_stream)?;
-        };
+        }
     } else {
         std::io::copy(&mut stream, &mut std::io::stdout())?;
     }

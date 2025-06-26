@@ -104,21 +104,21 @@ impl PageFile {
     {
         assert_eq!(ObType::static_class_id(), uoid.obj_type());
 
-        if let Some(keys) = self.key_index.get(&uoid.obj_type()) {
-            if let Some(index_key) = keys.iter().find(|k| k.uoid == *uoid) {
-                let _ = stream.seek(SeekFrom::Start(u64::from(index_key.offset)))?;
+        if let Some(keys) = self.key_index.get(&uoid.obj_type())
+            && let Some(index_key) = keys.iter().find(|k| k.uoid == *uoid)
+        {
+            let _ = stream.seek(SeekFrom::Start(u64::from(index_key.offset)))?;
 
-                // Ensure the object is streamed from within the bounds of the stored data
-                let mut obj_buffer = vec![0; index_key.size as usize];
-                stream.read_exact(&mut obj_buffer)?;
-                let mut obj_stream = Cursor::new(obj_buffer);
+            // Ensure the object is streamed from within the bounds of the stored data
+            let mut obj_buffer = vec![0; index_key.size as usize];
+            stream.read_exact(&mut obj_buffer)?;
+            let mut obj_stream = Cursor::new(obj_buffer);
 
-                let stream_class = obj_stream.read_u16::<LittleEndian>()?;
-                if stream_class != ObType::static_class_id() {
-                    return Err(anyhow!("Unexpected class ID 0x{:04x} encountered", stream_class));
-                }
-                return ObType::stream_read(&mut obj_stream)
+            let stream_class = obj_stream.read_u16::<LittleEndian>()?;
+            if stream_class != ObType::static_class_id() {
+                return Err(anyhow!("Unexpected class ID 0x{:04x} encountered", stream_class));
             }
+            return ObType::stream_read(&mut obj_stream)
         }
         Err(anyhow!("Could not find object {:?} in this page file", uoid))
     }

@@ -21,6 +21,7 @@ use byteorder::{LittleEndian, WriteBytesExt};
 
 use crate::plasma::StreamWrite;
 
+#[allow(clippy::struct_field_names)]
 #[derive(Eq, PartialEq, Hash, Copy, Clone, Debug)]
 pub struct NodeRef {
     parent_id: u32,

@@ -47,7 +47,7 @@ fn check_send<T>(sender: oneshot::Sender<NetResult<T>>, reply: NetResult<T>) {
 
 fn check_bcast(sender: &broadcast::Sender<VaultBroadcast>, msg: VaultBroadcast) {
     if let Err(err) = sender.send(msg) {
-        warn!("Failed to send broadcast: {}", err);
+        warn!("Failed to send broadcast: {err}");
     }
 }
 

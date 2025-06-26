@@ -89,7 +89,7 @@ impl StreamWrite for PakFile {
         // seeking later.
         offset_accum = self.files.iter().fold(offset_accum, |acc, file| {
             // Safe String (u16 + string) + u32 offset
-            acc + size_of::<u16>() + file.name.as_bytes().len() + size_of::<u32>()
+            acc + size_of::<u16>() + file.name.len() + size_of::<u32>()
         });
 
         // Write the table of contents with computed offsets

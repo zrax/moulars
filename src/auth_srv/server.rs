@@ -67,7 +67,7 @@ fn read_conn_header<S>(stream: &mut S) -> Result<()>
     // Everything here is discarded...
     let header_size = stream.read_u32::<LittleEndian>()?;
     if header_size != CONN_HEADER_SIZE {
-        return Err(anyhow!("Invalid connection header size {}", header_size));
+        return Err(anyhow!("Invalid connection header size {header_size}"));
     }
     // Null UUID
     let _ = Uuid::stream_read(stream)?;
@@ -100,7 +100,7 @@ fn fetch_list(dir_name: &str, ext: &str, data_root: &Path) -> Option<Manifest> {
     match Manifest::from_dir(data_root, dir_name, ext) {
         Ok(manifest) => Some(manifest),
         Err(err) => {
-            warn!("Failed to fetch directory list for {}\\*.{}: {}", dir_name, ext, err);
+            warn!("Failed to fetch directory list for {dir_name}\\*.{ext}: {err}");
             None
         }
     }
@@ -160,7 +160,7 @@ impl AuthServer {
 
     pub async fn add(&mut self, sock: TcpStream) {
         if let Err(err) = self.incoming_send.send(sock).await {
-            error!("Failed to add client: {}", err);
+            error!("Failed to add client: {err}");
         }
     }
 }
@@ -173,7 +173,7 @@ impl AuthServerWorker {
             let stream = match init_client(sock, &server_config).await {
                 Ok(cipher) => cipher,
                 Err(err) => {
-                    warn!("Failed to initialize client: {}", err);
+                    warn!("Failed to initialize client: {err}");
                     return;
                 }
             };
@@ -212,7 +212,7 @@ impl AuthServerWorker {
     async fn run(&mut self) {
         /* Send Server Capabilities */
         if let Err(err) = self.send_caps().await {
-            warn!("Failed to send ServerCaps message: {}", err);
+            warn!("Failed to send ServerCaps message: {err}");
         }
 
         loop {
@@ -227,7 +227,7 @@ impl AuthServerWorker {
                             break;
                         }
                     }
-                    Err(err) => warn!("Failed to receive broadcast message: {}", err),
+                    Err(err) => warn!("Failed to receive broadcast message: {err}"),
                 },
 
                 client_msg = CliToAuth::read(&mut self.stream) => match client_msg {
@@ -242,7 +242,7 @@ impl AuthServerWorker {
                                                                     | io::ErrorKind::UnexpectedEof) => {
                                 debug!("Client {} disconnected", self.peer_addr().unwrap());
                             }
-                            _ => warn!("Error reading message from client: {}", err),
+                            _ => warn!("Error reading message from client: {err}"),
                         }
                         return;
                     }
@@ -393,7 +393,7 @@ impl AuthServerWorker {
                         },
                     }
                     Err(err) => {
-                        warn!("Failed to read vault node from blob: {}", err);
+                        warn!("Failed to read vault node from blob: {err}");
                         AuthToCli::VaultNodeCreated {
                             trans_id,
                             result: NetResultCode::NetInternalError as i32,
@@ -412,7 +412,7 @@ impl AuthServerWorker {
                             node_buffer
                         },
                         Err(err) => {
-                            warn!("Failed to write vault node to blob: {}", err);
+                            warn!("Failed to write vault node to blob: {err}");
                             AuthToCli::VaultNodeFetched {
                                 trans_id,
                                 result: NetResultCode::NetInternalError as i32,
@@ -491,7 +491,7 @@ impl AuthServerWorker {
                 let node_template = match VaultNode::from_blob(&node_buffer) {
                     Ok(node) => node,
                     Err(err) => {
-                        warn!("Failed to parse blob: {}", err);
+                        warn!("Failed to parse blob: {err}");
                         return self.send_message(AuthToCli::VaultNodeFindReply {
                             trans_id,
                             result: NetResultCode::NetInternalError as i32,
@@ -581,11 +581,11 @@ impl AuthServerWorker {
     async fn send_message(&mut self, reply: AuthToCli) -> bool {
         let mut reply_buf = Cursor::new(Vec::new());
         if let Err(err) = reply.stream_write(&mut reply_buf) {
-            warn!("Failed to write reply stream: {}", err);
+            warn!("Failed to write reply stream: {err}");
             return false;
         }
         if let Err(err) = self.stream.get_mut().write_all(reply_buf.get_ref()).await {
-            warn!("Failed to send reply: {}", err);
+            warn!("Failed to send reply: {err}");
             false
         } else {
             true
@@ -596,8 +596,8 @@ impl AuthServerWorker {
         let reply = if let Some(manifest)
                             = fetch_list(dir_name, ext, &self.server_config.data_root)
         {
-            debug!("Client {} requested list '{}\\*.{}'",
-                   self.peer_addr().unwrap(), dir_name, ext);
+            debug!("Client {} requested list '{dir_name}\\*.{ext}'",
+                   self.peer_addr().unwrap());
 
             AuthToCli::FileListReply {
                 trans_id,
@@ -605,8 +605,8 @@ impl AuthServerWorker {
                 manifest
             }
         } else {
-            warn!("Client {} requested invalid list '{}\\*.{}'",
-                  self.peer_addr().unwrap(), dir_name, ext);
+            warn!("Client {} requested invalid list '{dir_name}\\*.{ext}'",
+                  self.peer_addr().unwrap());
             AuthToCli::FileListReply {
                 trans_id,
                 result: NetResultCode::NetFileNotFound as i32,
@@ -621,14 +621,15 @@ impl AuthServerWorker {
         if let Some((mut file, metadata, download_path))
                     = open_server_file(filename, &self.server_config.data_root).await
         {
-            debug!("Client {} requested file '{}'", self.peer_addr().unwrap(), filename);
+            debug!("Client {} requested file '{filename}'", self.peer_addr().unwrap());
 
             let Ok(total_size) = u32::try_from(metadata.len()) else {
-                debug!("File {} too large for 32-bit stream", filename);
+                debug!("File {filename} too large for 32-bit stream");
                 return self.send_message(AuthToCli::download_error(trans_id,
                                             NetResultCode::NetInternalError)).await;
             };
 
+            #[allow(clippy::large_stack_arrays)]
             let mut buffer = [0u8; FILE_CHUNK_SIZE];
             let mut offset = 0;
             loop {
@@ -697,7 +698,7 @@ impl AuthServerWorker {
             {
                 Ok(digest) => digest,
                 Err(err) => {
-                    warn!("Failed to generate challenge hash: {}", err);
+                    warn!("Failed to generate challenge hash: {err}");
                     return self.send_message(AuthToCli::login_error(trans_id,
                                                 NetResultCode::NetInternalError)).await;
                 }
@@ -734,7 +735,7 @@ impl AuthServerWorker {
         let ntd_key = match self.server_config.get_ntd_key() {
             Ok(key) => key,
             Err(err) => {
-                warn!("Failed to get encryption key: {}", err);
+                warn!("Failed to get encryption key: {err}");
                 return self.send_message(AuthToCli::login_error(trans_id,
                                             NetResultCode::NetInternalError)).await;
             }
@@ -797,8 +798,8 @@ impl AuthServerWorker {
         // Disallow arbitrary choices of avatar shape...  Special models can
         // be set by admins when appropriate.
         if avatar_shape != "male" && avatar_shape != "female" {
-            warn!("Client {} attempted to use avatar shape '{}'",
-                  self.peer_addr().unwrap(), avatar_shape);
+            warn!("Client {} attempted to use avatar shape '{avatar_shape}'",
+                  self.peer_addr().unwrap());
             return self.send_message(AuthToCli::player_create_error(trans_id,
                                         NetResultCode::NetInvalidParameter)).await;
         }
@@ -872,7 +873,7 @@ impl AuthServerWorker {
         let player_info = match self.vault.get_player_info_node(player_id).await {
             Ok(node) => node.as_player_info_node().unwrap(),
             Err(err) => {
-                warn!("Failed to get Player Info node for Player {}", player_id);
+                warn!("Failed to get Player Info node for Player {player_id}");
                 return self.send_message(AuthToCli::AcctSetPlayerReply {
                     trans_id,
                     result: err as i32
@@ -892,7 +893,7 @@ impl AuthServerWorker {
         let update = VaultPlayerInfoNode::new_update(player_info.node_id(), 1,
                         "Lobby", &Uuid::nil());
         if let Err(err) = self.vault.update_node(update).await {
-            warn!("Failed to set player {} online", player_id);
+            warn!("Failed to set player {player_id} online");
             return self.send_message(AuthToCli::AcctSetPlayerReply {
                 trans_id,
                 result: err as i32
@@ -913,20 +914,18 @@ impl AuthServerWorker {
         let player_info = match self.vault.get_player_info_node(player_id).await {
             Ok(node) => node.as_player_info_node().unwrap(),
             Err(err) => {
-                warn!("Failed to get Player Info node for Player {}: {:?}",
-                      player_id, err);
+                warn!("Failed to get Player Info node for Player {player_id}: {err:?}");
                 return;
             }
         };
 
         let update = VaultPlayerInfoNode::new_update(player_info.node_id(), 0, "", &Uuid::nil());
         if let Err(err) = self.vault.update_node(update).await {
-            warn!("Failed to set player {} offline: {:?}", player_id, err);
+            warn!("Failed to set player {player_id} offline: {err:?}");
             return;
         }
 
-        info!("Player {} ({}) is now offline", player_info.player_name_ci(),
-              player_id);
+        info!("Player {} ({player_id}) is now offline", player_info.player_name_ci());
     }
 
     async fn handle_disconnect(&mut self) {

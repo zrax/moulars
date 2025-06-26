@@ -48,7 +48,7 @@ fn read_conn_header<S>(stream: &mut S) -> Result<()>
     // Everything here is discarded...
     let header_size = stream.read_u32::<LittleEndian>()?;
     if header_size != CONN_HEADER_SIZE {
-        return Err(anyhow!("Invalid connection header size {}", header_size));
+        return Err(anyhow!("Invalid connection header size {header_size}"));
     }
     // Null UUID
     let _ = Uuid::stream_read(stream)?;
@@ -81,7 +81,7 @@ impl GateKeeper {
 
     pub async fn add(&mut self, sock: TcpStream) {
         if let Err(err) = self.incoming_send.send(sock).await {
-            error!("Failed to add client: {}", err);
+            error!("Failed to add client: {err}");
         }
     }
 }
@@ -92,7 +92,7 @@ impl GateKeeperWorker {
             let stream = match init_client(sock, &server_config).await {
                 Ok(cipher) => cipher,
                 Err(err) => {
-                    warn!("Failed to initialize client: {}", err);
+                    warn!("Failed to initialize client: {err}");
                     return;
                 }
             };
@@ -118,7 +118,7 @@ impl GateKeeperWorker {
                                                                 | io::ErrorKind::UnexpectedEof) => {
                             debug!("Client {} disconnected", self.peer_addr().unwrap());
                         }
-                        _ => warn!("Error reading message from client: {}", err),
+                        _ => warn!("Error reading message from client: {err}"),
                     }
                     return;
                 }
@@ -155,11 +155,11 @@ impl GateKeeperWorker {
     async fn send_message(&mut self, reply: GateKeeperToCli) -> bool {
         let mut reply_buf = Cursor::new(Vec::new());
         if let Err(err) = reply.stream_write(&mut reply_buf) {
-            warn!("Failed to write reply stream: {}", err);
+            warn!("Failed to write reply stream: {err}");
             return false;
         }
         if let Err(err) = self.stream.get_mut().write_all(reply_buf.get_ref()).await {
-            warn!("Failed to send reply: {}", err);
+            warn!("Failed to send reply: {err}");
             false
         } else {
             true

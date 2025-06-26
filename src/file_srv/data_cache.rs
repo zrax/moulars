@@ -62,7 +62,7 @@ fn scan_python_dir(python_root: &Path, subdir_limit: Option<&Vec<&OsStr>>)
             file_set.insert(entry.path());
         } else if metadata.is_dir() {
             let name_match = entry.file_name();
-            if subdir_limit.map_or(true, |subdirs| subdirs.contains(&name_match.as_ref())) {
+            if subdir_limit.is_none_or(|subdirs| subdirs.contains(&name_match.as_ref())) {
                 file_set.extend(scan_python_dir(&entry.path(), None)?.into_iter());
             }
         }
@@ -382,10 +382,8 @@ fn compyle_dir(python_dir: &Path, subdir_limit: Option<&Vec<&OsStr>>,
         let dfile = py_file.strip_prefix(python_dir).unwrap();
         let cfile = compile_temp_dir.path().join(dfile.with_extension("pyc"));
 
-        if let Some(out_dir) = cfile.parent() {
-            if !out_dir.exists() {
-                std::fs::create_dir_all(out_dir)?;
-            }
+        if let Some(out_dir) = cfile.parent() && !out_dir.exists() {
+            std::fs::create_dir_all(out_dir)?;
         }
 
         let (src_path, temp_src) = if glue_source.is_empty() {
@@ -412,7 +410,7 @@ fn compyle_dir(python_dir: &Path, subdir_limit: Option<&Vec<&OsStr>>,
                 compyle_src.path().as_os_str()]).status()?.code()
     {
         Some(0) => (),
-        Some(code) => warn!("py_compile exited with status {}", code),
+        Some(code) => warn!("py_compile exited with status {code}"),
         None => warn!("py_compile process killed by signal"),
     }
     for (cfile, dfile, _) in temp_sources {
@@ -488,11 +486,11 @@ fn get_module_name(path: &Path, base_dir: &Path) -> String {
     let mut module_components = Vec::new();
     module_components.push(path.file_name().unwrap().to_string_lossy());
     for ancestor in path.ancestors().skip(1) {
-        if let Some(component) = ancestor.file_name() {
-            if base_dir.join(ancestor).join("__init__.py").exists() {
-                // This is a module subdir
-                module_components.push(component.to_string_lossy());
-            }
+        if let Some(component) = ancestor.file_name()
+            && base_dir.join(ancestor).join("__init__.py").exists()
+        {
+            // This is a module subdir
+            module_components.push(component.to_string_lossy());
         }
     }
 

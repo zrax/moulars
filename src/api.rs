@@ -49,13 +49,12 @@ struct ApiInterface {
 impl ApiInterface {
     // Returns the name of the account that matched the API token
     async fn check_api_token(&self, query: &HashMap<String, String>) -> Option<String> {
-        if let Some(api_token) = query.get("token") {
-            if let Ok(Some(account)) = self.vault.get_account_for_token(api_token).await {
-                // Currently, only Admin accounts are allowed to use privileged APIs
-                if account.is_admin() {
-                    return Some(account.account_name);
-                }
-            }
+        if let Some(api_token) = query.get("token")
+            && let Ok(Some(account)) = self.vault.get_account_for_token(api_token).await
+            // Currently, only Admin accounts are allowed to use privileged APIs
+            && account.is_admin()
+        {
+            return Some(account.account_name);
         }
         None
     }
@@ -126,7 +125,7 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
             let online_players = match api.query_online_players().await {
                 Ok(response) => response,
                 Err(err) => {
-                    warn!("Failed to query online players: {:?}", err);
+                    warn!("Failed to query online players: {err:?}");
                     return Ok(gen_server_error());
                 }
             };
@@ -136,14 +135,14 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
                     .body(Full::from(json))
                     .unwrap(),
                 Err(err) => {
-                    warn!("Failed to generate JSON: {}", err);
+                    warn!("Failed to generate JSON: {err}");
                     gen_server_error()
                 }
             }
         }
         (&Method::POST, "/shutdown") => {
             if let Some(admin) = api.check_api_token(&query_params).await {
-                info!("Shutdown requested by {}", admin);
+                info!("Shutdown requested by {admin}");
                 let _ = api.shutdown_send.send(());
                 Response::builder()
                     .header(CONTENT_TYPE, "application/json")
@@ -193,7 +192,7 @@ pub fn start_api(shutdown_send: broadcast::Sender<()>, vault: Arc<VaultServer>,
                     let (stream, _remote_addr) = match client {
                         Ok(accepted) => accepted,
                         Err(err) => {
-                            warn!("Failed to accept API connection: {}", err);
+                            warn!("Failed to accept API connection: {err}");
                             continue;
                         }
                     };

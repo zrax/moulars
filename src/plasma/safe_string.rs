@@ -37,22 +37,18 @@ pub fn read_safe_str<S>(stream: &mut S, format: StringFormat) -> Result<String>
         let mut buffer = vec![0u16; (length & 0x0FFF) as usize];
         stream.read_u16_into::<LittleEndian>(buffer.as_mut_slice())?;
         let _ = stream.read_u16::<LittleEndian>()?;     // Trailing '\0'
-        if let Some(&first_char) = buffer.first() {
-            if (first_char & 0x8000) != 0 {
-                for ch in &mut buffer {
-                    *ch = !*ch;
-                }
+        if let Some(&first_char) = buffer.first() && (first_char & 0x8000) != 0 {
+            for ch in &mut buffer {
+                *ch = !*ch;
             }
         }
         Ok(String::from_utf16_lossy(buffer.as_slice()))
     } else {
         let mut buffer = vec![0u8; (length & 0x0FFF) as usize];
         stream.read_exact(buffer.as_mut_slice())?;
-        if let Some(&first_char) = buffer.first() {
-            if (first_char & 0x80) != 0 {
-                for ch in &mut buffer {
-                    *ch = !*ch;
-                }
+        if let Some(&first_char) = buffer.first() && (first_char & 0x80) != 0 {
+            for ch in &mut buffer {
+                *ch = !*ch;
             }
         }
         if format == StringFormat::Utf8 {

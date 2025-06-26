@@ -210,12 +210,12 @@ impl<S: Write + Seek> EncryptedWriter<S> {
 
     pub fn into_inner(mut self) -> S {
         if let Err(err) = self.flush() {
-            warn!("Failed to flush stream on into_inner: {}", err);
+            warn!("Failed to flush stream on into_inner: {err}");
         }
 
         // SAFETY: This lets us move the base out of self without dropping it twice
         let md_self = ManuallyDrop::new(self);
-        unsafe { ptr::read(&md_self.base) }
+        unsafe { ptr::read(&raw const md_self.base) }
     }
 }
 
@@ -250,8 +250,7 @@ impl<S: Write + Seek> Write for EncryptedWriter<S> {
             let sync_pos = self.base.stream_position()?;
             self.write_block()?;
             let base_size = u32::try_from(self.base_size)
-                    .map_err(|_| io::Error::new(
-                            io::ErrorKind::Other,
+                    .map_err(|_| io::Error::other(
                             "Stream too large for encrypted header"))?;
             self.base.seek(SeekFrom::Start(self.size_pos))?;
             self.base.write_u32::<LittleEndian>(base_size)?;
@@ -264,7 +263,7 @@ impl<S: Write + Seek> Write for EncryptedWriter<S> {
 impl<S: Write + Seek> Drop for EncryptedWriter<S> {
     fn drop(&mut self) {
         if let Err(err) = self.flush() {
-            warn!("Failed to flush stream on drop: {}", err);
+            warn!("Failed to flush stream on drop: {err}");
         }
     }
 }

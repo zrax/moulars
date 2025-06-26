@@ -68,7 +68,7 @@ impl StreamWrite for MessageWithCallbacks {
 impl NetSafety for MessageWithCallbacks {
     fn make_net_safe(&mut self) -> bool {
         for msg in &mut self.callbacks {
-            if !msg.net_safety_mut().map_or(true, NetSafety::make_net_safe) {
+            if !msg.net_safety_mut().is_none_or(NetSafety::make_net_safe) {
                 return false;
             }
         }

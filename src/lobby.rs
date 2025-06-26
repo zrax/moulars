@@ -63,7 +63,7 @@ impl StreamRead for ConnectionHeader {
         let conn_type = stream.read_u8()?;
         let sock_header_size = stream.read_u16::<LittleEndian>()?;
         if sock_header_size != Self::CONN_HEADER_SIZE {
-            return Err(anyhow!("Invalid socket header size: {}", sock_header_size));
+            return Err(anyhow!("Invalid socket header size: {sock_header_size}"));
         }
         let build_id = stream.read_u32::<LittleEndian>()?;
         let build_type = stream.read_u32::<LittleEndian>()?;
@@ -115,14 +115,14 @@ impl LobbyServer {
 
         let listener = match TcpListener::bind(&server_config.listen_address).await {
             Ok(listener) => listener,
-            Err(err) => panic!("Failed to bind on address {}: {}",
-                               server_config.listen_address, err),
+            Err(err) => panic!("Failed to bind on address {}: {err}",
+                               server_config.listen_address),
         };
 
         let ntd_key = server_config.get_ntd_key().unwrap_or_else(|err| {
             // This is not a fatal error, because the SDL files can still
             // be loaded successfully if they are not encrypted.
-            warn!("Failed to get encryption key: {}", err);
+            warn!("Failed to get encryption key: {err}");
             [0; 4]
         });
 
@@ -130,7 +130,7 @@ impl LobbyServer {
         let sdl_db = match DescriptorDb::from_dir(&sdl_path, &ntd_key) {
             Ok(database) => database,
             Err(err) => {
-                warn!("Failed to load SDL descriptors from {}: {}", sdl_path.display(), err);
+                warn!("Failed to load SDL descriptors from {}: {err}", sdl_path.display());
                 DescriptorDb::empty()
             }
         };
@@ -151,9 +151,9 @@ impl LobbyServer {
                     match listener.accept().await {
                         Ok((sock, sock_addr)) => lobby.accept_client(sock, sock_addr).await,
                         Err(err) => {
-                            warn!("Failed to accept from socket: {}", err);
+                            warn!("Failed to accept from socket: {err}");
                         }
-                    };
+                    }
                 } => (),
                 _ = shutdown_recv.recv() => break,
             }
@@ -167,7 +167,7 @@ impl LobbyServer {
         let header = match ConnectionHeader::read(&mut sock).await {
             Ok(header) => header,
             Err(err) => {
-                warn!("Failed to read connection header: {}", err);
+                warn!("Failed to read connection header: {err}");
                 return;
             }
         };
@@ -183,11 +183,11 @@ impl LobbyServer {
             CONN_CLI_TO_AUTH => self.auth_server.add(sock).await,
             CONN_CLI_TO_GAME => todo!(),
             CONN_CLI_TO_CSR => {
-                warn!("{} - Got CSR client; rejecting", sock_addr);
+                warn!("{sock_addr} - Got CSR client; rejecting");
             }
             _ => {
-                warn!("{} - Unknown connection type {}; rejecting",
-                      sock_addr, header.conn_type);
+                warn!("{sock_addr} - Unknown connection type {}; rejecting",
+                      header.conn_type);
             }
         }
     }

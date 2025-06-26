@@ -52,7 +52,7 @@ fn read_conn_header<S>(stream: &mut S) -> Result<()>
     // Everything here is discarded...
     let header_size = stream.read_u32::<LittleEndian>()?;
     if header_size != CONN_HEADER_SIZE {
-        return Err(anyhow!("Invalid connection header size {}", header_size));
+        return Err(anyhow!("Invalid connection header size {header_size}"));
     }
     // Build ID
     let _ = stream.read_u32::<LittleEndian>()?;
@@ -81,7 +81,7 @@ fn fetch_manifest(manifest_name: &str, data_path: &Path) -> Option<Manifest> {
         match Manifest::from_cache(&manifest_path) {
             Ok(manifest) => Some(manifest),
             Err(err) => {
-                warn!("Failed to load manifest '{}': {}", manifest_name, err);
+                warn!("Failed to load manifest '{manifest_name}': {err}");
                 None
             }
         }
@@ -91,19 +91,17 @@ fn fetch_manifest(manifest_name: &str, data_path: &Path) -> Option<Manifest> {
 }
 
 pub fn ignore_file(path: &Path, allow_compressed: bool) -> bool {
-    if let Some(ext) = path.extension() {
-        if !allow_compressed && ext == OsStr::new("gz") {
-            // We don't send the client .gz files to leave compressed,
-            // so this is probably a compressed version of another file
-            return true;
-        }
+    if !allow_compressed && let Some(ext) = path.extension() && ext == OsStr::new("gz") {
+        // We don't send the client .gz files to leave compressed,
+        // so this is probably a compressed version of another file
+        return true;
     }
 
-    if let Some(file_name) = path.file_name() {
-        if file_name == OsStr::new("desktop.ini")
-                || file_name.to_string_lossy().starts_with('.') {
-            return true;
-        }
+    if let Some(file_name) = path.file_name()
+        && (file_name == OsStr::new("desktop.ini")
+            || file_name.to_string_lossy().starts_with('.'))
+    {
+        return true;
     }
 
     false
@@ -128,7 +126,7 @@ async fn open_server_file(filename: &str, data_root: &Path)
     let file = match tokio::fs::File::open(&download_path).await {
         Ok(file) => file,
         Err(err) => {
-            warn!("Could not open {} for reading: {}", download_path.display(), err);
+            warn!("Could not open {} for reading: {err}", download_path.display());
             return None;
         }
     };
@@ -136,7 +134,7 @@ async fn open_server_file(filename: &str, data_root: &Path)
     let metadata = match file.metadata().await {
         Ok(metadata) => metadata,
         Err(err) => {
-            warn!("Could not read file metadata for {}: {}", download_path.display(), err);
+            warn!("Could not read file metadata for {}: {err}", download_path.display());
             return None;
         }
     };
@@ -158,7 +156,7 @@ impl FileServer {
 
     pub async fn add(&mut self, sock: TcpStream) {
         if let Err(err) = self.incoming_send.send(sock).await {
-            error!("Failed to add client: {}", err);
+            error!("Failed to add client: {err}");
         }
     }
 }
@@ -169,7 +167,7 @@ impl FileServerWorker {
             let stream = match init_client(sock).await {
                 Ok(stream) => stream,
                 Err(err) => {
-                    warn!("Failed to initialize client: {}", err);
+                    warn!("Failed to initialize client: {err}");
                     return;
                 }
             };
@@ -200,7 +198,7 @@ impl FileServerWorker {
                                                                 | io::ErrorKind::UnexpectedEof) => {
                             debug!("Client {} disconnected", self.peer_addr().unwrap());
                         }
-                        _ => warn!("Error reading message from client: {}", err),
+                        _ => warn!("Error reading message from client: {err}"),
                     }
                     return;
                 }
@@ -223,8 +221,8 @@ impl FileServerWorker {
             }
             CliToFile::ManifestRequest { trans_id, manifest_name, build_id } => {
                 if build_id != 0 && build_id != self.server_config.build_id {
-                    warn!("Client {} has an unexpected build ID {}",
-                          self.peer_addr().unwrap(), build_id);
+                    warn!("Client {} has an unexpected build ID {build_id}",
+                          self.peer_addr().unwrap());
                     return self.send_message(FileToCli::manifest_error(trans_id,
                                                 NetResultCode::NetOldBuildId)).await;
                 }
@@ -232,8 +230,8 @@ impl FileServerWorker {
             }
             CliToFile::DownloadRequest { trans_id, filename, build_id } => {
                 if build_id != 0 && build_id != self.server_config.build_id {
-                    warn!("Client {} has an unexpected build ID {}",
-                          self.peer_addr().unwrap(), build_id);
+                    warn!("Client {} has an unexpected build ID {build_id}",
+                          self.peer_addr().unwrap());
                     return self.send_message(FileToCli::download_error(trans_id,
                                                 NetResultCode::NetOldBuildId)).await;
                 }
@@ -246,7 +244,7 @@ impl FileServerWorker {
 
     async fn send_message(&mut self, reply: FileToCli) -> bool {
         if let Err(err) = reply.write(self.stream.get_mut()).await {
-            warn!("Failed to send reply message: {}", err);
+            warn!("Failed to send reply message: {err}");
             false
         } else {
             true
@@ -257,8 +255,8 @@ impl FileServerWorker {
         let reply = if let Some(manifest)
                             = fetch_manifest(manifest_name, &self.server_config.data_root)
         {
-            debug!("Client {} requested manifest '{}'", self.peer_addr().unwrap(),
-                   manifest_name);
+            debug!("Client {} requested manifest '{manifest_name}'",
+                   self.peer_addr().unwrap());
 
             self.client_reader_id += 1;
             FileToCli::ManifestReply {
@@ -268,8 +266,8 @@ impl FileServerWorker {
                 manifest
             }
         } else {
-            warn!("Client {} requested invalid/unknown manifest '{}'",
-                  self.peer_addr().unwrap(), manifest_name);
+            warn!("Client {} requested invalid/unknown manifest '{manifest_name}'",
+                  self.peer_addr().unwrap());
             FileToCli::manifest_error(trans_id, NetResultCode::NetFileNotFound)
         };
 
@@ -280,15 +278,16 @@ impl FileServerWorker {
         if let Some((mut file, metadata, download_path))
                     = open_server_file(filename, &self.server_config.data_root).await
         {
-            debug!("Client {} requested file '{}'", self.peer_addr().unwrap(), filename);
+            debug!("Client {} requested file '{filename}'", self.peer_addr().unwrap());
 
             let Ok(total_size) = u32::try_from(metadata.len()) else {
-                debug!("File {} too large for 32-bit stream", filename);
+                debug!("File {filename} too large for 32-bit stream");
                 return self.send_message(FileToCli::download_error(trans_id,
                                             NetResultCode::NetInternalError)).await;
             };
 
             self.client_reader_id += 1;
+            #[allow(clippy::large_stack_arrays)]
             let mut buffer = [0u8; FILE_CHUNK_SIZE];
             loop {
                 match file.read(&mut buffer).await {

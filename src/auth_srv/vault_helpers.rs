@@ -143,7 +143,7 @@ pub async fn find_age_instance(age_uuid: &Uuid, parent_uuid: &Uuid,
     let age_info = if let Some(node_id) = vault.find_nodes(template).await?.first() {
         *node_id
     } else {
-        warn!("Got Age node {}, but no Age Info node for {}", age_id, age_uuid);
+        warn!("Got Age node {age_id}, but no Age Info node for {age_uuid}");
         return Err(NetResultCode::NetInternalError);
     };
 
@@ -185,12 +185,12 @@ pub async fn create_age_nodes(age_uuid: &Uuid, parent_uuid: &Uuid,
         match sdl::State::from_defaults(descriptor, vault.sdl_db()).to_blob() {
             Ok(blob) => blob,
             Err(err) => {
-                warn!("Failed to generate default SDL for {}: {}", age_filename, err);
+                warn!("Failed to generate default SDL for {age_filename}: {err}");
                 return Err(NetResultCode::NetInternalError);
             }
         }
     } else {
-        debug!("Could not find SDL descriptor for {}", age_filename);
+        debug!("Could not find SDL descriptor for {age_filename}");
         Vec::new()
     };
     let node = VaultSdlNode::new(age_uuid, age_id, age_filename, &sdl_blob);

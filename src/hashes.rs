@@ -71,8 +71,7 @@ impl ShaDigest {
         // Therefore, for simplicity, we just store the whole message in memory.
         // However, we need to pad it up to 512 bits and append the size in
         // bits (BE) to the end of the buffer.
-        let buf_size = ((data.len() + 1 + size_of::<u64>()
-                            + (BLOCK_SIZE - 1)) / BLOCK_SIZE) * BLOCK_SIZE;
+        let buf_size = (data.len() + 1 + size_of::<u64>()).div_ceil(BLOCK_SIZE) * BLOCK_SIZE;
         let mut buffer = vec![0; buf_size];
         {
             let (data_part, suffix) = buffer.split_at_mut(data.len());

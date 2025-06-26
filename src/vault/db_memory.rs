@@ -72,13 +72,13 @@ impl DbInterface for DbMemory {
         // assumed to be blank, and any attempt to log into an account that
         // isn't already created will automatically create a new account.
         let pass_hash = create_pass_hash(account_name, "").map_err(|err| {
-                            warn!("Failed to create password hash: {}", err);
+                            warn!("Failed to create password hash: {err}");
                             NetResultCode::NetInternalError
                         })?;
         // Since this backend is not persistent, we use a simple SHA-1 hash
         // of the username as the API token for consistent results
         let api_token = ShaDigest::sha1(account_name.as_bytes()).as_hex();
-        info!("API token for '{}' is {}", account_name, api_token);
+        info!("API token for '{account_name}' is {api_token}");
         let mut db = self.db.borrow_mut();
         let account = db.accounts.entry(UniCase::new(account_name.to_string()))
                         .or_insert(AccountInfo {
@@ -144,7 +144,7 @@ impl DbInterface for DbMemory {
         let server_id = db.game_index;
         db.game_index += 1;
         if db.game_servers.insert(server_id, server).is_some() {
-            warn!("Created duplicate game server ID {}!", server_id);
+            warn!("Created duplicate game server ID {server_id}!");
             Err(NetResultCode::NetInternalError)
         } else {
             Ok(())
@@ -157,7 +157,7 @@ impl DbInterface for DbMemory {
         db.node_index += 1;
         node.set_node_id(node_id);
         if db.vault.insert(node_id, Arc::new(node)).is_some() {
-            warn!("Created duplicate node ID {}!", node_id);
+            warn!("Created duplicate node ID {node_id}!");
             Err(NetResultCode::NetInternalError)
         } else {
             Ok(node_id)
@@ -215,12 +215,11 @@ impl DbInterface for DbMemory {
     fn get_player_info_node(&self, player_id: u32) -> NetResult<Arc<VaultNode>> {
         // Obviously this can be a bit more efficient in SQL...
         for node_ref in self.fetch_refs(player_id, false)? {
-            if let Some(node) = self.db.borrow().vault.get(&node_ref.child()) {
-                if let Some(player_info) = node.as_player_info_node() {
-                    if player_info.player_id() == player_id {
-                        return Ok(node.clone());
-                    }
-                }
+            if let Some(node) = self.db.borrow().vault.get(&node_ref.child())
+                && let Some(player_info) = node.as_player_info_node()
+                && player_info.player_id() == player_id
+            {
+                return Ok(node.clone());
             }
         }
         Err(NetResultCode::NetVaultNodeNotFound)
