@@ -20,7 +20,7 @@ use anyhow::Result;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::plasma::{StreamRead, StreamWrite};
-use crate::plasma::safe_string::{read_safe_str, write_safe_str, StringFormat};
+use crate::plasma::safe_string::{ReadSafeStr, WriteSafeStr, StringFormat};
 
 pub struct Key {
     data: Option<Uoid>
@@ -99,7 +99,7 @@ impl StreamRead for Uoid {
         };
         let obj_type = stream.read_u16::<LittleEndian>()?;
         let obj_id = stream.read_u32::<LittleEndian>()?;
-        let obj_name = read_safe_str(stream, StringFormat::Latin1)?;
+        let obj_name = stream.read_safe_str(StringFormat::Latin1)?;
         let clone_id = if (contents & Uoid::HAS_CLONE_IDS) != 0 {
             stream.read_u32::<LittleEndian>()?
         } else {
@@ -135,7 +135,7 @@ impl StreamWrite for Uoid {
         }
         stream.write_u16::<LittleEndian>(self.obj_type)?;
         stream.write_u32::<LittleEndian>(self.obj_id)?;
-        write_safe_str(stream, &self.obj_name, StringFormat::Latin1)?;
+        stream.write_safe_str(&self.obj_name, StringFormat::Latin1)?;
         if (contents & Uoid::HAS_CLONE_IDS) != 0 {
             stream.write_u32::<LittleEndian>(self.clone_id)?;
             stream.write_u32::<LittleEndian>(self.clone_player_id)?;

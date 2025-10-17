@@ -26,7 +26,7 @@ use crate::plasma::{Uoid, Creatable, UnifiedTime, Factory, StreamRead, StreamWri
 use crate::plasma::color::{Color32, ColorRGBA};
 use crate::plasma::creatable::ClassID;
 use crate::plasma::geometry::{Quaternion, Vector3};
-use crate::plasma::safe_string::{read_safe_str, write_safe_str, StringFormat};
+use crate::plasma::safe_string::{ReadSafeStr, WriteSafeStr, StringFormat};
 use super::state::{State, read_compressed_size, write_compressed_size};
 use super::{DescriptorDb, StateDescriptor, VarDescriptor, VarType, VarDefault};
 use super::{HAS_NOTIFICATION_INFO, HAS_TIMESTAMP, SAME_AS_DEFAULT, HAS_DIRTY_FLAG, WANT_TIMESTAMP};
@@ -326,7 +326,7 @@ impl Variable {
         let read_flags = stream.read_u8()?;
         self.notification_hint = if (read_flags & HAS_NOTIFICATION_INFO) != 0 {
             stream.read_u8()?;  // Unused: notification info read flags
-            read_safe_str(stream, StringFormat::Latin1)?
+            stream.read_safe_str(StringFormat::Latin1)?
         } else {
             String::new()
         };
@@ -553,7 +553,7 @@ impl Variable {
         if !self.notification_hint.is_empty() {
             stream.write_u8(HAS_NOTIFICATION_INFO)?;
             stream.write_u8(0)?;    // Unused: notification info read flags
-            write_safe_str(stream, &self.notification_hint, StringFormat::Latin1)?;
+            stream.write_safe_str(&self.notification_hint, StringFormat::Latin1)?;
         } else {
             stream.write_u8(0)?;    // No read flags
         }

@@ -21,7 +21,7 @@ use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 
 use crate::plasma::{BitVector, StreamRead, StreamWrite};
 use crate::plasma::creatable::derive_creatable;
-use crate::plasma::safe_string::{read_safe_str, write_safe_str, StringFormat};
+use crate::plasma::safe_string::{ReadSafeStr, WriteSafeStr, StringFormat};
 use super::{NetSafety, MessageWithCallbacks};
 
 pub struct AnimCmdMsg {
@@ -53,8 +53,8 @@ impl StreamRead for AnimCmdMsg {
         let speed = stream.read_f32::<LittleEndian>()?;
         let speed_change_rate = stream.read_f32::<LittleEndian>()?;
         let time = stream.read_f32::<LittleEndian>()?;
-        let anim_name = read_safe_str(stream, StringFormat::Latin1)?;
-        let loop_name = read_safe_str(stream, StringFormat::Latin1)?;
+        let anim_name = stream.read_safe_str(StringFormat::Latin1)?;
+        let loop_name = stream.read_safe_str(StringFormat::Latin1)?;
 
         Ok(Self { base, cmd, begin, end, loop_end, loop_begin, speed,
                   speed_change_rate, time, anim_name, loop_name })
@@ -72,8 +72,8 @@ impl StreamWrite for AnimCmdMsg {
         stream.write_f32::<LittleEndian>(self.speed)?;
         stream.write_f32::<LittleEndian>(self.speed_change_rate)?;
         stream.write_f32::<LittleEndian>(self.time)?;
-        write_safe_str(stream, &self.anim_name, StringFormat::Latin1)?;
-        write_safe_str(stream, &self.loop_name, StringFormat::Latin1)?;
+        stream.write_safe_str(&self.anim_name, StringFormat::Latin1)?;
+        stream.write_safe_str(&self.loop_name, StringFormat::Latin1)?;
         Ok(())
     }
 }

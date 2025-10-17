@@ -23,7 +23,7 @@ use num_traits::FromPrimitive;
 
 use crate::plasma::{StreamRead, StreamWrite};
 use crate::plasma::creatable::derive_creatable;
-use crate::plasma::safe_string::{read_safe_str, write_safe_str, StringFormat};
+use crate::plasma::safe_string::{ReadSafeStr, WriteSafeStr, StringFormat};
 
 pub enum GenericType {
     Int(i32),
@@ -70,7 +70,7 @@ impl StreamRead for CreatableGenericValue {
                 Ok(Self { value: GenericType::Bool(value) })
             }
             Some(TypeID::String) => {
-                let value = read_safe_str(stream, StringFormat::Latin1)?;
+                let value = stream.read_safe_str(StringFormat::Latin1)?;
                 Ok(Self { value: GenericType::String(value) })
             }
             Some(TypeID::Char) => {
@@ -78,7 +78,7 @@ impl StreamRead for CreatableGenericValue {
                 Ok(Self { value: GenericType::Char(value) })
             }
             Some(TypeID::Any) => {
-                let value = read_safe_str(stream, StringFormat::Latin1)?;
+                let value = stream.read_safe_str(StringFormat::Latin1)?;
                 Ok(Self { value: GenericType::Any(value) })
             }
             Some(TypeID::UInt) => {
@@ -112,7 +112,7 @@ impl StreamWrite for CreatableGenericValue {
             }
             GenericType::String(value) => {
                 stream.write_u8(TypeID::String as u8)?;
-                write_safe_str(stream, value, StringFormat::Latin1)?;
+                stream.write_safe_str(value, StringFormat::Latin1)?;
             }
             GenericType::Char(value) => {
                 stream.write_u8(TypeID::Char as u8)?;
@@ -120,7 +120,7 @@ impl StreamWrite for CreatableGenericValue {
             }
             GenericType::Any(value) => {
                 stream.write_u8(TypeID::Any as u8)?;
-                write_safe_str(stream, value, StringFormat::Latin1)?;
+                stream.write_safe_str(value, StringFormat::Latin1)?;
             }
             GenericType::UInt(value) => {
                 stream.write_u8(TypeID::UInt as u8)?;

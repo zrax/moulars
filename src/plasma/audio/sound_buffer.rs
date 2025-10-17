@@ -21,7 +21,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::plasma::{Key, StreamRead, StreamWrite};
 use crate::plasma::creatable::derive_creatable;
-use crate::plasma::safe_string::{read_safe_str, write_safe_str, StringFormat};
+use crate::plasma::safe_string::{ReadSafeStr, WriteSafeStr, StringFormat};
 
 pub struct SoundBuffer {
     key: Key,
@@ -73,7 +73,7 @@ impl StreamRead for SoundBuffer {
         let key = Key::stream_read(stream)?;
         let flags = stream.read_u32::<LittleEndian>()?;
         let data_length = stream.read_u32::<LittleEndian>()?;
-        let file_name = read_safe_str(stream, StringFormat::Utf8)?;
+        let file_name = stream.read_safe_str(StringFormat::Utf8)?;
         let wav_header = WavHeader::stream_read(stream)?;
         Ok(Self { key, flags, data_length, file_name, wav_header })
     }
@@ -84,7 +84,7 @@ impl StreamWrite for SoundBuffer {
         self.key.stream_write(stream)?;
         stream.write_u32::<LittleEndian>(self.flags)?;
         stream.write_u32::<LittleEndian>(self.data_length)?;
-        write_safe_str(stream, &self.file_name, StringFormat::Utf8)?;
+        stream.write_safe_str(&self.file_name, StringFormat::Utf8)?;
         self.wav_header.stream_write(stream)?;
         Ok(())
     }

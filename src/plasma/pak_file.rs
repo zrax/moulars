@@ -23,7 +23,7 @@ use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::plasma::{StreamRead, StreamWrite};
-use crate::plasma::safe_string::{read_safe_str, write_safe_str, StringFormat};
+use crate::plasma::safe_string::{ReadSafeStr, WriteSafeStr, StringFormat};
 
 pub struct FileInfo {
     name: String,
@@ -64,7 +64,7 @@ impl StreamRead for PakFile {
         let mut files = Vec::with_capacity(num_files as usize);
 
         for _ in 0..num_files {
-            let name = read_safe_str(stream, StringFormat::Utf8)?;
+            let name = stream.read_safe_str(StringFormat::Utf8)?;
             // Offset.  We hope they're in order...
             let _ = stream.read_u32::<LittleEndian>()?;
             files.push(FileInfo { name, data: Vec::new() });
@@ -96,7 +96,7 @@ impl StreamWrite for PakFile {
         for file in &self.files {
             let cur_offset = u32::try_from(offset_accum)
                     .context("Pak file contents too large")?;
-            write_safe_str(stream, &file.name, StringFormat::Utf8)?;
+            stream.write_safe_str(&file.name, StringFormat::Utf8)?;
             stream.write_u32::<LittleEndian>(cur_offset)?;
 
             // The data includes a u32 size header

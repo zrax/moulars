@@ -22,7 +22,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 
 use crate::plasma::{Creatable, StreamRead};
 use crate::plasma::key::{Uoid, Location};
-use crate::plasma::safe_string::{read_safe_str, StringFormat};
+use crate::plasma::safe_string::{ReadSafeStr, StringFormat};
 
 // We don't need to do any processing on these, but we do need to be able to
 // extract some objects (e.g. Sound Buffers) in order to determine the correct
@@ -52,8 +52,8 @@ impl PageFile {
             return Err(anyhow!("Unexpected page version {}", page_version));
         }
         let location = Location::stream_read(stream)?;
-        let age_name = read_safe_str(stream, StringFormat::Utf8)?;
-        let page_name = read_safe_str(stream, StringFormat::Utf8)?;
+        let age_name = stream.read_safe_str(StringFormat::Utf8)?;
+        let page_name = stream.read_safe_str(StringFormat::Utf8)?;
         let page_version = stream.read_u16::<LittleEndian>()?;
         let _ = stream.read_u32::<LittleEndian>()?;     // Checksum
         let _ = stream.read_u32::<LittleEndian>()?;     // Data start

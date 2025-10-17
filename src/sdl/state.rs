@@ -22,7 +22,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use log::warn;
 
 use crate::plasma::{Uoid, StreamRead, StreamWrite};
-use crate::plasma::safe_string::{read_safe_str, write_safe_str, StringFormat};
+use crate::plasma::safe_string::{ReadSafeStr, WriteSafeStr, StringFormat};
 use super::{DescriptorDb, StateDescriptor, VarType, Variable};
 use super::{HAS_UOID, VAR_LENGTH_IO};
 
@@ -146,7 +146,7 @@ impl State {
             return Err(anyhow!("Unsupported blob format"));
         }
 
-        let descriptor_name = read_safe_str(&mut stream, StringFormat::Latin1)?;
+        let descriptor_name = stream.read_safe_str(StringFormat::Latin1)?;
         let version = stream.read_u16::<LittleEndian>()?;
         if let Some(descriptor) = db.get_version(&descriptor_name, version) {
             let mut state = State::from_defaults(descriptor, db);
@@ -174,7 +174,7 @@ impl State {
         }
         stream.write_u16::<LittleEndian>(write_flags)?;
 
-        write_safe_str(&mut stream, self.descriptor.name(), StringFormat::Latin1)?;
+        stream.write_safe_str(self.descriptor.name(), StringFormat::Latin1)?;
         stream.write_u16::<LittleEndian>(self.descriptor.version())?;
         if let Some(uoid) = &self.object {
             uoid.stream_write(&mut stream)?;

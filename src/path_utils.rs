@@ -18,6 +18,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf, MAIN_SEPARATOR};
 
 // Rust makes this surprisingly difficult...
+// TODO: Replace this with Path::with_added_extension once we depend on Rust 1.91
 pub fn append_extension(path: impl AsRef<Path>, ext: impl AsRef<OsStr>) -> PathBuf {
     let path = path.as_ref();
     let ext = ext.as_ref();

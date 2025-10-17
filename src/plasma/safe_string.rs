@@ -14,7 +14,7 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::io::{BufRead, Write};
+use std::io;
 
 use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -24,71 +24,73 @@ pub enum StringFormat {
     Latin1, Utf8, Utf16,
 }
 
-pub fn read_safe_str<S>(stream: &mut S, format: StringFormat) -> Result<String>
-    where S: BufRead
-{
-    let length = stream.read_u16::<LittleEndian>()?;
-    if (length & 0xF000) == 0 {
-        // Discarded -- old format
-        let _ = stream.read_u16::<LittleEndian>()?;
-    }
+pub trait ReadSafeStr : io::Read {
+    fn read_safe_str(&mut self, format: StringFormat) -> Result<String> {
+        let length = self.read_u16::<LittleEndian>()?;
+        if (length & 0xF000) == 0 {
+            // Discarded -- old format
+            let _ = self.read_u16::<LittleEndian>()?;
+        }
 
-    if format == StringFormat::Utf16 {
-        let mut buffer = vec![0u16; (length & 0x0FFF) as usize];
-        stream.read_u16_into::<LittleEndian>(buffer.as_mut_slice())?;
-        let _ = stream.read_u16::<LittleEndian>()?;     // Trailing '\0'
-        if let Some(&first_char) = buffer.first() && (first_char & 0x8000) != 0 {
-            for ch in &mut buffer {
-                *ch = !*ch;
+        if format == StringFormat::Utf16 {
+            let mut buffer = vec![0u16; (length & 0x0FFF) as usize];
+            self.read_u16_into::<LittleEndian>(buffer.as_mut_slice())?;
+            let _ = self.read_u16::<LittleEndian>()?;     // Trailing '\0'
+            if let Some(&first_char) = buffer.first() && (first_char & 0x8000) != 0 {
+                for ch in &mut buffer {
+                    *ch = !*ch;
+                }
             }
-        }
-        Ok(String::from_utf16_lossy(buffer.as_slice()))
-    } else {
-        let mut buffer = vec![0u8; (length & 0x0FFF) as usize];
-        stream.read_exact(buffer.as_mut_slice())?;
-        if let Some(&first_char) = buffer.first() && (first_char & 0x80) != 0 {
-            for ch in &mut buffer {
-                *ch = !*ch;
-            }
-        }
-        if format == StringFormat::Utf8 {
-            Ok(String::from_utf8_lossy(buffer.as_slice()).into())
+            Ok(String::from_utf16_lossy(buffer.as_slice()))
         } else {
-            // This performs a conversion from Latin-1
-            Ok(buffer.iter().map(|&ch| ch as char).collect())
+            let mut buffer = vec![0u8; (length & 0x0FFF) as usize];
+            self.read_exact(buffer.as_mut_slice())?;
+            if let Some(&first_char) = buffer.first() && (first_char & 0x80) != 0 {
+                for ch in &mut buffer {
+                    *ch = !*ch;
+                }
+            }
+            if format == StringFormat::Utf8 {
+                Ok(String::from_utf8_lossy(buffer.as_slice()).into())
+            } else {
+                // This performs a conversion from Latin-1
+                Ok(buffer.iter().map(|&ch| ch as char).collect())
+            }
         }
     }
 }
+impl<R> ReadSafeStr for R where R: io::Read + ?Sized { }
 
-pub fn write_safe_str(stream: &mut dyn Write, value: &str, format: StringFormat)
-    -> Result<()>
-{
-    if format == StringFormat::Utf16 {
-        let buffer: Vec<u16> = value.encode_utf16().collect();
-        let length_key = buffer.len();
-        if length_key > 0x0FFF {
-            return Err(anyhow!("String too large for SafeString encoding ({})", length_key));
-        }
-        #[allow(clippy::cast_possible_truncation)]
-        stream.write_u16::<LittleEndian>(length_key as u16 | 0xF000)?;
-        for ch in buffer {
-            stream.write_u16::<LittleEndian>(!ch)?;
-        }
-        stream.write_u16::<LittleEndian>(0)?;   // Trailing '\0'
-    } else {
-        let buffer: Vec<u8> = if format == StringFormat::Utf8 {
-            value.as_bytes().iter().map(|&ch| !ch).collect()
+pub trait WriteSafeStr : io::Write {
+    fn write_safe_str(&mut self, value: &str, format: StringFormat) -> Result<()> {
+        if format == StringFormat::Utf16 {
+            let buffer: Vec<u16> = value.encode_utf16().collect();
+            let length_key = buffer.len();
+            if length_key > 0x0FFF {
+                return Err(anyhow!("String too large for SafeString encoding ({})", length_key));
+            }
+            #[allow(clippy::cast_possible_truncation)]
+            self.write_u16::<LittleEndian>(length_key as u16 | 0xF000)?;
+            for ch in buffer {
+                self.write_u16::<LittleEndian>(!ch)?;
+            }
+            self.write_u16::<LittleEndian>(0)?;   // Trailing '\0'
         } else {
-            value.chars().map(|ch| if (ch as u32) < 0x100 { !(ch as u8) } else { !b'?' }).collect()
-        };
-        let length_key = buffer.len();
-        if length_key > 0x0FFF {
-            return Err(anyhow!("String too large for SafeString encoding ({})", length_key));
+            let buffer: Vec<u8> = if format == StringFormat::Utf8 {
+                value.as_bytes().iter().map(|&ch| !ch).collect()
+            } else {
+                value.chars().map(|ch| if (ch as u32) < 0x100 { !(ch as u8) } else { !b'?' }).collect()
+            };
+            let length_key = buffer.len();
+            if length_key > 0x0FFF {
+                return Err(anyhow!("String too large for SafeString encoding ({})", length_key));
+            }
+            #[allow(clippy::cast_possible_truncation)]
+            self.write_u16::<LittleEndian>(length_key as u16 | 0xF000)?;
+            self.write_all(buffer.as_slice())?;
         }
-        #[allow(clippy::cast_possible_truncation)]
-        stream.write_u16::<LittleEndian>(length_key as u16 | 0xF000)?;
-        stream.write_all(buffer.as_slice())?;
-    }
 
-    Ok(())
+        Ok(())
+    }
 }
+impl<W> WriteSafeStr for W where W: io::Write + ?Sized { }
