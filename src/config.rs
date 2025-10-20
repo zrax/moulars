@@ -129,7 +129,7 @@ impl ServerConfig {
                 "none" => VaultDbBackend::None,
                 "sqlite" => VaultDbBackend::Sqlite,
                 "postgres" => VaultDbBackend::Postgres,
-                _ => return Err(anyhow!("Unknown database type: {}", type_str))
+                _ => return Err(anyhow!("Unknown database type: {type_str}"))
             }
         } else {
             VaultDbBackend::None

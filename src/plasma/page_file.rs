@@ -49,7 +49,7 @@ impl PageFile {
 
         let page_version = stream.read_u32::<LittleEndian>()?;
         if page_version != 6 {
-            return Err(anyhow!("Unexpected page version {}", page_version));
+            return Err(anyhow!("Unexpected page version {page_version}"));
         }
         let location = Location::stream_read(stream)?;
         let age_name = stream.read_safe_str(StringFormat::Utf8)?;
@@ -116,11 +116,11 @@ impl PageFile {
 
             let stream_class = obj_stream.read_u16::<LittleEndian>()?;
             if stream_class != ObType::static_class_id() {
-                return Err(anyhow!("Unexpected class ID 0x{:04x} encountered", stream_class));
+                return Err(anyhow!("Unexpected class ID 0x{stream_class:04x} encountered"));
             }
             return ObType::stream_read(&mut obj_stream)
         }
-        Err(anyhow!("Could not find object {:?} in this page file", uoid))
+        Err(anyhow!("Could not find object {uoid:?} in this page file"))
     }
 }
 

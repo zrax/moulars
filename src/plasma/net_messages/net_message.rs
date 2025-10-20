@@ -73,7 +73,7 @@ impl StreamRead for NetMessage {
             if (protocol_maj != NETMSG_PROTOCOL_MAJ)
                     || (protocol_min != NETMSG_PROTOCOL_MIN)
             {
-                return Err(anyhow!("Invalid protocol version: {}.{}", protocol_maj, protocol_min));
+                return Err(anyhow!("Invalid protocol version: {protocol_maj}.{protocol_min}"));
             }
         }
 

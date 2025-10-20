@@ -408,8 +408,8 @@ fn read_vault_string<S>(stream: &mut S) -> Result<String>
     where S: BufRead
 {
     let size = stream.read_u32::<LittleEndian>()? as usize;
-    if (size % size_of::<u16>()) != 0 || size < size_of::<u16>() {
-        return Err(anyhow!("Bad UTF-16 data size ({} bytes)", size));
+    if !size.is_multiple_of(size_of::<u16>()) || size < size_of::<u16>() {
+        return Err(anyhow!("Bad UTF-16 data size ({size} bytes)"));
     }
     let mut buffer = vec![0; (size - 1) / size_of::<u16>()];
     stream.read_u16_into::<LittleEndian>(&mut buffer)?;

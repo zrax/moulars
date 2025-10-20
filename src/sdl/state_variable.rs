@@ -353,7 +353,7 @@ impl Variable {
             None => stream.read_u32::<LittleEndian>()? as usize
         };
         if var_count >= 10000 {
-            Err(anyhow!("Too many elements in SDL variable ({})", var_count))
+            Err(anyhow!("Too many elements in SDL variable ({var_count})"))
         } else {
             Ok(var_count)
         }
@@ -541,7 +541,7 @@ impl Variable {
                 idx
             };
             if idx >= values.len() {
-                return Err(anyhow!("Invalid value index {}", idx));
+                return Err(anyhow!("Invalid value index {idx}"));
             }
             values[idx].read(stream, db)?;
         }
@@ -731,7 +731,7 @@ impl Variable {
 
     fn write_var_count(&self, stream: &mut dyn Write, count: usize) -> Result<()> {
         if count > 10000 {
-            return Err(anyhow!("Too many elements in SDL variable ({})", count));
+            return Err(anyhow!("Too many elements in SDL variable ({count})"));
         }
         if self.descriptor.count().is_none() {
             #[allow(clippy::cast_possible_truncation)]

@@ -213,7 +213,7 @@ pub fn read_utf16z_md5_hash<S>(stream: &mut S) -> Result<[u8; 16]>
         return Err(anyhow!("MD5 hash was not nul-terminated"));
     }
     let result = HEXLOWER_PERMISSIVE.decode(String::from_utf16_lossy(&buffer).as_bytes())
-            .map_err(|err| anyhow!("Invalid hex literal: {}", err))?;
+            .map_err(|err| anyhow!("Invalid hex literal: {err}"))?;
     result.try_into().map_err(|_| anyhow!("Invalid MD5 hash length"))
 }
 
@@ -299,7 +299,7 @@ impl Manifest {
         let mut stream = BufReader::new(File::open(path)?);
         let cache_magic = stream.read_u32::<LittleEndian>()?;
         if cache_magic != Self::CACHE_MAGIC {
-            return Err(anyhow!("Unknown/invalid cache file magic '{:08x}'", cache_magic));
+            return Err(anyhow!("Unknown/invalid cache file magic '{cache_magic:08x}'"));
         }
 
         Manifest::stream_read(&mut stream)

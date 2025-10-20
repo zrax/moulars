@@ -70,7 +70,7 @@ impl State {
         self.flags = stream.read_u16::<LittleEndian>()?;
         let io_version = stream.read_u8()?;
         if io_version != Self::IO_VERSION {
-            return Err(anyhow!("Unexpected IO version {}", io_version));
+            return Err(anyhow!("Unexpected IO version {io_version}"));
         }
 
         let max_hint = self.descriptor.vars().len();
@@ -84,7 +84,7 @@ impl State {
                 idx
             };
             if idx >= self.simple_vars.len() {
-                return Err(anyhow!("Invalid variable index {}", idx));
+                return Err(anyhow!("Invalid variable index {idx}"));
             }
             self.simple_vars[idx].read(stream, db)?;
         }
@@ -98,7 +98,7 @@ impl State {
                 idx
             };
             if idx >= self.statedesc_vars.len() {
-                return Err(anyhow!("Invalid variable index {}", idx));
+                return Err(anyhow!("Invalid variable index {idx}"));
             }
             self.statedesc_vars[idx].read(stream, db)?;
         }
@@ -161,8 +161,7 @@ impl State {
             }
             Ok(state)
         } else {
-            Err(anyhow!("Could not find descriptor {} version {}",
-                        descriptor_name, version))
+            Err(anyhow!("Could not find descriptor {descriptor_name} version {version}"))
         }
     }
 
@@ -244,7 +243,7 @@ pub(super) fn write_compressed_size(stream: &mut dyn Write, max_hint: usize, val
     } else if let Ok(value32) = u32::try_from(value) {
         return Ok(stream.write_u32::<LittleEndian>(value32)?);
     }
-    Err(anyhow!("Size {} is too large for stream", value))
+    Err(anyhow!("Size {value} is too large for stream"))
 }
 
 #[cfg(test)]

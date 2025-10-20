@@ -90,7 +90,7 @@ impl StreamRead for CreatableGenericValue {
                 Ok(Self { value: GenericType::Double(value) })
             }
             Some(TypeID::None) => Ok(Self { value: GenericType::None }),
-            None => Err(anyhow!("Invalid type ID {}", type_id))
+            None => Err(anyhow!("Invalid type ID {type_id}"))
         }
     }
 }

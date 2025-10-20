@@ -70,7 +70,7 @@ impl AgeInfo {
 
             let parts: Vec<&str> = line.splitn(2, '=').collect();
             if parts.len() != 2 {
-                return Err(anyhow!("Malformed line in .age file: {}", line));
+                return Err(anyhow!("Malformed line in .age file: {line}"));
             }
             if parts[0].eq_ignore_ascii_case("StartDateTime") {
                 let value = parts[1].parse::<u32>()
@@ -101,13 +101,13 @@ impl AgeInfo {
                 let name = page_parts[0];
                 let seq_suffix_str = *page_parts.get(1).unwrap_or(&"0");
                 let seq_suffix = seq_suffix_str.parse::<u32>()
-                        .map_err(|_| anyhow!("Invalid Page sequence: {}", seq_suffix_str))?;
+                        .map_err(|_| anyhow!("Invalid Page sequence: {seq_suffix_str}"))?;
                 let flags_str = *page_parts.get(2).unwrap_or(&"0");
                 let flags = flags_str.parse::<u32>()
-                        .map_err(|_| anyhow!("Invalid Page flags: {}", flags_str))?;
+                        .map_err(|_| anyhow!("Invalid Page flags: {flags_str}"))?;
                 info.pages.push(PageInfo { name: name.to_string(), seq_suffix, flags });
             } else {
-                return Err(anyhow!("Invalid AgeInfo line: {}", line));
+                return Err(anyhow!("Invalid AgeInfo line: {line}"));
             }
         }
 

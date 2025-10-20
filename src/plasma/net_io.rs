@@ -59,8 +59,7 @@ pub async fn read_sized_buffer<S>(stream: &mut S, max_size: u32) -> Result<Vec<u
 {
     let data_size = stream.read_u32_le().await?;
     if data_size > max_size {
-        return Err(anyhow!("Message payload too large ({} bytes, limit {})",
-                           data_size, max_size));
+        return Err(anyhow!("Message payload too large ({data_size} bytes, limit {max_size})"));
     }
     let mut buffer = vec![0; data_size as usize];
     stream.read_exact(buffer.as_mut_slice()).await?;

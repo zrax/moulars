@@ -153,7 +153,7 @@ impl StreamRead for CliToFile {
                 let reader_id = stream.read_u32::<LittleEndian>()?;
                 Ok(CliToFile::DownloadChunkAck { trans_id, reader_id })
             }
-            None => Err(anyhow!("Bad message ID {}", msg_id))
+            None => Err(anyhow!("Bad message ID {msg_id}"))
         }
     }
 }

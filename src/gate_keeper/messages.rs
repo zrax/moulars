@@ -96,7 +96,7 @@ impl CliToGateKeeper {
                 let trans_id = stream.read_u32_le().await?;
                 Ok(CliToGateKeeper::AuthServIpAddressRequest { trans_id })
             }
-            None => Err(anyhow!("Bad message ID {}", msg_id))
+            None => Err(anyhow!("Bad message ID {msg_id}"))
         }
     }
 }

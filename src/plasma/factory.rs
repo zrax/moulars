@@ -57,7 +57,7 @@ impl Factory {
             Some(ClassID::CreatableGenericValue) =>
                 Ok(Some(Box::new(CreatableGenericValue::stream_read(stream)?))),
             Some(ClassID::Nil) => Ok(None),
-            None => Err(anyhow!("Unknown creatable type 0x{:04x}", class_id)),
+            None => Err(anyhow!("Unknown creatable type 0x{class_id:04x}")),
         }
     }
 

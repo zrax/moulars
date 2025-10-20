@@ -983,7 +983,7 @@ impl CliToAuth {
                     trans_id, age_id, max_scores, game_name
                 })
             }
-            None => Err(anyhow!("Bad message ID {}", msg_id))
+            None => Err(anyhow!("Bad message ID {msg_id}"))
         }
     }
 }

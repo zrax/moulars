@@ -237,7 +237,7 @@ impl<S: Write + Seek> Write for EncryptedWriter<S> {
                     &buf[src_pos..(src_pos + copy_len)]);
             src_pos += copy_len;
             self.write_pos += copy_len;
-            if (self.write_pos % self.buffer.len()) == 0 {
+            if self.write_pos.is_multiple_of(self.buffer.len()) {
                 self.write_block()?;
             }
         }

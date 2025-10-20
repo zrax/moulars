@@ -119,6 +119,7 @@ pub fn cache_clients(data_root: &Path, python_exe: Option<&Path>) -> Result<()> 
                     warn!("Failed to encrypt {}: {}", file.display(), err);
                 }
             } else if ext == OsStr::new("sdl") {
+                // Files served by the auth server are always encrypted
                 if let Err(err) = encrypt_file(file, EncryptionType::XXTEA, &ntd_key) {
                     warn!("Failed to encrypt {}: {}", file.display(), err);
                 }
@@ -432,7 +433,7 @@ fn get_python_system_lib(python_exe: &Path) -> Result<PathBuf> {
     eprint!("{}", String::from_utf8_lossy(&output.stderr));
     match output.status.code() {
         Some(0) => (),
-        Some(code) => return Err(anyhow!("python exited with status {}", code)),
+        Some(code) => return Err(anyhow!("python exited with status {code}")),
         None => return Err(anyhow!("python process killed by signal")),
     }
 

@@ -67,7 +67,7 @@ pub trait WriteSafeStr : io::Write {
             let buffer: Vec<u16> = value.encode_utf16().collect();
             let length_key = buffer.len();
             if length_key > 0x0FFF {
-                return Err(anyhow!("String too large for SafeString encoding ({})", length_key));
+                return Err(anyhow!("String too large for SafeString encoding ({length_key})"));
             }
             #[allow(clippy::cast_possible_truncation)]
             self.write_u16::<LittleEndian>(length_key as u16 | 0xF000)?;
@@ -83,7 +83,7 @@ pub trait WriteSafeStr : io::Write {
             };
             let length_key = buffer.len();
             if length_key > 0x0FFF {
-                return Err(anyhow!("String too large for SafeString encoding ({})", length_key));
+                return Err(anyhow!("String too large for SafeString encoding ({length_key})"));
             }
             #[allow(clippy::cast_possible_truncation)]
             self.write_u16::<LittleEndian>(length_key as u16 | 0xF000)?;
