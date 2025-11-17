@@ -157,12 +157,23 @@ impl Location {
     pub fn make(prefix: i32, page: i32, flags: u16) -> Self {
         if prefix < 0 {
             #[allow(clippy::cast_sign_loss)]
-            Self { sequence: (page & 0xFFFF).wrapping_sub(prefix << 16) as u32 + 0xFF000001, flags }
+            Self {
+                sequence: ((page & 0xFFFF).wrapping_sub(prefix << 16) as u32)
+                                          .wrapping_add(0xFF000001),
+                flags
+            }
         } else {
             #[allow(clippy::cast_sign_loss)]
-            Self { sequence: (page & 0xFFFF).wrapping_add(prefix << 16) as u32 + 0x00000021, flags }
+            Self {
+                sequence: ((page & 0xFFFF).wrapping_add(prefix << 16) as u32)
+                                          .wrapping_add(0x00000021),
+                flags
+            }
         }
     }
+
+    pub fn sequence(self) -> u32 { self.sequence }
+    pub fn flags(self) -> u16 { self.flags }
 }
 
 impl StreamRead for Location {
@@ -206,8 +217,23 @@ fn test_location() {
     assert_eq!(Location::make(65537, 0, 0).sequence, 0x00010021);
     assert_eq!(Location::make(65536, -1, 0).sequence, 0x00010020);
     assert_eq!(Location::make(65536, -33, 0).sequence, 0x00010000);
+    assert_eq!(Location::make(-256, 0, 0).sequence, 0x00000001);
+    assert_eq!(Location::make(-255, -1, 0).sequence, 0x00000000);
 
     assert_eq!(Location::make(1, 65503, 0).sequence, 0x00020000);
     assert_eq!(Location::make(1, -34, 0).sequence, 0x0001FFFF);
+    assert_eq!(Location::make(-255, 65535, 0).sequence, 0x00000000);
     assert_eq!(Location::make(-255, -2, 0).sequence, 0xFFFFFFFF);
+
+    // Examples from real PRPs
+    assert_eq!(Location::make(6, 1, 0).sequence, 0x00060022);       // city:canyon
+    assert_eq!(Location::make(6, 101, 0).sequence, 0x00060086);     // city:museumDoor
+    assert_eq!(Location::make(6, -2, 0).sequence, 0x0007001F);      // city:BuiltIn
+    assert_eq!(Location::make(6, -1, 0).sequence, 0x00070020);      // city:Textures
+    assert_eq!(Location::make(1234, 5, 0).sequence, 0x04D20026);    // GoMePubNew:Entry
+    assert_eq!(Location::make(40004, 1, 0).sequence, 0x9C440022);   // VeeTsah:Temple
+    assert_eq!(Location::make(40004, -1, 0).sequence, 0x9C450020);  // VeeTsah:Textures
+    assert_eq!(Location::make(-1, 8, 0).sequence, 0xFF010009);      // GlobalAnimations:MaileIdle
+    assert_eq!(Location::make(-1, 435, 0).sequence, 0xFF0101B4);    // GlobalAnimations:FemaleSwimDockExit
+    assert_eq!(Location::make(-6, 3, 0).sequence, 0xFF060004);      // GlobalAvatars:Audio
 }
