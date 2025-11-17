@@ -79,8 +79,8 @@ impl Manifest {
         Ok(Manifest { files })
     }
 
-    pub fn files(&self) -> &Vec<FileInfo> { &self.files }
-    pub fn files_mut(&mut self) -> &mut Vec<FileInfo> { &mut self.files }
+    pub fn files(&self) -> &[FileInfo] { &self.files }
+    pub fn files_mut(&mut self) -> &mut [FileInfo] { &mut self.files }
     pub fn add(&mut self, file: FileInfo) { self.files.push(file); }
 }
 

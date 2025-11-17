@@ -139,7 +139,7 @@ impl State {
         Ok(())
     }
 
-    pub fn from_blob(blob: &Vec<u8>, db: &DescriptorDb) -> Result<Self> {
+    pub fn from_blob(blob: &[u8], db: &DescriptorDb) -> Result<Self> {
         let mut stream = Cursor::new(blob);
         let read_flags = stream.read_u16::<LittleEndian>()?;
         if (read_flags & VAR_LENGTH_IO) == 0 {

@@ -80,8 +80,8 @@ impl PageFile {
     }
 
     pub fn location(&self) -> &Location { &self.location }
-    pub fn age_name(&self) -> &String { &self.age_name }
-    pub fn page_name(&self) -> &String { &self.page_name }
+    pub fn age_name(&self) -> &str { &self.age_name }
+    pub fn page_name(&self) -> &str { &self.page_name }
     pub fn page_version(&self) -> u16 { self.page_version }
 
     pub fn has_keys(&self, class_id: u16) -> bool {

@@ -66,8 +66,8 @@ impl ApiInterface {
         for player_info in player_list {
             let node = self.vault.fetch_node(player_info).await?.as_player_info_node().unwrap();
             players.push(OnlinePlayer {
-                name: node.player_name_ci().clone(),
-                location: node.age_instance_name().clone(),
+                name: node.player_name_ci().to_string(),
+                location: node.age_instance_name().to_string(),
             });
         }
         Ok(players)

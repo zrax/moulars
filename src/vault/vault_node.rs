@@ -96,7 +96,7 @@ pub struct VaultNode {
 macro_rules! node_field {
     ($field_name:ident, String) => {
         paste! {
-            pub fn $field_name(&self) -> &String {
+            pub fn $field_name(&self) -> &str {
                 &self.$field_name
             }
             pub fn [<has_ $field_name>](&self) -> bool {
@@ -124,7 +124,7 @@ macro_rules! node_field {
     };
     ($field_name:ident, Vec<u8>) => {
         paste! {
-            pub fn $field_name(&self) -> &Vec<u8> {
+            pub fn $field_name(&self) -> &[u8] {
                 &self.$field_name
             }
             pub fn [<has_ $field_name>](&self) -> bool {

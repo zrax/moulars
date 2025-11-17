@@ -630,7 +630,7 @@ fn test_parser() {
         assert!(result.is_ok());
         let descs = result.unwrap();
         assert_eq!(descs.len(), 1);
-        assert_eq!(descs[0].name().as_str(), "empty");
+        assert_eq!(descs[0].name(), "empty");
         assert_eq!(descs[0].version(), 1);
         assert_eq!(descs[0].vars().len(), 0);
     }
@@ -657,7 +657,7 @@ fn test_parser() {
         assert_eq!(descs.len(), 1);
         let vars = descs[0].vars();
         assert_eq!(vars.len(), 1);
-        assert_eq!(vars[0].name().as_str(), "foobar");
+        assert_eq!(vars[0].name(), "foobar");
         assert_eq!(vars[0].var_type(), &VarType::Bool);
         assert_eq!(vars[0].count(), Some(1));
         assert!(vars[0].default().is_none());
@@ -671,7 +671,7 @@ fn test_parser() {
         assert_eq!(descs.len(), 1);
         let vars = descs[0].vars();
         assert_eq!(vars.len(), 1);
-        assert_eq!(vars[0].name().as_str(), "foobar");
+        assert_eq!(vars[0].name(), "foobar");
         assert_eq!(vars[0].var_type(), &VarType::StateDesc("subtype".to_string()));
         assert_eq!(vars[0].count(), Some(1));
     }

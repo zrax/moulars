@@ -48,7 +48,7 @@ impl PageInfo {
     pub const LOCAL_ONLY: u32           = 1 << 2;
     pub const VOLATILE: u32             = 1 << 3;
 
-    pub fn name(&self) -> &String { &self.name }
+    pub fn name(&self) -> &str { &self.name }
     pub fn seq_suffix(&self) -> u32 { self.seq_suffix }
     pub fn flags(&self) -> u32 { self.flags }
 }
@@ -114,5 +114,5 @@ impl AgeInfo {
         Ok(info)
     }
 
-    pub fn pages(&self) -> &Vec<PageInfo> { &self.pages }
+    pub fn pages(&self) -> &[PageInfo] { &self.pages }
 }

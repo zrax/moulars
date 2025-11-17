@@ -65,7 +65,7 @@ impl VarDescriptor {
         Self { name, var_type, count, default }
     }
 
-    pub fn name(&self) -> &String { &self.name }
+    pub fn name(&self) -> &str { &self.name }
     pub fn var_type(&self) -> &VarType { &self.var_type }
     pub fn count(&self) -> Option<usize> { self.count }
     pub fn default(&self) -> Option<&VarDefault> { self.default.as_ref() }
@@ -80,9 +80,9 @@ impl StateDescriptor {
         }
     }
 
-    pub fn name(&self) -> &String { &self.name }
+    pub fn name(&self) -> &str { &self.name }
     pub fn version(&self) -> u16 { self.version }
-    pub fn vars(&self) -> &Vec<Arc<VarDescriptor>> { &self.vars }
+    pub fn vars(&self) -> &[Arc<VarDescriptor>] { &self.vars }
 
     pub fn get_var(&self, name: &str) -> Option<Arc<VarDescriptor>> {
         self.vars.iter().find(|var| var.name == name).cloned()

@@ -38,8 +38,8 @@ macro_rules! vnode_access {
 }
 
 vnode_access!(VaultPlayerNode {
-    player_name_ci: &String => istring64_1,
-    avatar_shape: &String => string64_1,
+    player_name_ci: &str => istring64_1,
+    avatar_shape: &str => string64_1,
     disabled: i32 => int32_1,
     explorer: i32 => int32_2,
     online_time: u32 => uint32_1,
@@ -65,7 +65,7 @@ impl VaultPlayerNode {
 vnode_access!(VaultAgeNode {
     age_instance_uuid: &Uuid => uuid_1,
     parent_age_instance_uuid: &Uuid => uuid_2,
-    age_name: &String => string64_1,
+    age_name: &str => string64_1,
 });
 
 impl VaultAgeNode {
@@ -93,7 +93,7 @@ impl VaultAgeNode {
 
 vnode_access!(VaultFolderNode {
     folder_type: i32 => int32_1,
-    folder_name: &String => string64_1,
+    folder_name: &str => string64_1,
 });
 
 impl VaultFolderNode {
@@ -110,8 +110,8 @@ impl VaultFolderNode {
 
 vnode_access!(VaultPlayerInfoNode {
     player_id: u32 => uint32_1,
-    player_name_ci: &String => istring64_1,
-    age_instance_name: &String => string64_1,
+    player_name_ci: &str => istring64_1,
+    age_instance_name: &str => string64_1,
     age_instance_uuid: &Uuid => uuid_1,
     online: i32 => int32_1,
     ccr_level: i32 => int32_2,
@@ -163,8 +163,8 @@ impl VaultSystemNode {
 
 vnode_access!(VaultImageNode {
     image_type: i32 => int32_1,
-    image_title: &String => string64_1,
-    image_data: &Vec<u8> => blob_1,
+    image_title: &str => string64_1,
+    image_data: &[u8] => blob_1,
 });
 
 impl VaultImageNode {
@@ -174,8 +174,8 @@ impl VaultImageNode {
 vnode_access!(VaultTextNoteNode {
     note_type: i32 => int32_1,
     note_subtype: i32 => int32_2,
-    note_title: &String => string64_1,
-    note_text: &String => text_1,
+    note_title: &str => string64_1,
+    note_text: &str => text_1,
 });
 
 impl VaultTextNoteNode {
@@ -183,9 +183,9 @@ impl VaultTextNoteNode {
 }
 
 vnode_access!(VaultSdlNode {
-    sdl_name: &String => string64_1,
+    sdl_name: &str => string64_1,
     sdl_ident: i32 => int32_1,
-    sdl_data: &Vec<u8> => blob_1,
+    sdl_data: &[u8] => blob_1,
 });
 
 impl VaultSdlNode {
@@ -204,7 +204,7 @@ impl VaultSdlNode {
 vnode_access!(VaultAgeLinkNode {
     unlocked: i32 => int32_1,
     volatile: i32 => int32_2,
-    spawn_points: &Vec<u8> => blob_1,
+    spawn_points: &[u8] => blob_1,
 });
 
 impl VaultAgeLinkNode {
@@ -220,8 +220,8 @@ impl VaultAgeLinkNode {
 
 vnode_access!(VaultChronicleNode {
     entry_type: i32 => int32_1,
-    entry_name: &String => string64_1,
-    entry_value: &String => text_1,
+    entry_name: &str => string64_1,
+    entry_value: &str => text_1,
 });
 
 impl VaultChronicleNode {
@@ -230,7 +230,7 @@ impl VaultChronicleNode {
 
 vnode_access!(VaultPlayerInfoListNode {
     folder_type: i32 => int32_1,
-    folder_name: &String => string64_1,
+    folder_name: &str => string64_1,
 });
 
 impl VaultPlayerInfoListNode {
@@ -243,12 +243,12 @@ impl VaultPlayerInfoListNode {
 }
 
 vnode_access!(VaultAgeInfoNode {
-    age_filename: &String => string64_2,
-    age_instance_name: &String => string64_3,
-    age_user_defined_name: &String => string64_4,
+    age_filename: &str => string64_2,
+    age_instance_name: &str => string64_3,
+    age_user_defined_name: &str => string64_4,
     age_instance_uuid: &Uuid => uuid_1,
     parent_age_instance_uuid: &Uuid => uuid_2,
-    age_description: &String => text_1,
+    age_description: &str => text_1,
     age_sequence_number: i32 => int32_1,
     age_language: i32 => int32_2,
     age_id: u32 => uint32_1,
@@ -302,7 +302,7 @@ impl VaultAgeInfoNode {
 
 vnode_access!(VaultAgeInfoListNode {
     folder_type: i32 => int32_1,
-    folder_name: &String => string64_1,
+    folder_name: &str => string64_1,
 });
 
 impl VaultAgeInfoListNode {
@@ -315,8 +315,8 @@ impl VaultAgeInfoListNode {
 }
 
 vnode_access!(VaultMarkerGameNode {
-    game_name: &String => text_1,
-    reward: &String => text_2,
+    game_name: &str => text_1,
+    reward: &str => text_2,
     game_uuid: &Uuid => uuid_1,
 });
 

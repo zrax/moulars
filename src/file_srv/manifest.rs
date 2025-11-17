@@ -83,8 +83,8 @@ impl FileInfo {
         }
     }
 
-    pub fn client_path(&self) -> &String { &self.client_path }
-    pub fn download_path(&self) -> &String { &self.download_path }
+    pub fn client_path(&self) -> &str { &self.client_path }
+    pub fn download_path(&self) -> &str { &self.download_path }
 
     // Returns the path to the source file on the server
     pub fn source_path(&self, data_root: &Path) -> PathBuf {
@@ -312,8 +312,8 @@ impl Manifest {
         Ok(stream.flush()?)
     }
 
-    pub fn files(&self) -> &Vec<FileInfo> { &self.files }
-    pub fn files_mut(&mut self) -> &mut Vec<FileInfo> { &mut self.files }
+    pub fn files(&self) -> &[FileInfo] { &self.files }
+    pub fn files_mut(&mut self) -> &mut [FileInfo] { &mut self.files }
     pub fn add(&mut self, file: FileInfo) { self.files.push(file); }
 
     pub fn any_updated(&self) -> bool {

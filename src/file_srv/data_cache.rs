@@ -51,7 +51,7 @@ pub fn scan_dir<H>(path: &Path, file_set: &mut HashSet<PathBuf, H>) -> Result<()
     Ok(())
 }
 
-fn scan_python_dir(python_root: &Path, subdir_limit: Option<&Vec<&OsStr>>)
+fn scan_python_dir(python_root: &Path, subdir_limit: Option<&[&OsStr]>)
         -> Result<HashSet<PathBuf>>
 {
     let mut file_set = HashSet::new();
@@ -347,7 +347,7 @@ fn create_cache_file<'dc>(data_cache: &'dc mut HashMap<PathBuf, FileInfo>,
     })
 }
 
-fn compyle_dir(python_dir: &Path, subdir_limit: Option<&Vec<&OsStr>>,
+fn compyle_dir(python_dir: &Path, subdir_limit: Option<&[&OsStr]>,
                python_exe: &Path, pak_file: &mut PakFile) -> Result<()>
 {
     #![allow(clippy::similar_names)]

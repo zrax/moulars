@@ -36,7 +36,7 @@ pub struct PakFile {
 }
 
 impl FileInfo {
-    pub fn name(&self) -> &String { &self.name }
+    pub fn name(&self) -> &str { &self.name }
 }
 
 impl PakFile {
@@ -53,7 +53,7 @@ impl PakFile {
         Ok(())
     }
 
-    pub fn files(&self) -> &Vec<FileInfo> { &self.files }
+    pub fn files(&self) -> &[FileInfo] { &self.files }
 }
 
 impl StreamRead for PakFile {

@@ -36,7 +36,7 @@ pub struct DescriptorDb {
 
 fn merge_descriptors(db: &mut DescriptorMap, descriptors: Vec<StateDescriptor>) {
     for desc in descriptors {
-        db.entry(UniCase::new(desc.name().clone())).or_default()
+        db.entry(UniCase::new(desc.name().to_string())).or_default()
             .entry(desc.version())
             .and_modify(|_| warn!("Duplicate descriptor found for {} version {}",
                                   desc.name(), desc.version()))
@@ -148,7 +148,7 @@ fn test_descriptors() -> Result<()> {
     let v2 = db.get_version("Test", 2).expect("Could not get StateDesc Test v2");
 
     assert_eq!(v1.version(), 1);
-    assert_eq!(v1.name().as_str(), "Test");
+    assert_eq!(v1.name(), "Test");
     assert_eq!(v1.vars().len(), 4);
     check_var_descriptor!(v1, "bTestVar1", VarType::Bool, VarDefault::Bool(false));
     check_var_descriptor!(v1, "bTestVar2", VarType::Bool, VarDefault::Bool(true));
@@ -156,7 +156,7 @@ fn test_descriptors() -> Result<()> {
     check_var_descriptor!(v1, "iTestVar4", VarType::Int, VarDefault::Int(100));
 
     assert_eq!(v2.version(), 2);
-    assert_eq!(v2.name().as_str(), "Test");
+    assert_eq!(v2.name(), "Test");
     assert_eq!(v2.vars().len(), 5);
     check_var_descriptor!(v2, "bTestVar1", VarType::Bool, VarDefault::Bool(false));
     check_var_descriptor!(v2, "bTestVar2", VarType::Bool, VarDefault::Bool(true));

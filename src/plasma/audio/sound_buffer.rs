@@ -63,7 +63,7 @@ impl SoundBuffer {
         (self.flags & Self::STREAM_COMPRESSED) != 0
     }
 
-    pub fn file_name(&self) -> &String { &self.file_name }
+    pub fn file_name(&self) -> &str { &self.file_name }
 }
 
 impl StreamRead for SoundBuffer {

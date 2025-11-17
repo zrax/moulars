@@ -66,11 +66,11 @@ pub async fn read_sized_buffer<S>(stream: &mut S, max_size: u32) -> Result<Vec<u
     Ok(buffer)
 }
 
-pub fn write_sized_buffer(stream: &mut dyn Write, buffer: &Vec<u8>) -> Result<()>
+pub fn write_sized_buffer(stream: &mut dyn Write, buffer: &[u8]) -> Result<()>
 {
     let buffer_size = u32::try_from(buffer.len())
             .map_err(|_| anyhow!("Buffer too large for 32-bit stream ({} bytes)",
                                  buffer.len()))?;
     stream.write_u32::<LittleEndian>(buffer_size)?;
-    Ok(stream.write_all(buffer.as_slice())?)
+    Ok(stream.write_all(buffer)?)
 }
