@@ -20,9 +20,9 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, ReadBytesExt};
-use log::{warn, info};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
+use tracing::{warn, info};
 use uuid::Uuid;
 
 use crate::config::ServerConfig;

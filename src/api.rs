@@ -29,11 +29,11 @@ use hyper::service::service_fn;
 use hyper::{Request, Response, Method, StatusCode};
 use hyper_util::rt::TokioIo;
 use hyper_util::server::graceful::GracefulShutdown;
-use log::{warn, info};
 use num_bigint::ToBigUint;
 use serde_derive::Serialize;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
+use tracing::{warn, info};
 
 use crate::config::ServerConfig;
 use crate::net_crypt::{CRYPT_BASE_AUTH, CRYPT_BASE_GAME, CRYPT_BASE_GATE_KEEPER};

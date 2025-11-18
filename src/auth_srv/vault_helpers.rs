@@ -14,7 +14,7 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use log::{warn, debug};
+use tracing::{warn, debug};
 use uuid::Uuid;
 
 use crate::netcli::{NetResult, NetResultCode};

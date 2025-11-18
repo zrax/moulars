@@ -24,8 +24,8 @@ use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use data_encoding::{HEXLOWER, HEXLOWER_PERMISSIVE};
 use flate2::write::GzEncoder;
-use log::debug;
 use md5::{Md5, Digest};
+use tracing::debug;
 
 use crate::path_utils;
 use crate::plasma::{StreamRead, StreamWrite};

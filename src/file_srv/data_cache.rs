@@ -23,8 +23,8 @@ use std::process::Command;
 use std::sync::OnceLock;
 
 use anyhow::{anyhow, Context, Result};
-use log::{warn, info};
 use tempfile::{NamedTempFile, TempDir};
+use tracing::{warn, info};
 
 use crate::path_utils;
 use crate::config::load_or_create_ntd_key;

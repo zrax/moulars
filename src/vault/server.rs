@@ -16,8 +16,8 @@
 
 use std::sync::Arc;
 
-use log::{info, warn};
 use tokio::sync::{mpsc, oneshot, broadcast};
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::config::{ServerConfig, VaultDbBackend};

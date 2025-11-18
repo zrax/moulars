@@ -21,7 +21,7 @@ use std::path::Path;
 use std::ptr;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use log::warn;
+use tracing::warn;
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum EncryptionType {

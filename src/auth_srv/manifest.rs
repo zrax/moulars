@@ -21,7 +21,7 @@ use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use log::warn;
+use tracing::warn;
 
 use crate::plasma::{StreamRead, StreamWrite};
 use crate::file_srv::manifest::{read_utf16z_text, write_utf16z_text,

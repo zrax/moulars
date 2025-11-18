@@ -24,19 +24,20 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use data_encoding::BASE64;
-use log::error;
 use num_bigint::{BigUint, ToBigUint};
 use num_prime::RandPrime;
+use tracing::error;
+use tracing_subscriber::{EnvFilter, filter::LevelFilter, prelude::*};
 
 use moulars::config::ServerConfig;
 use moulars::lobby::LobbyServer;
 use moulars::net_crypt::{CRYPT_BASE_AUTH, CRYPT_BASE_GAME, CRYPT_BASE_GATE_KEEPER};
 
 #[cfg(debug_assertions)]
-const DEFAULT_LOG_LEVEL: &str = "debug";
+const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::DEBUG;
 
 #[cfg(not(debug_assertions))]
-const DEFAULT_LOG_LEVEL: &str = "warn";
+const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::WARN;
 
 #[derive(Parser)]
 #[command(name = "moulars", version,
@@ -52,11 +53,14 @@ struct Args {
 }
 
 fn main() -> ExitCode {
-    // See https://docs.rs/env_logger/latest/env_logger/index.html for
-    // details on fine-tuning logging behavior beyond the defaults.
-    env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or(DEFAULT_LOG_LEVEL)
-    ).init();
+    // See https://docs.rs/tracing-subscriber/0.3/tracing_subscriber/filter/struct.EnvFilter.html
+    // for details on fine-tuning logging behavior beyond the defaults.
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .with(EnvFilter::builder()
+                .with_default_directive(DEFAULT_LOG_LEVEL.into())
+                .from_env_lossy())
+        .init();
 
     let default_panic = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {

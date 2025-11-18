@@ -22,7 +22,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Result;
-use log::warn;
+use tracing::warn;
 use unicase::UniCase;
 
 use crate::plasma::file_crypt::EncryptedReader;
@@ -140,8 +140,8 @@ macro_rules! check_var_descriptor {
 fn test_descriptors() -> Result<()> {
     use super::{VarType, VarDefault};
 
-    let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Debug)
-                .format_timestamp(None).format_target(false).try_init();
+    let _ = tracing_subscriber::fmt().with_test_writer().with_max_level(tracing::Level::DEBUG)
+                .without_time().with_target(false).try_init();
 
     let db = DescriptorDb::from_string(TEST_DESCRIPTORS)?;
     let v1 = db.get_version("Test", 1).expect("Could not get StateDesc Test v1");

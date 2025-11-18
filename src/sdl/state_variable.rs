@@ -19,8 +19,8 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use log::warn;
 use paste::paste;
+use tracing::warn;
 
 use crate::plasma::{Uoid, Creatable, UnifiedTime, Factory, StreamRead, StreamWrite};
 use crate::plasma::color::{Color32, ColorRGBA};

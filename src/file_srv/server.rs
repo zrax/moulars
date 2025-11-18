@@ -22,10 +22,10 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, ReadBytesExt};
-use log::{error, warn, debug};
 use tokio::io::{AsyncReadExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
+use tracing::{error, warn, debug};
 
 use crate::config::ServerConfig;
 use crate::netcli::NetResultCode;

@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use log::warn;
+use tracing::warn;
 
 use crate::plasma::{Uoid, StreamRead, StreamWrite};
 use crate::plasma::safe_string::{ReadSafeStr, WriteSafeStr, StringFormat};
@@ -270,8 +270,8 @@ fn setup_test_state(db: &DescriptorDb) -> Result<State> {
 fn test_blob_round_trip() -> Result<()> {
     use super::descriptor_db::TEST_DESCRIPTORS;
 
-    let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Debug)
-                .format_timestamp(None).format_target(false).try_init();
+    let _ = tracing_subscriber::fmt().with_test_writer().with_max_level(tracing::Level::DEBUG)
+                .without_time().with_target(false).try_init();
 
     let db = DescriptorDb::from_string(TEST_DESCRIPTORS)?;
     let orig_state = setup_test_state(&db)?;
@@ -287,8 +287,8 @@ fn test_blob_round_trip() -> Result<()> {
 fn test_sdl_upgrade() -> Result<()> {
     use super::descriptor_db::TEST_DESCRIPTORS;
 
-    let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Debug)
-                .format_timestamp(None).format_target(false).try_init();
+    let _ = tracing_subscriber::fmt().with_test_writer().with_max_level(tracing::Level::DEBUG)
+                .without_time().with_target(false).try_init();
 
     let db = DescriptorDb::from_string(TEST_DESCRIPTORS)?;
     let orig_state = setup_test_state(&db)?;

@@ -18,7 +18,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use log::{warn, info};
+use tracing::{warn, info};
 use unicase::UniCase;
 use uuid::Uuid;
 

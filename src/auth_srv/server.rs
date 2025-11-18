@@ -21,10 +21,10 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, ReadBytesExt};
-use log::{error, warn, info, debug};
 use tokio::io::{AsyncReadExt, BufReader};
 use tokio::sync::{mpsc, broadcast};
 use tokio::net::TcpStream;
+use tracing::{error, warn, info, debug};
 use uuid::Uuid;
 
 use crate::config::ServerConfig;
