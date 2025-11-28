@@ -136,7 +136,10 @@ impl LobbyServer {
         };
 
         let server_config = Arc::new(server_config);
-        let vault = Arc::new(VaultServer::start(server_config.clone(), sdl_db));
+        let vault = match VaultServer::start(server_config.clone(), sdl_db).await {
+            Ok(vault) => Arc::new(vault),
+            Err(err) => panic!("Failed to start vault server: {err}"),
+        };
         let auth_server = AuthServer::start(server_config.clone(), vault.clone());
         let file_server = FileServer::start(server_config.clone());
         let gate_keeper = GateKeeper::start(server_config.clone());

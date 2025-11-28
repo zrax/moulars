@@ -37,7 +37,7 @@ use moulars::net_crypt::{CRYPT_BASE_AUTH, CRYPT_BASE_GAME, CRYPT_BASE_GATE_KEEPE
 const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::DEBUG;
 
 #[cfg(not(debug_assertions))]
-const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::WARN;
+const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::INFO;
 
 #[derive(Parser)]
 #[command(name = "moulars", version,

@@ -38,7 +38,7 @@ use tracing::{warn, info};
 use crate::config::ServerConfig;
 use crate::net_crypt::{CRYPT_BASE_AUTH, CRYPT_BASE_GAME, CRYPT_BASE_GATE_KEEPER};
 use crate::netcli::NetResult;
-use crate::vault::{VaultServer, VaultPlayerInfoNode};
+use crate::vault::{AccountInfo, VaultServer, VaultPlayerInfoNode};
 
 struct ApiInterface {
     server_config: Arc<ServerConfig>,
@@ -48,13 +48,13 @@ struct ApiInterface {
 
 impl ApiInterface {
     // Returns the name of the account that matched the API token
-    async fn check_api_token(&self, query: &HashMap<String, String>) -> Option<String> {
+    async fn check_api_token(&self, query: &HashMap<String, String>) -> Option<AccountInfo> {
         if let Some(api_token) = query.get("token")
             && let Ok(Some(account)) = self.vault.get_account_for_token(api_token).await
             // Currently, only Admin accounts are allowed to use privileged APIs
             && account.is_admin()
         {
-            return Some(account.account_name);
+            return Some(account);
         }
         None
     }
@@ -142,7 +142,7 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
         }
         (&Method::POST, "/shutdown") => {
             if let Some(admin) = api.check_api_token(&query_params).await {
-                info!("Shutdown requested by {admin}");
+                info!("Shutdown requested by {}", admin.account_name);
                 let _ = api.shutdown_send.send(());
                 Response::builder()
                     .header(CONTENT_TYPE, "application/json")

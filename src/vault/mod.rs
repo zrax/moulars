@@ -15,9 +15,9 @@
  */
 
 mod db_interface;
-pub use db_interface::{PlayerInfo, GameServer};
+pub use db_interface::{AccountInfo, PlayerInfo, GameServer};
 
-mod db_memory;
+mod db_sqlite;
 
 pub mod messages;
 

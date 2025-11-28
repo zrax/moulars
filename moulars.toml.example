@@ -49,15 +49,17 @@ gate.n = "..."
 gate.k = "..."
 
 [vault_db]
-## OPTIONAL: The database backend to use for the Vault.
-## "none" - Use an in-memory temporary backend.  This is only useful for
-##          testing and development, since it means vault and account data
-##          are not kept after the server shuts down or crashes.
-## "sqlite" - Use an SQLite file for data storage.  This allows for very
-##          simple server setup and maintenance, but probably won't scale
-##          as well for large servers and deployments.
-## "postgres" - Use a PostgreSQL database for data storage.  This is the
+## REQUIRED: The database URL to use for the Vault.
+## "sqlite:<path>" - Use an SQLite file for data storage.  This allows for
+##          very simple server setup and maintenance, but probably won't scale
+##          as well for large servers and deployments.  For an in-memory
+##          temporary backend, use "sqlite::memory:".  A memory backend is
+##          only useful for testing and development, since it means vault and
+##          account data are not kept after the server shuts down or crashes.
+## "postgres:<URI>" - Use a PostgreSQL database for data storage.  This is the
 ##          option most compatible with DirtSand, and has the best performance
 ##          and scalability, but it is also the most complex to set up and
 ##          maintain.
-#db_type = "none"
+db_url = "sqlite:vault.db"
+#db_url = "sqlite::memory:"
+#db_url = "postgres://user:password@host:port/dbname"

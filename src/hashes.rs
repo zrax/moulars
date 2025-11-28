@@ -17,8 +17,8 @@
 use std::io::Write;
 use std::mem::size_of;
 
-use anyhow::Result;
-use data_encoding::HEXLOWER;
+use anyhow::{anyhow, Result};
+use data_encoding::{HEXLOWER, HEXLOWER_PERMISSIVE};
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 use crate::plasma::StreamWrite;
@@ -42,6 +42,13 @@ macro_rules! sha_common {
 }
 
 impl ShaDigest {
+    pub fn from_hex(hex: &str) -> Result<Self> {
+        let data: [u8; 20] = HEXLOWER_PERMISSIVE.decode(hex.as_bytes())
+                                .map_err(|err| anyhow!("Invalid hex literal: {err}"))?
+                                .try_into().map_err(|_| anyhow!("Invalid SHA digest length"))?;
+        Ok(Self { data })
+    }
+
     pub fn as_hex(&self) -> String {
         HEXLOWER.encode(&self.data)
     }

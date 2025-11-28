@@ -26,12 +26,6 @@ use num_bigint::BigUint;
 use rand::Rng;
 use serde_derive::Deserialize;
 
-pub enum VaultDbBackend {
-    None,
-    Sqlite,
-    Postgres,
-}
-
 pub struct ServerConfig {
     /* Listen address for the lobby server */
     pub listen_address: String,
@@ -59,7 +53,7 @@ pub struct ServerConfig {
     pub data_root: PathBuf,
 
     /* Vault backend */
-    pub db_type: VaultDbBackend,
+    pub db_url: String,
 
     /* Restrict logins to just Admins + Beta Testers */
     pub restrict_logins: bool,
@@ -123,17 +117,7 @@ impl ServerConfig {
                 server_section.api_address.as_deref().unwrap_or("127.0.0.1"),
                 server_section.api_port.unwrap_or(14615));
 
-        let vault_db_section = config.vault_db.unwrap_or_default();
-        let db_type = if let Some(type_str) = vault_db_section.db_type {
-            match type_str.as_str() {
-                "none" => VaultDbBackend::None,
-                "sqlite" => VaultDbBackend::Sqlite,
-                "postgres" => VaultDbBackend::Postgres,
-                _ => return Err(anyhow!("Unknown database type: {type_str}"))
-            }
-        } else {
-            VaultDbBackend::None
-        };
+        let db_url = config.vault_db.db_url;
 
         let restrict_logins = config.restrict_logins.unwrap_or(false);
 
@@ -151,7 +135,7 @@ impl ServerConfig {
             auth_serv_ip,
             game_serv_ip,
             data_root,
-            db_type,
+            db_url,
             restrict_logins,
         })
     }
@@ -168,7 +152,7 @@ struct StructuredConfig {
     restrict_logins: Option<bool>,
     server: Option<ServerAddrConfig>,
     crypt_keys: ConfigKeys,
-    vault_db: Option<VaultDbConfig>,
+    vault_db: VaultDbConfig,
 }
 
 #[derive(Deserialize, Default)]
@@ -197,7 +181,7 @@ struct ConfigKeyPair {
 
 #[derive(Deserialize, Default)]
 struct VaultDbConfig {
-    db_type: Option<String>,
+    db_url: String,
 }
 
 // NOTE: This file stores the keys in Big Endian format for easier debugging

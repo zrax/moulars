@@ -16,34 +16,38 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::hashes::ShaDigest;
 use crate::netcli::NetResult;
 use super::{VaultNode, NodeRef};
 
-pub trait DbInterface: Send {
-    fn get_account(&self, account_name: &str) -> NetResult<Option<AccountInfo>>;
-    fn get_account_for_token(&self, api_token: &str) -> NetResult<Option<AccountInfo>>;
+#[async_trait]
+pub trait DbInterface: Send + Sync {
+    async fn get_account(&self, account_name: &str) -> NetResult<Option<AccountInfo>>;
+    async fn get_account_for_token(&self, api_token: &str) -> NetResult<Option<AccountInfo>>;
+    async fn create_account(&self, account_name: &str, pass_hash: ShaDigest,
+                            account_flags: u32) -> NetResult<AccountInfo>;
+    async fn create_api_token(&self, account_id: &Uuid, comment: &str) -> NetResult<String>;
 
-    fn set_all_players_offline(&self) -> NetResult<()>;
-    fn get_players(&self, account_id: &Uuid) -> NetResult<Vec<PlayerInfo>>;
-    fn count_players(&self, account_id: &Uuid) -> NetResult<u64>;
-    fn player_exists(&self, player_name: &str) -> NetResult<bool>;
-    fn create_player(&self, account_id: &Uuid, player: PlayerInfo) -> NetResult<()>;
+    async fn set_all_players_offline(&self) -> NetResult<()>;
+    async fn get_players(&self, account_id: &Uuid) -> NetResult<Vec<PlayerInfo>>;
+    async fn count_players(&self, account_id: &Uuid) -> NetResult<u64>;
+    async fn player_exists(&self, player_name: &str) -> NetResult<bool>;
 
-    fn add_game_server(&self, server: GameServer) -> NetResult<()>;
+    async fn add_game_server(&self, server: GameServer) -> NetResult<()>;
 
-    fn create_node(&self, node: VaultNode) -> NetResult<u32>;
-    fn fetch_node(&self, node_id: u32) -> NetResult<Arc<VaultNode>>;
-    fn update_node(&self, node: VaultNode) -> NetResult<Vec<u32>>;
-    fn find_nodes(&self, template: VaultNode) -> NetResult<Vec<u32>>;
-    fn get_system_node(&self) -> NetResult<u32>;
-    fn get_all_players_node(&self) -> NetResult<u32>;
-    fn get_player_info_node(&self, player_id: u32) -> NetResult<Arc<VaultNode>>;
+    async fn create_node(&self, node: VaultNode) -> NetResult<u32>;
+    async fn fetch_node(&self, node_id: u32) -> NetResult<Arc<VaultNode>>;
+    async fn update_node(&self, node: VaultNode) -> NetResult<Vec<u32>>;
+    async fn find_nodes(&self, template: VaultNode) -> NetResult<Vec<u32>>;
+    async fn get_system_node(&self) -> NetResult<u32>;
+    async fn get_all_players_node(&self) -> NetResult<u32>;
+    async fn get_player_info_node(&self, player_id: u32) -> NetResult<Arc<VaultNode>>;
 
-    fn ref_node(&self, parent: u32, child: u32, owner: u32) -> NetResult<()>;
-    fn fetch_refs(&self, parent: u32, recursive: bool) -> NetResult<Vec<NodeRef>>;
+    async fn ref_node(&self, parent: u32, child: u32, owner: u32) -> NetResult<()>;
+    async fn fetch_refs(&self, parent: u32, recursive: bool) -> NetResult<Vec<NodeRef>>;
 }
 
 #[derive(Clone)]
@@ -53,7 +57,6 @@ pub struct AccountInfo {
     pub account_id: Uuid,
     pub account_flags: u32,
     pub billing_type: u32,
-    pub api_token: String,
 }
 
 impl AccountInfo {

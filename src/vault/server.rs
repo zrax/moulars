@@ -16,15 +16,18 @@
 
 use std::sync::Arc;
 
+use anyhow::{anyhow, Result};
 use tokio::sync::{mpsc, oneshot, broadcast};
 use tracing::{info, warn};
 use uuid::Uuid;
 
-use crate::config::{ServerConfig, VaultDbBackend};
+use crate::auth_srv::auth_hash::create_pass_hash;
+use crate::config::ServerConfig;
+use crate::hashes::ShaDigest;
 use crate::netcli::{NetResult, NetResultCode};
 use crate::sdl::DescriptorDb;
 use super::db_interface::{DbInterface, AccountInfo, PlayerInfo, GameServer};
-use super::db_memory::DbMemory;
+use super::db_sqlite::DbSqlite;
 use super::messages::{VaultMessage, VaultBroadcast};
 use super::{
     VaultNode, VaultPlayerNode, VaultFolderNode, VaultSystemNode,
@@ -51,29 +54,29 @@ fn check_bcast(sender: &broadcast::Sender<VaultBroadcast>, msg: VaultBroadcast) 
     }
 }
 
-fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender<VaultBroadcast>,
-                         db: &dyn DbInterface)
+async fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender<VaultBroadcast>,
+                               db: &dyn DbInterface)
 {
     match msg {
         VaultMessage::GetAccount { account_name, response_send } => {
-            check_send(response_send, db.get_account(&account_name));
+            check_send(response_send, db.get_account(&account_name).await);
         }
         VaultMessage::GetAccountForToken { api_token, response_send } => {
-            check_send(response_send, db.get_account_for_token(&api_token));
+            check_send(response_send, db.get_account_for_token(&api_token).await);
         }
         VaultMessage::GetPlayers { account_id, response_send } => {
-            check_send(response_send, db.get_players(&account_id));
+            check_send(response_send, db.get_players(&account_id).await);
         }
-        VaultMessage::CreatePlayer { account_id, player_name, avatar_shape,
+        VaultMessage::CreatePlayer { account_id, player_name, mut avatar_shape,
                                      response_send } => {
-            match db.player_exists(&player_name) {
+            match db.player_exists(&player_name).await {
                 Ok(false) => (),
                 Ok(true) => {
                     return check_send(response_send, Err(NetResultCode::NetPlayerAlreadyExists));
                 }
                 Err(err) => return check_send(response_send, Err(err)),
             }
-            match db.count_players(&account_id) {
+            match db.count_players(&account_id).await {
                 Ok(count) if count >= MAX_PLAYERS => {
                     return check_send(response_send, Err(NetResultCode::NetMaxPlayersOnAcct));
                 }
@@ -81,8 +84,12 @@ fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender<Vault
                 Err(err) => return check_send(response_send, Err(err)),
             }
 
-            let node = VaultPlayerNode::new(&account_id, &player_name, &avatar_shape, 1);
-            let player_id = match db.create_node(node) {
+            if avatar_shape != "male" && avatar_shape != "female" {
+                avatar_shape = String::from("male");
+            }
+            let explorer = 1;
+            let node = VaultPlayerNode::new(&account_id, &player_name, &avatar_shape, explorer);
+            let player_id = match db.create_node(node).await {
                 Ok(node_id) => node_id,
                 Err(err) => return check_send(response_send, Err(err)),
             };
@@ -94,24 +101,21 @@ fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender<Vault
                 player_id,
                 player_name,
                 avatar_shape,
-                explorer: 1
+                explorer,
             };
-            if let Err(err) = db.create_player(&account_id, player.clone()) {
-                return check_send(response_send, Err(err));
-            }
             check_send(response_send, Ok(player));
         }
         VaultMessage::AddGameServer { game_server, response_send } => {
-            check_send(response_send, db.add_game_server(game_server));
+            check_send(response_send, db.add_game_server(game_server).await);
         }
         VaultMessage::CreateNode { node, response_send } => {
-            check_send(response_send, db.create_node(*node));
+            check_send(response_send, db.create_node(*node).await);
         }
         VaultMessage::FetchNode { node_id, response_send } => {
-            check_send(response_send, db.fetch_node(node_id));
+            check_send(response_send, db.fetch_node(node_id).await);
         }
         VaultMessage::UpdateNode { node, response_send } => {
-            let updated = match db.update_node(*node) {
+            let updated = match db.update_node(*node).await {
                 Ok(nodes) => nodes,
                 Err(err) => return check_send(response_send, Err(err)),
             };
@@ -124,20 +128,20 @@ fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender<Vault
             check_send(response_send, Ok(()));
         }
         VaultMessage::FindNodes { template, response_send } => {
-            check_send(response_send, db.find_nodes(*template));
+            check_send(response_send, db.find_nodes(*template).await);
         }
         VaultMessage::GetSystemNode { response_send } => {
-            check_send(response_send, db.get_system_node());
+            check_send(response_send, db.get_system_node().await);
         }
         VaultMessage::GetAllPlayersNode { response_send } => {
-            check_send(response_send, db.get_all_players_node());
+            check_send(response_send, db.get_all_players_node().await);
         }
         VaultMessage::GetPlayerInfoNode { player_id, response_send } => {
-            check_send(response_send, db.get_player_info_node(player_id));
+            check_send(response_send, db.get_player_info_node(player_id).await);
         }
         VaultMessage::RefNode { parent_id, child_id, owner_id, response_send,
                                 broadcast } => {
-            if let Err(err) = db.ref_node(parent_id, child_id, owner_id) {
+            if let Err(err) = db.ref_node(parent_id, child_id, owner_id).await {
                 return check_send(response_send, Err(err));
             }
             if broadcast {
@@ -148,27 +152,27 @@ fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender<Vault
             check_send(response_send, Ok(()));
         }
         VaultMessage::FetchRefs { parent, recursive, response_send } => {
-            check_send(response_send, db.fetch_refs(parent, recursive));
+            check_send(response_send, db.fetch_refs(parent, recursive).await);
         }
     }
 }
 
 impl VaultServer {
-    pub fn start(server_config: Arc<ServerConfig>, sdl_db: DescriptorDb) -> Self {
+    pub async fn start(server_config: Arc<ServerConfig>, sdl_db: DescriptorDb) -> Result<Self> {
+        let db: Box<dyn DbInterface> = match server_config.db_url.as_str() {
+            uri if uri.starts_with("sqlite:") => Box::new(DbSqlite::new(uri).await?),
+            uri if uri.starts_with("postgres:") => todo!(),
+            uri => return Err(anyhow!("Invalid vault database URL: '{uri}'")),
+        };
+
         let (msg_send, mut msg_recv) = mpsc::channel(20);
         let (bcast_send, _) = broadcast::channel(100);
 
         let broadcast = bcast_send.clone();
         tokio::spawn(async move {
-            let db: Box<dyn DbInterface> =  match server_config.db_type {
-                VaultDbBackend::None => Box::new(DbMemory::new()),
-                VaultDbBackend::Sqlite => todo!(),
-                VaultDbBackend::Postgres => todo!(),
-            };
+            assert!(init_vault(db.as_ref()).await.is_ok(), "Failed to initialize vault.");
 
-            assert!(init_vault(db.as_ref()).is_ok(), "Failed to initialize vault.");
-
-            if db.set_all_players_offline().is_err() {
+            if db.set_all_players_offline().await.is_err() {
                 warn!("Failed to set all players offline.");
             }
 
@@ -176,10 +180,10 @@ impl VaultServer {
             // TODO: Check and initialize static ages
 
             while let Some(msg) = msg_recv.recv().await {
-                process_vault_message(msg, &bcast_send, db.as_ref());
+                process_vault_message(msg, &bcast_send, db.as_ref()).await;
             }
         });
-        Self { msg_send, broadcast, sdl_db }
+        Ok(Self { msg_send, broadcast, sdl_db })
     }
 
     pub fn sdl_db(&self) -> &DescriptorDb { &self.sdl_db }
@@ -317,8 +321,11 @@ impl VaultServer {
     }
 }
 
-fn init_vault(db: &dyn DbInterface) -> NetResult<()> {
-    if let Err(err) = db.get_system_node() {
+async fn init_vault(db: &dyn DbInterface) -> NetResult<()> {
+    const ADMIN_USER: &str = "MoularsAdmin";
+    const ADMIN_TOKEN_COMMENT: &str = "Default Administrative API Token";
+
+    if let Err(err) = db.get_system_node().await {
         if err != NetResultCode::NetVaultNodeNotFound {
             warn!("Failed to fetch system node");
             return Err(err);
@@ -327,15 +334,27 @@ fn init_vault(db: &dyn DbInterface) -> NetResult<()> {
         info!("Initializing empty Vault database");
 
         let node = VaultSystemNode::new();
-        let system_node = db.create_node(node)?;
+        let system_node = db.create_node(node).await?;
 
         let node = VaultFolderNode::new(&Uuid::nil(), 0, StandardNode::GlobalInboxFolder);
-        let global_inbox = db.create_node(node)?;
-        db.ref_node(system_node, global_inbox, 0)?;
+        let global_inbox = db.create_node(node).await?;
+        db.ref_node(system_node, global_inbox, 0).await?;
 
         let node = VaultPlayerInfoListNode::new(&Uuid::nil(), 0,
                                                 StandardNode::AllPlayersFolder);
-        let _ = db.create_node(node)?;
+        let _ = db.create_node(node).await?;
+
+        // Bootstrap the empty vault with an administrative account so the API
+        // can be used to create other accounts and manage the server.
+        let admin_pass = ShaDigest::sha1(Uuid::new_v4().as_bytes()).as_hex();
+        let pass_hash = create_pass_hash(ADMIN_USER, &admin_pass).map_err(|err| {
+            warn!("Failed to create password hash for {ADMIN_USER}: {err}");
+            NetResultCode::NetInternalError
+        })?;
+
+        let admin_account = db.create_account(ADMIN_USER, pass_hash, AccountInfo::ADMIN).await?;
+        let admin_api_token = db.create_api_token(&admin_account.account_id, ADMIN_TOKEN_COMMENT).await?;
+        info!("{ADMIN_USER} account created with password '{admin_pass}' and API token {admin_api_token}");
     }
 
     Ok(())
