@@ -56,6 +56,7 @@ pub(super) enum VaultMessage {
     },
     UpdateNode {
         node: Box<VaultNode>,
+        revision: Uuid,
         response_send: oneshot::Sender<NetResult<()>>,
     },
     FindNodes {
@@ -90,7 +91,7 @@ pub(super) enum VaultMessage {
 pub enum VaultBroadcast {
     NodeChanged {
         node_id: u32,
-        revision_id: Uuid,
+        revision: Uuid,
     },
     NodeAdded {
         parent_id: u32,

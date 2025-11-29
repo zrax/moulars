@@ -373,7 +373,7 @@ pub enum AuthToCli {
     },
     VaultNodeChanged {
         node_id: u32,
-        revision_id: Uuid,
+        revision: Uuid,
     },
     VaultNodeDeleted {
         node_id: u32,
@@ -1151,10 +1151,10 @@ impl StreamWrite for AuthToCli {
                 stream.write_i32::<LittleEndian>(*result)?;
                 net_io::write_sized_buffer(stream, node_buffer)?;
             }
-            AuthToCli::VaultNodeChanged { node_id, revision_id } => {
+            AuthToCli::VaultNodeChanged { node_id, revision } => {
                 stream.write_u16::<LittleEndian>(ServerMsgId::VaultNodeChanged as u16)?;
                 stream.write_u32::<LittleEndian>(*node_id)?;
-                revision_id.stream_write(stream)?;
+                revision.stream_write(stream)?;
             }
             AuthToCli::VaultNodeDeleted { node_id } => {
                 stream.write_u16::<LittleEndian>(ServerMsgId::VaultNodeDeleted as u16)?;

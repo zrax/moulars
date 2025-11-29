@@ -114,7 +114,7 @@ async fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender
         VaultMessage::FetchNode { node_id, response_send } => {
             check_send(response_send, db.fetch_node(node_id).await);
         }
-        VaultMessage::UpdateNode { node, response_send } => {
+        VaultMessage::UpdateNode { node, revision, response_send } => {
             let updated = match db.update_node(*node).await {
                 Ok(nodes) => nodes,
                 Err(err) => return check_send(response_send, Err(err)),
@@ -122,7 +122,7 @@ async fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender
             for node_id in updated {
                 check_bcast(bcast_send, VaultBroadcast::NodeChanged {
                     node_id,
-                    revision_id: Uuid::new_v4(),
+                    revision,
                 });
             }
             check_send(response_send, Ok(()));
@@ -268,10 +268,11 @@ impl VaultServer {
         self.request(request, response_recv).await
     }
 
-    pub async fn update_node(&self, node: VaultNode) -> NetResult<()> {
+    pub async fn update_node(&self, node: VaultNode, revision: Uuid) -> NetResult<()> {
         let (response_send, response_recv) = oneshot::channel();
         let request = VaultMessage::UpdateNode {
             node: Box::new(node),
+            revision,
             response_send
         };
         self.request(request, response_recv).await

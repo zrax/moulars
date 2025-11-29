@@ -254,10 +254,10 @@ impl AuthServerWorker {
 
     async fn handle_bcast_msg(&mut self, bcast_msg: VaultBroadcast) -> bool {
         match bcast_msg {
-            VaultBroadcast::NodeChanged { node_id, revision_id } => {
+            VaultBroadcast::NodeChanged { node_id, revision } => {
                 // TODO: Only if we care about this node...
                 self.send_message(AuthToCli::VaultNodeChanged {
-                    node_id, revision_id,
+                    node_id, revision,
                 }).await
             }
             VaultBroadcast::NodeAdded { parent_id, child_id, owner_id } => {
@@ -428,8 +428,30 @@ impl AuthServerWorker {
                 };
                 self.send_message(reply).await
             }
-            CliToAuth::VaultNodeSave { .. } => {
-                todo!()
+            CliToAuth::VaultNodeSave { trans_id, node_id, revision, node_buffer } => {
+                let reply = match VaultNode::from_blob(&node_buffer) {
+                    Ok(mut node) => {
+                        node.set_node_id(node_id);
+                        match self.vault.update_node(node, revision).await {
+                            Ok(()) => AuthToCli::VaultSaveNodeReply {
+                                trans_id,
+                                result: NetResultCode::NetSuccess as i32
+                            },
+                            Err(err) => AuthToCli::VaultSaveNodeReply {
+                                trans_id,
+                                result: err as i32
+                            },
+                        }
+                    }
+                    Err(err) => {
+                        warn!("Failed to read node from blob: {err}");
+                        AuthToCli::VaultSaveNodeReply {
+                            trans_id,
+                            result: NetResultCode::NetInternalError as i32
+                        }
+                    }
+                };
+                self.send_message(reply).await
             }
             CliToAuth::VaultNodeDelete { .. } => {
                 todo!()
@@ -892,7 +914,7 @@ impl AuthServerWorker {
 
         let update = VaultPlayerInfoNode::new_update(player_info.node_id(), 1,
                         "Lobby", &Uuid::nil());
-        if let Err(err) = self.vault.update_node(update).await {
+        if let Err(err) = self.vault.update_node(update, Uuid::new_v4()).await {
             warn!("Failed to set player {player_id} online");
             return self.send_message(AuthToCli::AcctSetPlayerReply {
                 trans_id,
@@ -920,7 +942,7 @@ impl AuthServerWorker {
         };
 
         let update = VaultPlayerInfoNode::new_update(player_info.node_id(), 0, "", &Uuid::nil());
-        if let Err(err) = self.vault.update_node(update).await {
+        if let Err(err) = self.vault.update_node(update, Uuid::new_v4()).await {
             warn!("Failed to set player {player_id} offline: {err:?}");
             return;
         }
