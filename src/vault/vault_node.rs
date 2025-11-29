@@ -106,6 +106,10 @@ macro_rules! node_field {
                 self.fields |= [<FIELD_ $field_name:upper>];
                 self.$field_name = value.to_string();
             }
+            pub fn [<clear_ $field_name>](&mut self) {
+                self.fields &= ![<FIELD_ $field_name:upper>];
+                self.$field_name = String::new();
+            }
         }
     };
     ($field_name:ident, Uuid) => {
@@ -119,6 +123,10 @@ macro_rules! node_field {
             pub fn [<set_ $field_name>](&mut self, value: &Uuid) {
                 self.fields |= [<FIELD_ $field_name:upper>];
                 self.$field_name = *value;
+            }
+            pub fn [<clear_ $field_name>](&mut self) {
+                self.fields &= ![<FIELD_ $field_name:upper>];
+                self.$field_name = Uuid::nil();
             }
         }
     };
@@ -134,6 +142,10 @@ macro_rules! node_field {
                 self.fields |= [<FIELD_ $field_name:upper>];
                 self.$field_name = value.to_vec();
             }
+            pub fn [<clear_ $field_name>](&mut self) {
+                self.fields &= ![<FIELD_ $field_name:upper>];
+                self.$field_name = Vec::new();
+            }
         }
     };
     ($field_name:ident, $value_type:ty) => {
@@ -147,6 +159,10 @@ macro_rules! node_field {
             pub fn [<set_ $field_name>](&mut self, value: $value_type) {
                 self.fields |= [<FIELD_ $field_name:upper>];
                 self.$field_name = value;
+            }
+            pub fn [<clear_ $field_name>](&mut self) {
+                self.fields &= ![<FIELD_ $field_name:upper>];
+                self.$field_name = 0;
             }
         }
     };

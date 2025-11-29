@@ -20,7 +20,6 @@ use std::time::SystemTime;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use paste::paste;
 use sqlx::{FromRow, Row, SqlitePool, QueryBuilder};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow};
 use tracing::{warn, info, debug};
@@ -97,20 +96,100 @@ impl DbSqlite {
     }
 }
 
-macro_rules! bind_field {
-    ($query:ident, $node:ident, $field_name:ident) => {
-        paste! {
-            if $node.[<has_ $field_name>]() {
-                $query.push_bind($node.$field_name());
-            }
+macro_rules! iter_node {
+    ($node:ident, $closure:expr) => {
+        if $node.has_create_time() {
+            $closure("create_time", $node.create_time());
         }
-    };
-    ($query:ident, $node:ident, $field_name:ident, $prefix:expr) => {
-        paste! {
-            if $node.[<has_ $field_name>]() {
-                $query.push($prefix);
-                $query.push_bind_unseparated($node.$field_name());
-            }
+        if $node.has_modify_time() {
+            $closure("modify_time", $node.modify_time());
+        }
+        if $node.has_create_age_name() {
+            $closure("create_age_name", $node.create_age_name());
+        }
+        if $node.has_create_age_uuid() {
+            $closure("create_age_uuid", $node.create_age_uuid());
+        }
+        if $node.has_creator_uuid() {
+            $closure("creator_uuid", $node.creator_uuid());
+        }
+        if $node.has_creator_id() {
+            $closure("creator_idx", $node.creator_id());
+        }
+        if $node.has_node_type() {
+            $closure("node_type", $node.node_type());
+        }
+        if $node.has_int32_1() {
+            $closure("int32_1", $node.int32_1());
+        }
+        if $node.has_int32_2() {
+            $closure("int32_2", $node.int32_2());
+        }
+        if $node.has_int32_3() {
+            $closure("int32_3", $node.int32_3());
+        }
+        if $node.has_int32_4() {
+            $closure("int32_4", $node.int32_4());
+        }
+        if $node.has_uint32_1() {
+            $closure("uint32_1", $node.uint32_1());
+        }
+        if $node.has_uint32_2() {
+            $closure("uint32_2", $node.uint32_2());
+        }
+        if $node.has_uint32_3() {
+            $closure("uint32_3", $node.uint32_3());
+        }
+        if $node.has_uint32_4() {
+            $closure("uint32_4", $node.uint32_4());
+        }
+        if $node.has_uuid_1() {
+            $closure("uuid_1", $node.uuid_1());
+        }
+        if $node.has_uuid_2() {
+            $closure("uuid_2", $node.uuid_2());
+        }
+        if $node.has_uuid_3() {
+            $closure("uuid_3", $node.uuid_3());
+        }
+        if $node.has_uuid_4() {
+            $closure("uuid_4", $node.uuid_4());
+        }
+        if $node.has_string64_1() {
+            $closure("string64_1", $node.string64_1());
+        }
+        if $node.has_string64_2() {
+            $closure("string64_2", $node.string64_2());
+        }
+        if $node.has_string64_3() {
+            $closure("string64_3", $node.string64_3());
+        }
+        if $node.has_string64_4() {
+            $closure("string64_4", $node.string64_4());
+        }
+        if $node.has_string64_5() {
+            $closure("string64_5", $node.string64_5());
+        }
+        if $node.has_string64_6() {
+            $closure("string64_6", $node.string64_6());
+        }
+        if $node.has_istring64_1() {
+            $closure("istring64_1", $node.istring64_1());
+        }
+        if $node.has_istring64_2() {
+            $closure("istring64_2", $node.istring64_2());
+        }
+        if $node.has_text_1() {
+            $closure("text_1", $node.text_1());
+        }
+        if $node.has_text_2() {
+            $closure("text_2", $node.text_2());
+        }
+        if $node.has_blob_1() {
+            $closure("blob_1", $node.blob_1());
+        }
+        if $node.has_blob_2() {
+            $closure("blob_2", $node.blob_2());
         }
     };
 }
@@ -312,41 +391,11 @@ impl DbInterface for DbSqlite {
 
         let mut query = QueryBuilder::new("INSERT INTO nodes (");
         let mut field_names = query.separated(", ");
-        iter_node_columns(&node, |column| { field_names.push(column); });
+        iter_node!(node, |name, _| { field_names.push(name); });
 
         query.push(") VALUES (");
         let mut values = query.separated(", ");
-        bind_field!(values, node, create_time);
-        bind_field!(values, node, modify_time);
-        bind_field!(values, node, create_age_name);
-        bind_field!(values, node, create_age_uuid);
-        bind_field!(values, node, creator_uuid);
-        bind_field!(values, node, creator_id);
-        bind_field!(values, node, node_type);
-        bind_field!(values, node, int32_1);
-        bind_field!(values, node, int32_2);
-        bind_field!(values, node, int32_3);
-        bind_field!(values, node, int32_4);
-        bind_field!(values, node, uint32_1);
-        bind_field!(values, node, uint32_2);
-        bind_field!(values, node, uint32_3);
-        bind_field!(values, node, uint32_4);
-        bind_field!(values, node, uuid_1);
-        bind_field!(values, node, uuid_2);
-        bind_field!(values, node, uuid_3);
-        bind_field!(values, node, uuid_4);
-        bind_field!(values, node, string64_1);
-        bind_field!(values, node, string64_2);
-        bind_field!(values, node, string64_3);
-        bind_field!(values, node, string64_4);
-        bind_field!(values, node, string64_5);
-        bind_field!(values, node, string64_6);
-        bind_field!(values, node, istring64_1);
-        bind_field!(values, node, istring64_2);
-        bind_field!(values, node, text_1);
-        bind_field!(values, node, text_2);
-        bind_field!(values, node, blob_1);
-        bind_field!(values, node, blob_2);
+        iter_node!(node, |_, value| { values.push_bind(value); });
 
         query.push(") RETURNING idx");
         Ok(query.build()
@@ -381,40 +430,16 @@ impl DbInterface for DbSqlite {
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .expect("Failed to get system time")
                     .as_secs() as u32;
+        node.clear_create_time();
         node.set_modify_time(now);
 
         let mut query = QueryBuilder::new("UPDATE nodes SET ");
         let mut fields = query.separated(", ");
-        bind_field!(fields, node, modify_time, "modify_time = ");
-        bind_field!(fields, node, create_age_name, "create_age_name = ");
-        bind_field!(fields, node, create_age_uuid, "create_age_uuid = ");
-        bind_field!(fields, node, creator_uuid, "creator_uuid = ");
-        bind_field!(fields, node, creator_id, "creator_id = ");
-        bind_field!(fields, node, node_type, "node_type = ");
-        bind_field!(fields, node, int32_1, "int32_1 = ");
-        bind_field!(fields, node, int32_2, "int32_2 = ");
-        bind_field!(fields, node, int32_3, "int32_3 = ");
-        bind_field!(fields, node, int32_4, "int32_4 = ");
-        bind_field!(fields, node, uint32_1, "uint32_1 = ");
-        bind_field!(fields, node, uint32_2, "uint32_2 = ");
-        bind_field!(fields, node, uint32_3, "uint32_3 = ");
-        bind_field!(fields, node, uint32_4, "uint32_4 = ");
-        bind_field!(fields, node, uuid_1, "uuid_1 = ");
-        bind_field!(fields, node, uuid_2, "uuid_2 = ");
-        bind_field!(fields, node, uuid_3, "uuid_3 = ");
-        bind_field!(fields, node, uuid_4, "uuid_4 = ");
-        bind_field!(fields, node, string64_1, "string64_1 = ");
-        bind_field!(fields, node, string64_2, "string64_2 = ");
-        bind_field!(fields, node, string64_3, "string64_3 = ");
-        bind_field!(fields, node, string64_4, "string64_4 = ");
-        bind_field!(fields, node, string64_5, "string64_5 = ");
-        bind_field!(fields, node, string64_6, "string64_6 = ");
-        bind_field!(fields, node, istring64_1, "istring64_1 = ");
-        bind_field!(fields, node, istring64_2, "istring64_2 = ");
-        bind_field!(fields, node, text_1, "text_1 = ");
-        bind_field!(fields, node, text_2, "text_2 = ");
-        bind_field!(fields, node, blob_1, "blob_1 = ");
-        bind_field!(fields, node, blob_2, "blob_2 = ");
+        iter_node!(node, |name, value| {
+            fields.push(name);
+            fields.push_unseparated(" = ");
+            fields.push_bind_unseparated(value);
+        });
 
         query.push(" WHERE idx = ");
         query.push_bind(node.node_id());
@@ -433,37 +458,11 @@ impl DbInterface for DbSqlite {
         let mut query = QueryBuilder::new("SELECT idx FROM nodes WHERE ");
         let mut fields = query.separated(" AND ");
 
-        bind_field!(fields, template, create_time, "create_time = ");
-        bind_field!(fields, template, modify_time, "modify_time = ");
-        bind_field!(fields, template, create_age_name, "create_age_name = ");
-        bind_field!(fields, template, create_age_uuid, "create_age_uuid = ");
-        bind_field!(fields, template, creator_uuid, "creator_uuid = ");
-        bind_field!(fields, template, creator_id, "creator_id = ");
-        bind_field!(fields, template, node_type, "node_type = ");
-        bind_field!(fields, template, int32_1, "int32_1 = ");
-        bind_field!(fields, template, int32_2, "int32_2 = ");
-        bind_field!(fields, template, int32_3, "int32_3 = ");
-        bind_field!(fields, template, int32_4, "int32_4 = ");
-        bind_field!(fields, template, uint32_1, "uint32_1 = ");
-        bind_field!(fields, template, uint32_2, "uint32_2 = ");
-        bind_field!(fields, template, uint32_3, "uint32_3 = ");
-        bind_field!(fields, template, uint32_4, "uint32_4 = ");
-        bind_field!(fields, template, uuid_1, "uuid_1 = ");
-        bind_field!(fields, template, uuid_2, "uuid_2 = ");
-        bind_field!(fields, template, uuid_3, "uuid_3 = ");
-        bind_field!(fields, template, uuid_4, "uuid_4 = ");
-        bind_field!(fields, template, string64_1, "string64_1 = ");
-        bind_field!(fields, template, string64_2, "string64_2 = ");
-        bind_field!(fields, template, string64_3, "string64_3 = ");
-        bind_field!(fields, template, string64_4, "string64_4 = ");
-        bind_field!(fields, template, string64_5, "string64_5 = ");
-        bind_field!(fields, template, string64_6, "string64_6 = ");
-        bind_field!(fields, template, istring64_1, "istring64_1 = ");
-        bind_field!(fields, template, istring64_2, "istring64_2 = ");
-        bind_field!(fields, template, text_1, "text_1 = ");
-        bind_field!(fields, template, text_2, "text_2 = ");
-        bind_field!(fields, template, blob_1, "blob_1 = ");
-        bind_field!(fields, template, blob_2, "blob_2 = ");
+        iter_node!(template, |name, value| {
+            fields.push(name);
+            fields.push_unseparated(" = ");
+            fields.push_bind_unseparated(value);
+        });
 
         Ok(query.build()
             .fetch_all(&self.pool).await
@@ -547,42 +546,6 @@ impl DbInterface for DbSqlite {
         }
         Ok(refs)
     }
-}
-
-fn iter_node_columns<F>(node: &VaultNode, mut closure: F)
-    where F: FnMut(&str)
-{
-    if node.has_create_time()       { closure("create_time"); }
-    if node.has_modify_time()       { closure("modify_time"); }
-    if node.has_create_age_name()   { closure("create_age_name"); }
-    if node.has_create_age_uuid()   { closure("create_age_uuid"); }
-    if node.has_creator_uuid()      { closure("creator_uuid"); }
-    if node.has_creator_id()        { closure("creator_idx"); }
-    if node.has_node_type()         { closure("node_type"); }
-    if node.has_int32_1()           { closure("int32_1"); }
-    if node.has_int32_2()           { closure("int32_2"); }
-    if node.has_int32_3()           { closure("int32_3"); }
-    if node.has_int32_4()           { closure("int32_4"); }
-    if node.has_uint32_1()          { closure("uint32_1"); }
-    if node.has_uint32_2()          { closure("uint32_2"); }
-    if node.has_uint32_3()          { closure("uint32_3"); }
-    if node.has_uint32_4()          { closure("uint32_4"); }
-    if node.has_uuid_1()            { closure("uuid_1"); }
-    if node.has_uuid_2()            { closure("uuid_2"); }
-    if node.has_uuid_3()            { closure("uuid_3"); }
-    if node.has_uuid_4()            { closure("uuid_4"); }
-    if node.has_string64_1()        { closure("string64_1"); }
-    if node.has_string64_2()        { closure("string64_2"); }
-    if node.has_string64_3()        { closure("string64_3"); }
-    if node.has_string64_4()        { closure("string64_4"); }
-    if node.has_string64_5()        { closure("string64_5"); }
-    if node.has_string64_6()        { closure("string64_6"); }
-    if node.has_istring64_1()       { closure("istring64_1"); }
-    if node.has_istring64_2()       { closure("istring64_2"); }
-    if node.has_text_1()            { closure("text_1"); }
-    if node.has_text_2()            { closure("text_2"); }
-    if node.has_blob_1()            { closure("blob_1"); }
-    if node.has_blob_2()            { closure("blob_2"); }
 }
 
 impl FromRow<'_, SqliteRow> for AccountInfo {
