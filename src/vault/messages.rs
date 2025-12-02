@@ -20,7 +20,7 @@ use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use crate::netcli::NetResult;
-use super::db_interface::{AccountInfo, PlayerInfo, GameServer};
+use super::db_interface::{AccountInfo, ApiToken, PlayerInfo, GameServer};
 use super::{VaultNode, NodeRef};
 
 pub(super) enum VaultMessage {
@@ -31,6 +31,10 @@ pub(super) enum VaultMessage {
     GetAccountForToken {
         api_token: String,
         response_send: oneshot::Sender<NetResult<Option<AccountInfo>>>,
+    },
+    GetApiTokens {
+        account_id: Uuid,
+        response_send: oneshot::Sender<NetResult<Vec<ApiToken>>>,
     },
     GetPlayers {
         account_id: Uuid,

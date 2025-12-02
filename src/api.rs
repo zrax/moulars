@@ -17,6 +17,7 @@
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::io::Write;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -34,6 +35,7 @@ use serde_derive::Serialize;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tracing::{warn, info};
+use uuid::Uuid;
 
 use crate::config::ServerConfig;
 use crate::net_crypt::{CRYPT_BASE_AUTH, CRYPT_BASE_GAME, CRYPT_BASE_GATE_KEEPER};
@@ -47,12 +49,16 @@ struct ApiInterface {
 }
 
 impl ApiInterface {
-    // Returns the name of the account that matched the API token
-    async fn check_api_token(&self, query: &HashMap<String, String>) -> Option<AccountInfo> {
-        if let Some(api_token) = query.get("token")
+    // Returns the account info of the account associated with an API token
+    async fn check_api_token(&self, query: &HashMap<String, String>,
+                             auth_header: Option<&str>, admin_required: bool)
+        -> Option<AccountInfo>
+    {
+        let token = auth_header.and_then(|auth| auth.strip_prefix("Bearer "))
+                               .or_else(|| query.get("token").map(String::as_str));
+        if let Some(api_token) = token
             && let Ok(Some(account)) = self.vault.get_account_for_token(api_token).await
-            // Currently, only Admin accounts are allowed to use privileged APIs
-            && account.is_admin()
+            && (!admin_required || account.is_admin())
         {
             return Some(account);
         }
@@ -90,6 +96,31 @@ fn gen_server_error() -> Response<Full<Bytes>> {
         .unwrap()
 }
 
+fn gen_bad_request() -> Response<Full<Bytes>> {
+    Response::builder()
+        .status(StatusCode::BAD_REQUEST)
+        .header(CONTENT_TYPE, "application/json")
+        .body(Full::from(Bytes::from_static(br#"{"error": "Bad Request"}"#)))
+        .unwrap()
+}
+
+fn gen_json_response<T>(value: &T) -> Response<Full<Bytes>>
+    where T: ?Sized + serde::Serialize
+{
+    match serde_json::to_string(value) {
+        Ok(json) => Response::builder()
+            .header(CONTENT_TYPE, "application/json")
+            .body(Full::from(json))
+            .unwrap(),
+        Err(err) => {
+            warn!("Failed to generate JSON: {err}");
+            gen_server_error()
+        }
+    }
+}
+
+const HELP_MSG: Bytes = Bytes::from_static(include_bytes!("api_help.txt"));
+
 async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
         -> Result<Response<Full<Bytes>>, Infallible>
 {
@@ -99,11 +130,36 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
     } else {
         HashMap::new()
     };
+    let auth_header = request.headers().get("Authorization")
+                             .and_then(|auth| auth.to_str().ok());
 
     let response = match (request.method(), request.uri().path()) {
         (&Method::GET, "/") => {
-            // Basic status check
-            Response::builder().body(Full::from(Bytes::from_static(b"OK"))).unwrap()
+            // Show static API help text
+            Response::builder().body(Full::from(HELP_MSG)).unwrap()
+        }
+        (&Method::GET, "/api_tokens") => {
+            if let Some(account) = api.check_api_token(&query_params, auth_header, false).await {
+                let Ok(account_id) =
+                    query_params.get("account")
+                                .map_or(Ok(account.account_id), |param| Uuid::from_str(param))
+                else {
+                    return Ok(gen_bad_request());
+                };
+                if !account.is_admin() && account_id != account.account_id {
+                    gen_unauthorized()
+                } else {
+                    match api.vault.get_api_tokens(&account_id).await {
+                        Ok(tokens) => gen_json_response(&tokens),
+                        Err(err) => {
+                            warn!("Failed to query API tokens: {err:?}");
+                            gen_server_error()
+                        }
+                    }
+                }
+            } else {
+                gen_unauthorized()
+            }
         }
         (&Method::GET, "/client_keys") => {
             let mut lines = Vec::with_capacity(6 * 105);
@@ -122,26 +178,16 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
         }
         (&Method::GET, "/online") => {
             // Return JSON object containing the names and locations of online players
-            let online_players = match api.query_online_players().await {
-                Ok(response) => response,
+            match api.query_online_players().await {
+                Ok(players) => gen_json_response(&players),
                 Err(err) => {
                     warn!("Failed to query online players: {err:?}");
-                    return Ok(gen_server_error());
-                }
-            };
-            match serde_json::to_string(&online_players) {
-                Ok(json) => Response::builder()
-                    .header(CONTENT_TYPE, "application/json")
-                    .body(Full::from(json))
-                    .unwrap(),
-                Err(err) => {
-                    warn!("Failed to generate JSON: {err}");
                     gen_server_error()
                 }
             }
         }
         (&Method::POST, "/shutdown") => {
-            if let Some(admin) = api.check_api_token(&query_params).await {
+            if let Some(admin) = api.check_api_token(&query_params, auth_header, true).await {
                 info!("Shutdown requested by {}", admin.account_name);
                 let _ = api.shutdown_send.send(());
                 Response::builder()
@@ -151,6 +197,11 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
             } else {
                 gen_unauthorized()
             }
+        }
+        (&Method::GET, "/status") => {
+            // Basic status check
+            // TODO: Check health of other services and report them here...
+            Response::builder().body(Full::from(Bytes::from_static(b"OK"))).unwrap()
         }
         _ => {
             Response::builder()

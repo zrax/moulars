@@ -26,7 +26,7 @@ use crate::config::ServerConfig;
 use crate::hashes::ShaDigest;
 use crate::netcli::{NetResult, NetResultCode};
 use crate::sdl::DescriptorDb;
-use super::db_interface::{DbInterface, AccountInfo, PlayerInfo, GameServer};
+use super::db_interface::{DbInterface, AccountInfo, ApiToken, PlayerInfo, GameServer};
 use super::db_sqlite::DbSqlite;
 use super::messages::{VaultMessage, VaultBroadcast};
 use super::{
@@ -63,6 +63,9 @@ async fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender
         }
         VaultMessage::GetAccountForToken { api_token, response_send } => {
             check_send(response_send, db.get_account_for_token(&api_token).await);
+        }
+        VaultMessage::GetApiTokens { account_id, response_send } => {
+            check_send(response_send, db.get_api_tokens(&account_id).await);
         }
         VaultMessage::GetPlayers { account_id, response_send } => {
             check_send(response_send, db.get_players(&account_id).await);
@@ -223,6 +226,15 @@ impl VaultServer {
         let (response_send, response_recv) = oneshot::channel();
         let request = VaultMessage::GetAccountForToken {
             api_token: api_token.to_string(),
+            response_send
+        };
+        self.request(request, response_recv).await
+    }
+
+    pub async fn get_api_tokens(&self, account_id: &Uuid) -> NetResult<Vec<ApiToken>> {
+        let (response_send, response_recv) = oneshot::channel();
+        let request = VaultMessage::GetApiTokens {
+            account_id: *account_id,
             response_send
         };
         self.request(request, response_recv).await

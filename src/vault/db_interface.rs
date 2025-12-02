@@ -17,6 +17,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use serde_derive::Serialize;
 use uuid::Uuid;
 
 use crate::hashes::ShaDigest;
@@ -30,6 +31,7 @@ pub trait DbInterface: Send + Sync {
     async fn create_account(&self, account_name: &str, pass_hash: ShaDigest,
                             account_flags: u32) -> NetResult<AccountInfo>;
     async fn create_api_token(&self, account_id: &Uuid, comment: &str) -> NetResult<String>;
+    async fn get_api_tokens(&self, account_id: &Uuid) -> NetResult<Vec<ApiToken>>;
 
     async fn set_all_players_offline(&self) -> NetResult<()>;
     async fn get_players(&self, account_id: &Uuid) -> NetResult<Vec<PlayerInfo>>;
@@ -72,6 +74,12 @@ impl AccountInfo {
     pub fn can_login_restricted(&self) -> bool {
         (self.account_flags & (Self::ADMIN | Self::BETA_TESTER)) != 0
     }
+}
+
+#[derive(Clone, Serialize)]
+pub struct ApiToken {
+    pub token: String,
+    pub comment: String,
 }
 
 #[derive(Clone)]

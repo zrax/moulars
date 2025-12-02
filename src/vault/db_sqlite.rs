@@ -30,7 +30,7 @@ use crate::hashes::ShaDigest;
 use crate::netcli::{NetResult, NetResultCode};
 use crate::vault::NodeRef;
 use crate::vault::vault_node::{VaultNode, StandardNode, NodeType};
-use super::db_interface::{DbInterface, AccountInfo, PlayerInfo, GameServer};
+use super::db_interface::{DbInterface, AccountInfo, ApiToken, PlayerInfo, GameServer};
 
 pub struct DbSqlite {
     pool: SqlitePool,
@@ -306,6 +306,16 @@ impl DbInterface for DbSqlite {
         Ok(api_token)
     }
 
+    async fn get_api_tokens(&self, account_id: &Uuid) -> NetResult<Vec<ApiToken>> {
+        Ok(sqlx::query_as("SELECT token, comment FROM api_tokens WHERE account_id = $1")
+            .bind(account_id)
+            .fetch_all(&self.pool).await
+            .map_err(|err| {
+                warn!("Failed to fetch API tokens for '{account_id}': {err}");
+                NetResultCode::NetInternalError
+            })?)
+    }
+
     async fn set_all_players_offline(&self) -> NetResult<()> {
         let _ = sqlx::query("UPDATE nodes SET int32_1 = 0 WHERE node_type = $1")
             .bind(NodeType::PlayerInfo as i32)
@@ -567,6 +577,15 @@ impl FromRow<'_, SqliteRow> for AccountInfo {
             account_id: row.try_get("account_id")?,
             account_flags: row.try_get("account_flags")?,
             billing_type: row.try_get("billing_type")?,
+        })
+    }
+}
+
+impl FromRow<'_, SqliteRow> for ApiToken {
+    fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
+        Ok(Self {
+            token: row.try_get("token")?,
+            comment: row.try_get("comment")?,
         })
     }
 }
