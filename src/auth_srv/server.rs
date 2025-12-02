@@ -599,8 +599,16 @@ impl AuthServerWorker {
             CliToAuth::ScoreGetHighScores { .. } => {
                 todo!()
             }
-            CliToAuth::FileDownloadChunkAck { .. }
-                | CliToAuth::LogClientDebuggerConnect { .. } => true, // Ignored
+            CliToAuth::FileDownloadChunkAck { trans_id } => {
+                // Ignored
+                let _ = trans_id;
+                true
+            }
+            CliToAuth::LogClientDebuggerConnect { dummy } => {
+                // Ignored
+                let _ = dummy;
+                true
+            },
         }
     }
 

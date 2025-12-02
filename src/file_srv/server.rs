@@ -237,8 +237,13 @@ impl FileServerWorker {
                 }
                 Box::pin(self.do_download(trans_id, &filename)).await
             }
-            CliToFile::ManifestEntryAck { .. }
-                | CliToFile::DownloadChunkAck { .. } => true, // Ignored
+            CliToFile::ManifestEntryAck { trans_id, reader_id }
+                    | CliToFile::DownloadChunkAck { trans_id, reader_id } => {
+                // Ignored
+                let _ = trans_id;
+                let _ = reader_id;
+                true
+            }
         }
     }
 
