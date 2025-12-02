@@ -44,11 +44,14 @@ const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::INFO;
           about = "MOULArs: A Myst Online: Uru Live (Again) server")]
 struct Args {
     #[arg(long, exclusive = true,
-          help = "Generate a set of Rc4 keys for client/server communication")]
+          help = "Generate a set of Rc4 keys for client/server communication.\n\
+                  NOTE: This does not automatically update the moulars.toml\n\
+                  config file.")]
     keygen: bool,
 
     #[arg(long, exclusive = true,
-          help = "Show the client Rc4 keys associated with the configured server keys")]
+          help = "Show the client Rc4 keys associated with the configured\n\
+                  server keys.  This can be used even if the server is offline.")]
     show_keys: bool,
 }
 
@@ -202,8 +205,10 @@ fn generate_keys() {
 
                 let stype_lower = stype.to_ascii_lowercase();
                 return (
+                    // Keys for the server config
                     format!("{stype_lower}.n = \"{}\"", BASE64.encode(&bytes_n)),
                     format!("{stype_lower}.k = \"{}\"", BASE64.encode(&bytes_k)),
+                    // Keys for the client config
                     format!("Server.{stype}.N \"{}\"", BASE64.encode(&bytes_n)),
                     format!("Server.{stype}.X \"{}\"", BASE64.encode(&bytes_x)),
                 );
