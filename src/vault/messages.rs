@@ -44,7 +44,11 @@ pub(super) enum VaultMessage {
     },
     AddGameServer {
         game_server: GameServer,
-        response_send: oneshot::Sender<NetResult<()>>,
+        response_send: oneshot::Sender<NetResult<u32>>,
+    },
+    FindGameServer {
+        age_instance_id: Uuid,
+        response_send: oneshot::Sender<NetResult<Option<GameServer>>>,
     },
     CreateNode {
         node: Box<VaultNode>,

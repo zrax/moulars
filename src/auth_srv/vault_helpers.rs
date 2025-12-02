@@ -228,6 +228,7 @@ pub async fn create_age_nodes(age_uuid: &Uuid, parent_uuid: &Uuid,
         age_filename
     };
     let game_server = GameServer {
+        mcp_id: None,
         instance_id: *age_uuid,
         age_filename: age_filename.to_string(),
         display_name: display_name.to_string(),
@@ -235,7 +236,7 @@ pub async fn create_age_nodes(age_uuid: &Uuid, parent_uuid: &Uuid,
         sdl_id: sdl_node,
         temporary: false
     };
-    vault.add_game_server(game_server).await?;
+    let _ = vault.add_game_server(game_server).await?;
 
     Ok((age_id, age_info))
 }

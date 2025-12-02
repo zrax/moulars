@@ -18,38 +18,38 @@ CREATE TABLE IF NOT EXISTS api_tokens
 
 CREATE TABLE IF NOT EXISTS scores
 (
-    idx             INTEGER PRIMARY KEY     AUTOINCREMENT,
-    create_time     INTEGER NOT NULL        DEFAULT 0,
+    idx             INTEGER PRIMARY KEY         AUTOINCREMENT,
+    create_time     INTEGER NOT NULL            DEFAULT 0,
     owner_idx       INTEGER NOT NULL,
-    type            INTEGER NOT NULL        DEFAULT 1,
+    type            INTEGER NOT NULL            DEFAULT 1,
     name            TEXT    NOT NULL,
-    points          INTEGER NOT NULL        DEFAULT 0
+    points          INTEGER NOT NULL            DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS global_states
 (
-    idx             INTEGER PRIMARY KEY     AUTOINCREMENT,
+    idx             INTEGER PRIMARY KEY         AUTOINCREMENT,
     descriptor      TEXT    NOT NULL,
     sdl_blob        BLOB    NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS node_refs
 (
-    idx             INTEGER PRIMARY KEY     AUTOINCREMENT,
+    idx             INTEGER PRIMARY KEY         AUTOINCREMENT,
     parent_idx      INTEGER NOT NULL,
     child_idx       INTEGER NOT NULL,
-    owner_idx       INTEGER NOT NULL        DEFAULT 0
+    owner_idx       INTEGER NOT NULL            DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS nodes
 (
-    idx             INTEGER PRIMARY KEY     AUTOINCREMENT,
-    create_time     INTEGER NOT NULL        DEFAULT 0,
-    modify_time     INTEGER NOT NULL        DEFAULT 0,
+    idx             INTEGER PRIMARY KEY         AUTOINCREMENT,
+    create_time     INTEGER NOT NULL            DEFAULT 0,
+    modify_time     INTEGER NOT NULL            DEFAULT 0,
     create_age_name TEXT,
     create_age_uuid BLOB,
-    creator_uuid    BLOB    NOT NULL        DEFAULT X'00000000000000000000000000000000',
-    creator_idx     INTEGER NOT NULL        DEFAULT 0,
+    creator_uuid    BLOB    NOT NULL            DEFAULT X'00000000000000000000000000000000',
+    creator_idx     INTEGER NOT NULL            DEFAULT 0,
     node_type       INTEGER NOT NULL,
     int32_1         INTEGER,
     int32_2         INTEGER,
@@ -69,8 +69,8 @@ CREATE TABLE IF NOT EXISTS nodes
     string64_4      TEXT,
     string64_5      TEXT,
     string64_6      TEXT,
-    istring64_1     TEXT                    COLLATE NOCASE,
-    istring64_2     TEXT                    COLLATE NOCASE,
+    istring64_1     TEXT                        COLLATE NOCASE,
+    istring64_2     TEXT                        COLLATE NOCASE,
     text_1          TEXT,
     text_2          TEXT,
     blob_1          BLOB,
@@ -80,18 +80,18 @@ INSERT OR IGNORE INTO sqlite_sequence (seq, name) VALUES (10000, 'nodes');
 
 CREATE TABLE IF NOT EXISTS servers
 (
-    idx             INTEGER PRIMARY KEY     AUTOINCREMENT,
-    instance_uuid   BLOB    NOT NULL,
+    idx             INTEGER PRIMARY KEY         AUTOINCREMENT,
+    instance_uuid   BLOB    NOT NULL    UNIQUE,
     age_filename    TEXT    NOT NULL,
     display_name    TEXT    NOT NULL,
     age_idx         INTEGER NOT NULL,
     sdl_idx         INTEGER NOT NULL,
-    temporary       INTEGER NOT NULL        DEFAULT 0
+    temporary       INTEGER NOT NULL            DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS age_states
 (
-    idx             INTEGER PRIMARY KEY     AUTOINCREMENT,
+    idx             INTEGER PRIMARY KEY         AUTOINCREMENT,
     server_idx      INTEGER NOT NULL,
     descriptor      TEXT    NOT NULL,
     object_key      TEXT    NOT NULL,

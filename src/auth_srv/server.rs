@@ -15,7 +15,7 @@
  */
 
 use std::io::{self, BufRead, Cursor};
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -33,7 +33,7 @@ use crate::net_crypt::CryptTcpStream;
 use crate::netcli::NetResultCode;
 use crate::path_utils;
 use crate::plasma::{StreamRead, StreamWrite, BitVector};
-use crate::vault::{VaultServer, VaultNode, VaultPlayerInfoNode};
+use crate::vault::{GameServer, VaultServer, VaultNode, VaultPlayerInfoNode};
 use crate::vault::messages::VaultBroadcast;
 use super::auth_hash::{hash_password_challenge, use_email_auth};
 use super::manifest::Manifest;
@@ -52,6 +52,7 @@ struct AuthServerWorker {
     server_challenge: u32,
     account_id: Option<Uuid>,
     player_id: Option<u32>,
+    player_info_id: Option<u32>,
 }
 
 const CONN_HEADER_SIZE: u32 = 20;
@@ -187,6 +188,7 @@ impl AuthServerWorker {
                 server_challenge: rand::random::<u32>(),
                 account_id: None,
                 player_id: None,
+                player_info_id: None,
             };
             worker.run().await;
             worker.handle_disconnect().await;
@@ -541,8 +543,10 @@ impl AuthServerWorker {
             CliToAuth::VaultSendNode { .. } => {
                 todo!()
             }
-            CliToAuth::AgeRequest { .. } => {
-                todo!()
+            CliToAuth::AgeRequest { trans_id, age_name, age_instance_id, ext_reply } => {
+                info!("Client {} requested age '{}' {}", self.peer_addr().unwrap(),
+                      age_name, age_instance_id);
+                self.do_age_request(trans_id, &age_name, &age_instance_id, ext_reply).await
             }
             CliToAuth::FileListRequest { trans_id, directory, ext } => {
                 self.do_manifest(trans_id, &directory, &ext).await
@@ -912,7 +916,7 @@ impl AuthServerWorker {
             }).await;
         }
 
-        let update = VaultPlayerInfoNode::new_update(player_info.node_id(), 1,
+        let update = VaultPlayerInfoNode::new_update(player_info.node_id(), Some(1),
                         "Lobby", &Uuid::nil());
         if let Err(err) = self.vault.update_node(update, Uuid::new_v4()).await {
             warn!("Failed to set player {player_id} online");
@@ -925,10 +929,123 @@ impl AuthServerWorker {
         info!("{} signed in as {} ({})", self.peer_addr().unwrap(),
               player_node.player_name_ci(), player_id);
         self.player_id = Some(player_id);
+        self.player_info_id = Some(player_info.node_id());
 
         self.send_message(AuthToCli::AcctSetPlayerReply {
             trans_id,
             result: NetResultCode::NetSuccess as i32,
+        }).await
+    }
+
+    async fn do_age_request(&mut self, trans_id: u32, age_name: &str,
+                            age_instance_id: &Uuid, ext_reply: bool) -> bool
+    {
+        let server = match self.vault.find_game_server(*age_instance_id).await {
+            Ok(Some(server)) => server,
+            Ok(None) => {
+                info!("Instantiating new game server for Age '{}' {}", age_name,
+                      age_instance_id);
+                let mut server = GameServer {
+                    mcp_id: None,
+                    instance_id: *age_instance_id,
+                    age_filename: age_name.to_string(),
+                    display_name: age_name.to_string(),
+                    age_id: 0,
+                    sdl_id: 0,
+                    temporary: true
+                };
+                match self.vault.add_game_server(server.clone()).await {
+                    Ok(mcp_id) => {
+                        server.mcp_id = Some(mcp_id);
+                        server
+                    }
+                    Err(err) => {
+                        warn!("Failed to create game server for Age '{}' {}",
+                              age_name, age_instance_id);
+                        return self.send_message(AuthToCli::AgeReply {
+                            trans_id,
+                            result: err as i32,
+                            age_mcp_id: 0,
+                            age_instance_id: Uuid::nil(),
+                            age_vault_id: 0,
+                            game_server_node: 0,
+                            ext_reply,
+                            game_server_address: String::new(),
+                        }).await;
+                    }
+                }
+            }
+            Err(err) => {
+                warn!("Failed to find game server for '{}' {}", age_name, age_instance_id);
+                return self.send_message(AuthToCli::AgeReply {
+                    trans_id,
+                    result: err as i32,
+                    age_mcp_id: 0,
+                    age_instance_id: Uuid::nil(),
+                    age_vault_id: 0,
+                    game_server_node: 0,
+                    ext_reply,
+                    game_server_address: String::new(),
+                }).await;
+            }
+        };
+
+        let ipv4_address: u32 = if ext_reply {
+            0
+        } else {
+            let first_ipv4 = match tokio::net::lookup_host((self.server_config.game_serv_ip.as_str(), 0)).await {
+                Ok(mut addrs) => {
+                    addrs.find_map(|addr| {
+                        if let IpAddr::V4(addr) = addr.ip() {
+                            Some(addr.to_bits())
+                        } else {
+                            None
+                        }
+                    })
+                }
+                Err(err) => {
+                    warn!("Failed to lookup address: {err}");
+                    None
+                }
+            };
+            if let Some(addr) = first_ipv4 {
+                addr
+            } else {
+                warn!("No IPv4 address found for address '{}'",
+                      self.server_config.game_serv_ip);
+                // Needs to be outside the lookup_host match block to avoid reborrowing self
+                return self.send_message(AuthToCli::AgeReply {
+                    trans_id,
+                    result: NetResultCode::NetInternalError as i32,
+                    age_mcp_id: 0,
+                    age_instance_id: Uuid::nil(),
+                    age_vault_id: 0,
+                    game_server_node: 0,
+                    ext_reply,
+                    game_server_address: String::new(),
+                }).await;
+            }
+        };
+
+        // Update the player info to show up in the age
+        if let Some(player_info_id) = self.player_info_id {
+            let update = VaultPlayerInfoNode::new_update(player_info_id, None,
+                            &server.display_name, &server.instance_id);
+            if self.vault.update_node(update, Uuid::new_v4()).await.is_err() {
+                warn!("Failed to set player info node {player_info_id} online");
+                // This doesn't block continuing...
+            }
+        }
+
+        self.send_message(AuthToCli::AgeReply {
+            trans_id,
+            result: NetResultCode::NetSuccess as i32,
+            age_mcp_id: server.mcp_id.expect("Age MCP ID was not set"),
+            age_instance_id: server.instance_id,
+            age_vault_id: server.age_id,
+            game_server_node: ipv4_address,
+            ext_reply,
+            game_server_address: self.server_config.auth_serv_ip.clone(),
         }).await
     }
 
@@ -941,7 +1058,7 @@ impl AuthServerWorker {
             }
         };
 
-        let update = VaultPlayerInfoNode::new_update(player_info.node_id(), 0, "", &Uuid::nil());
+        let update = VaultPlayerInfoNode::new_update(player_info.node_id(), Some(0), "", &Uuid::nil());
         if let Err(err) = self.vault.update_node(update, Uuid::new_v4()).await {
             warn!("Failed to set player {player_id} offline: {err:?}");
             return;

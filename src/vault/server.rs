@@ -108,6 +108,9 @@ async fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender
         VaultMessage::AddGameServer { game_server, response_send } => {
             check_send(response_send, db.add_game_server(game_server).await);
         }
+        VaultMessage::FindGameServer { age_instance_id, response_send } => {
+            check_send(response_send, db.find_game_server(&age_instance_id).await);
+        }
         VaultMessage::CreateNode { node, response_send } => {
             check_send(response_send, db.create_node(*node).await);
         }
@@ -247,9 +250,15 @@ impl VaultServer {
         self.request(request, response_recv).await
     }
 
-    pub async fn add_game_server(&self, game_server: GameServer) -> NetResult<()> {
+    pub async fn add_game_server(&self, game_server: GameServer) -> NetResult<u32> {
         let (response_send, response_recv) = oneshot::channel();
         let request = VaultMessage::AddGameServer { game_server, response_send };
+        self.request(request, response_recv).await
+    }
+
+    pub async fn find_game_server(&self, age_instance_id: Uuid) -> NetResult<Option<GameServer>> {
+        let (response_send, response_recv) = oneshot::channel();
+        let request = VaultMessage::FindGameServer { age_instance_id, response_send };
         self.request(request, response_recv).await
     }
 

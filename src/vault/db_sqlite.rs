@@ -361,22 +361,32 @@ impl DbInterface for DbSqlite {
         Ok(player_id.is_some())
     }
 
-    async fn add_game_server(&self, server: GameServer) -> NetResult<()> {
-        sqlx::query("INSERT INTO servers (instance_uuid, age_filename, display_name,
-                                          age_idx, sdl_idx, temporary) \
-                        VALUES ($1, $2, $3, $4, $5, $6)")
+    async fn add_game_server(&self, server: GameServer) -> NetResult<u32> {
+        Ok(sqlx::query("INSERT INTO servers (instance_uuid, age_filename, display_name,
+                                             age_idx, sdl_idx, temporary) \
+                            VALUES ($1, $2, $3, $4, $5, $6) RETURNING idx")
             .bind(server.instance_id)
             .bind(server.age_filename)
             .bind(server.display_name)
             .bind(server.age_id)
             .bind(server.sdl_id)
             .bind(server.temporary)
-            .execute(&self.pool).await
+            .fetch_one(&self.pool).await
             .map_err(|err| {
                 warn!("Failed to add game server: {err}");
                 NetResultCode::NetInternalError
-            })?;
-        Ok(())
+            })?
+            .get(0))
+    }
+
+    async fn find_game_server(&self, age_instance_id: &Uuid) -> NetResult<Option<GameServer>> {
+        Ok(sqlx::query_as("SELECT * FROM servers WHERE instance_uuid = $1")
+            .bind(age_instance_id)
+            .fetch_optional(&self.pool).await
+            .map_err(|err| {
+                warn!("Failed to look up game server: {err}");
+                NetResultCode::NetInternalError
+            })?)
     }
 
     async fn create_node(&self, mut node: VaultNode) -> NetResult<u32> {
@@ -569,6 +579,20 @@ impl FromRow<'_, SqliteRow> for PlayerInfo {
             player_name: row.try_get("player_name")?,
             avatar_shape: row.try_get("avatar_shape")?,
             explorer: row.try_get("explorer")?,
+        })
+    }
+}
+
+impl FromRow<'_, SqliteRow> for GameServer {
+    fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
+        Ok(Self {
+            mcp_id: Some(row.try_get("idx")?),
+            instance_id: row.try_get("instance_uuid")?,
+            age_filename: row.try_get("age_filename")?,
+            display_name: row.try_get("display_name")?,
+            age_id: row.try_get("age_idx")?,
+            sdl_id: row.try_get("sdl_idx")?,
+            temporary: row.try_get("temporary")?,
         })
     }
 }

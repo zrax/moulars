@@ -36,7 +36,8 @@ pub trait DbInterface: Send + Sync {
     async fn count_players(&self, account_id: &Uuid) -> NetResult<u64>;
     async fn player_exists(&self, player_name: &str) -> NetResult<bool>;
 
-    async fn add_game_server(&self, server: GameServer) -> NetResult<()>;
+    async fn add_game_server(&self, server: GameServer) -> NetResult<u32>;
+    async fn find_game_server(&self, age_instance_id: &Uuid) -> NetResult<Option<GameServer>>;
 
     async fn create_node(&self, node: VaultNode) -> NetResult<u32>;
     async fn fetch_node(&self, node_id: u32) -> NetResult<Arc<VaultNode>>;
@@ -83,6 +84,7 @@ pub struct PlayerInfo {
 
 #[derive(Clone)]
 pub struct GameServer {
+    pub mcp_id: Option<u32>,
     pub instance_id: Uuid,
     pub age_filename: String,
     pub display_name: String,

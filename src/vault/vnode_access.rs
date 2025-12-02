@@ -137,12 +137,14 @@ impl VaultPlayerInfoNode {
         node
     }
 
-    pub fn new_update(node_id: u32, online: i32, age_instance_name: &str,
+    pub fn new_update(node_id: u32, online: Option<i32>, age_instance_name: &str,
                       age_instance_uuid: &Uuid) -> VaultNode
     {
         let mut node = VaultNode::default();
         node.set_node_id(node_id);
-        node.set_int32_1(online);
+        if let Some(value) = online {
+            node.set_int32_1(value);
+        }
         node.set_string64_1(age_instance_name);
         node.set_uuid_1(age_instance_uuid);
         node

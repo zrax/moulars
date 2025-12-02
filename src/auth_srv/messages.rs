@@ -181,6 +181,7 @@ pub enum CliToAuth {
         trans_id: u32,
         age_name: String,
         age_instance_id: Uuid,
+        ext_reply: bool,
     },
     FileListRequest {
         trans_id: u32,
@@ -423,6 +424,10 @@ pub enum AuthToCli {
         age_vault_id: u32,
         // Limits us to IPv4, unfortunately :(
         game_server_node: u32,
+
+        // Merge in AgeReplyEx for code path simplicity
+        ext_reply: bool,
+        game_server_address: String,
     },
     FileListReply {
         trans_id: u32,
@@ -614,7 +619,7 @@ enum ServerMsgId {
     AccountExistsReply,
 
     // DirtSand extended messages
-    #[allow(unused)] AgeReplyEx = 0x1000,
+    AgeReplyEx = 0x1000,
     ScoreGetHighScoresReply,
     ServerCaps,
 }
@@ -859,11 +864,12 @@ impl CliToAuth {
                 let dest_player_id = stream.read_u32_le().await?;
                 Ok(CliToAuth::VaultSendNode { src_node_id, dest_player_id })
             }
-            Some(ClientMsgId::AgeRequest) => {
+            Some(ClientMsgId::AgeRequest | ClientMsgId::AgeRequestEx) => {
                 let trans_id = stream.read_u32_le().await?;
                 let age_name = net_io::read_utf16_str(stream).await?;
                 let age_instance_id = net_io::read_uuid(stream).await?;
-                Ok(CliToAuth::AgeRequest { trans_id, age_name, age_instance_id })
+                let ext_reply = msg_id == ClientMsgId::AgeRequestEx as u16;
+                Ok(CliToAuth::AgeRequest { trans_id, age_name, age_instance_id, ext_reply })
             }
             Some(ClientMsgId::FileListRequest) => {
                 let trans_id = stream.read_u32_le().await?;
@@ -969,10 +975,6 @@ impl CliToAuth {
                 let trans_id = stream.read_u32_le().await?;
                 let account_name = net_io::read_utf16_str(stream).await?;
                 Ok(CliToAuth::AccountExistsRequest { trans_id, account_name })
-            }
-            Some(ClientMsgId::AgeRequestEx) => {
-                // This message is never defined in the client
-                Err(anyhow!("Unsupported message AgeRequestEx"))
             }
             Some(ClientMsgId::ScoreGetHighScores) => {
                 let trans_id = stream.read_u32_le().await?;
@@ -1216,14 +1218,23 @@ impl StreamWrite for AuthToCli {
                 stream.write_i32::<LittleEndian>(*result)?;
             }
             AuthToCli::AgeReply { trans_id, result, age_mcp_id, age_instance_id,
-                                  age_vault_id, game_server_node } => {
-                stream.write_u16::<LittleEndian>(ServerMsgId::AgeReply as u16)?;
+                                  age_vault_id, game_server_node, ext_reply,
+                                  game_server_address } => {
+                if *ext_reply {
+                    stream.write_u16::<LittleEndian>(ServerMsgId::AgeReplyEx as u16)?;
+                } else {
+                    stream.write_u16::<LittleEndian>(ServerMsgId::AgeReply as u16)?;
+                }
                 stream.write_u32::<LittleEndian>(*trans_id)?;
                 stream.write_i32::<LittleEndian>(*result)?;
                 stream.write_u32::<LittleEndian>(*age_mcp_id)?;
                 age_instance_id.stream_write(stream)?;
                 stream.write_u32::<LittleEndian>(*age_vault_id)?;
-                stream.write_u32::<LittleEndian>(*game_server_node)?;
+                if *ext_reply {
+                    net_io::write_utf16_str(stream, game_server_address)?;
+                } else {
+                    stream.write_u32::<LittleEndian>(*game_server_node)?;
+                }
             }
             AuthToCli::FileListReply { trans_id, result, manifest } => {
                 stream.write_u16::<LittleEndian>(ServerMsgId::FileListReply as u16)?;
