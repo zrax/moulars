@@ -22,8 +22,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use data_encoding::BASE64;
-use http_body_util::Full;
-use hyper::body::{Bytes, Incoming};
+use http_body_util::{BodyExt, Full};
+use hyper::body::{Buf, Bytes, Incoming};
 use hyper::header::CONTENT_TYPE;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
@@ -31,15 +31,16 @@ use hyper::{Request, Response, Method, StatusCode};
 use hyper_util::rt::TokioIo;
 use hyper_util::server::graceful::GracefulShutdown;
 use num_bigint::ToBigUint;
-use serde_derive::Serialize;
+use serde_derive::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tracing::{warn, info};
 use uuid::Uuid;
 
+use crate::auth_srv::auth_hash::create_pass_hash;
 use crate::config::ServerConfig;
 use crate::net_crypt::{CRYPT_BASE_AUTH, CRYPT_BASE_GAME, CRYPT_BASE_GATE_KEEPER};
-use crate::netcli::NetResult;
+use crate::netcli::{NetResult, NetResultCode};
 use crate::vault::{AccountInfo, VaultServer, VaultPlayerInfoNode};
 
 struct ApiInterface {
@@ -50,14 +51,11 @@ struct ApiInterface {
 
 impl ApiInterface {
     // Returns the account info of the account associated with an API token
-    async fn check_api_token(&self, query: &HashMap<String, String>,
-                             auth_header: Option<&str>, admin_required: bool)
+    async fn check_api_token(&self, api_token: Option<&str>, admin_required: bool)
         -> Option<AccountInfo>
     {
-        let token = auth_header.and_then(|auth| auth.strip_prefix("Bearer "))
-                               .or_else(|| query.get("token").map(String::as_str));
-        if let Some(api_token) = token
-            && let Ok(Some(account)) = self.vault.get_account_for_token(api_token).await
+        if let Some(token) = api_token
+            && let Ok(Some(account)) = self.vault.get_account_for_token(token).await
             && (!admin_required || account.is_admin())
         {
             return Some(account);
@@ -78,13 +76,37 @@ impl ApiInterface {
         }
         Ok(players)
     }
+
+    async fn create_account(&self, params: AccountParams, api_token: Option<&str>)
+        -> NetResult<AccountInfo>
+    {
+        let (Some(username), Some(password)) = (&params.username, &params.password) else {
+            warn!("Missing required parameter(s)");
+            return Err(NetResultCode::NetInvalidParameter);
+        };
+        let account_flags = if params.account_flags.is_none() {
+            0
+        } else if self.check_api_token(api_token, true).await.is_some() {
+            params.parse_account_flags()?.0
+        } else {
+            return Err(NetResultCode::NetAuthenticationFailed);
+        };
+        let pass_hash = match create_pass_hash(username, password) {
+            Ok(hash) => hash,
+            Err(err) => {
+                warn!("Failed to create password hash: {err}");
+                return Err(NetResultCode::NetInternalError);
+            }
+        };
+        self.vault.create_account(username, &pass_hash, account_flags).await
+    }
 }
 
 fn gen_unauthorized() -> Response<Full<Bytes>> {
     Response::builder()
         .status(StatusCode::UNAUTHORIZED)
         .header(CONTENT_TYPE, "application/json")
-        .body(Full::from(Bytes::from_static(br#"{"error": "Unauthorized"}"#)))
+        .body(Full::from(Bytes::from_static(br#"{"error":"Unauthorized"}"#)))
         .unwrap()
 }
 
@@ -92,7 +114,7 @@ fn gen_server_error() -> Response<Full<Bytes>> {
     Response::builder()
         .status(StatusCode::INTERNAL_SERVER_ERROR)
         .header(CONTENT_TYPE, "application/json")
-        .body(Full::from(Bytes::from_static(br#"{"error": "Internal Server Error"}"#)))
+        .body(Full::from(Bytes::from_static(br#"{"error":"Internal Server Error"}"#)))
         .unwrap()
 }
 
@@ -100,7 +122,7 @@ fn gen_bad_request() -> Response<Full<Bytes>> {
     Response::builder()
         .status(StatusCode::BAD_REQUEST)
         .header(CONTENT_TYPE, "application/json")
-        .body(Full::from(Bytes::from_static(br#"{"error": "Bad Request"}"#)))
+        .body(Full::from(Bytes::from_static(br#"{"error":"Bad Request"}"#)))
         .unwrap()
 }
 
@@ -119,6 +141,13 @@ fn gen_json_response<T>(value: &T) -> Response<Full<Bytes>>
     }
 }
 
+async fn parse_json_request<T>(request: Request<Incoming>) -> anyhow::Result<T>
+    where T: serde::de::DeserializeOwned
+{
+    let body = request.collect().await?.aggregate();
+    Ok(serde_json::from_reader(body.reader())?)
+}
+
 const HELP_MSG: Bytes = Bytes::from_static(include_bytes!("api_help.txt"));
 
 async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
@@ -130,16 +159,19 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
     } else {
         HashMap::new()
     };
-    let auth_header = request.headers().get("Authorization")
-                             .and_then(|auth| auth.to_str().ok());
+    let api_token = request.headers().get("Authorization")
+                           .and_then(|auth| auth.to_str().ok())
+                           .and_then(|auth| auth.strip_prefix("Bearer "))
+                           .or_else(|| query_params.get("token").map(String::as_str))
+                           .map(str::to_owned);
 
     let response = match (request.method(), request.uri().path()) {
         (&Method::GET, "/") => {
             // Show static API help text
             Response::builder().body(Full::from(HELP_MSG)).unwrap()
         }
-        (&Method::GET, "/api_tokens") => {
-            if let Some(account) = api.check_api_token(&query_params, auth_header, false).await {
+        (&Method::GET, "/account/api_tokens") => {
+            if let Some(account) = api.check_api_token(api_token.as_deref(), false).await {
                 let Ok(account_id) =
                     query_params.get("account")
                                 .map_or(Ok(account.account_id), |param| Uuid::from_str(param))
@@ -159,6 +191,34 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
                 }
             } else {
                 gen_unauthorized()
+            }
+        }
+        (&Method::POST, "/account/new") => {
+            let params: AccountParams = match parse_json_request(request).await {
+                Ok(params) => params,
+                Err(err) => {
+                    warn!("Failed parsing JSON request: {err}");
+                    return Ok(gen_bad_request());
+                }
+            };
+            match api.create_account(params, api_token.as_deref()).await {
+                Ok(account) => {
+                    Response::builder()
+                        .header(CONTENT_TYPE, "application/json")
+                        .body(Full::from(Bytes::from(
+                            format!(r#"{{"status":"ok","account_id":"{}"}}"#, account.account_id))))
+                        .unwrap()
+                }
+                Err(NetResultCode::NetAccountAlreadyExists) => {
+                    Response::builder()
+                        .status(StatusCode::CONFLICT)
+                        .header(CONTENT_TYPE, "application/json")
+                        .body(Full::from(Bytes::from_static(br#"{"error":"Account already exists"}"#)))
+                        .unwrap()
+                }
+                Err(NetResultCode::NetInvalidParameter) => gen_bad_request(),
+                Err(NetResultCode::NetAuthenticationFailed) => gen_unauthorized(),
+                Err(_) => gen_server_error(),
             }
         }
         (&Method::GET, "/client_keys") => {
@@ -187,12 +247,12 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
             }
         }
         (&Method::POST, "/shutdown") => {
-            if let Some(admin) = api.check_api_token(&query_params, auth_header, true).await {
+            if let Some(admin) = api.check_api_token(api_token.as_deref(), true).await {
                 info!("Shutdown requested by {}", admin.account_name);
                 let _ = api.shutdown_send.send(());
                 Response::builder()
                     .header(CONTENT_TYPE, "application/json")
-                    .body(Full::from(Bytes::from_static(br#"{"status": "ok"}"#)))
+                    .body(Full::from(Bytes::from_static(br#"{"status":"ok"}"#)))
                     .unwrap()
             } else {
                 gen_unauthorized()
@@ -207,7 +267,7 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
             Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .header(CONTENT_TYPE, "application/json")
-                .body(Full::from(Bytes::from_static(br#"{"error": "Invalid API Request"}"#)))
+                .body(Full::from(Bytes::from_static(br#"{"error":"Invalid API Request"}"#)))
                 .unwrap()
         }
     };
@@ -285,4 +345,31 @@ pub fn start_api(shutdown_send: broadcast::Sender<()>, vault: Arc<VaultServer>,
 struct OnlinePlayer {
     name: String,
     location: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AccountParams {
+    username: Option<String>,
+    password: Option<String>,
+    account_flags: Option<Vec<String>>,
+}
+
+impl AccountParams {
+    fn parse_account_flags(&self) -> NetResult<(u32, u32)> {
+        let mut add_flags = 0;
+        let mut remove_flags = 0;
+        for flag_name in self.account_flags.as_deref().unwrap_or(&[]) {
+            match flag_name.as_str() {
+                "admin" => add_flags |= AccountInfo::ADMIN,
+                "!admin" => remove_flags |= AccountInfo::ADMIN,
+                "banned" => add_flags |= AccountInfo::BANNED,
+                "!banned" => remove_flags |= AccountInfo::BANNED,
+                "beta" => add_flags |= AccountInfo::BETA_TESTER,
+                "!beta" => remove_flags |= AccountInfo::BETA_TESTER,
+                _ => return Err(NetResultCode::NetInvalidParameter),
+            }
+        }
+        Ok((add_flags, remove_flags))
+    }
 }

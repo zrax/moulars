@@ -251,7 +251,7 @@ impl DbInterface for DbSqlite {
 
     async fn create_account(&self, account_name: &str, pass_hash: ShaDigest,
                             account_flags: u32) -> NetResult<AccountInfo> {
-        let account: Option<String> =
+        let account: Option<Uuid> =
             sqlx::query("SELECT account_id FROM accounts WHERE account_name = $1")
                 .bind(account_name)
                 .fetch_optional(&self.pool).await

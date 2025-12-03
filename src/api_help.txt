@@ -2,8 +2,9 @@ MOULArs Internal API Help
 
 The following endpoints are available:
   /
-  /api_tokens
-  /client_keys [a]
+  /account/api_tokens [a]
+  /account/new
+  /client_keys
   /online
   /shutdown [a,!]
   /status
@@ -13,9 +14,9 @@ Key:
   ! = Restricted to ADMIN accounts (via API token)
 
 Authentication:
-  Authenticated APIs can be accessed by passing an API token in the request URI,
-  as a query parameter (e.g. /shutdown?token=<TOKEN>), or in the request header
-  (e.g. Authorization: Bearer <TOKEN>).
+  Authenticated APIs can be accessed by passing an API token in the request URI
+  as a query parameter (e.g. /shutdown?token=<TOKEN>), or in a request header
+  (e.g. "Authorization: Bearer <TOKEN>").
 
   When using curl, this can be set with the -H option:
     curl -H "Authorization: Bearer <TOKEN>" http://localhost:14615/shutdown
@@ -26,10 +27,36 @@ API Endpoints:
 GET /
   Returns this help message.
 
-GET /api_tokens[?account=<UUID>]
+GET /account/api_tokens[?account=<UUID>]
   Returns a JSON object containing the API tokens associated with the account.
   If account is not specified, the account associated with the authorization
   API token is used.  Only ADMIN accounts can view API keys for other accounts.
+
+  Example:
+    curl -H "Authorization: Bearer <API_TOKEN>" http://localhost:14615/api_tokens
+    [{"token":"XXXX","comment":"Test Token"}]
+
+POST /account/new
+  Body: JSON object containing the username and password for the new account.
+
+  Creates a new account with the specified parameters.  Returns a JSON object
+  containing the Account UUID for the newly created account, if successful.
+  If an account with the requested username already exists, this returns a
+  409 Conflict error.
+
+  If this endpoint is called with an ADMIN API token, an optional "account_flags"
+  object can also be included in the request object.  This should be an array
+  containing one or more of the following flag strings:
+    "admin"  The account will be given administrative privileges.
+    "banned" The account will be prevented from logging in.
+    "beta"   The account will be given "beta tester" status, and can log in
+             even when login restrictions are in enabled.
+
+  Example:
+    curl -X POST -H "Content-Type: application/json" \
+         -d '{"username":"Test Account","password":"TestPa55word"}' \
+         http://localhost:14615/account/new
+    {"status":"ok","account_id":"XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"}
 
 GET /client_keys
   Returns the public encryption keys for use by clients, in server.ini format.
@@ -37,8 +64,16 @@ GET /client_keys
 GET /online
   Returns a JSON object containing the names and locations of online players.
 
+  Example:
+    curl http://localhost:14615/online
+    [{"name":"Test Player","location":"Test Player's Relto"}]
+
 POST /shutdown
   Shuts down the server gracefully.
+
+  Example:
+    curl -X POST -H "Authorization: Bearer <ADMIN_API_TOKEN>" http://localhost:14615/shutdown
+    {"status":"ok"}
 
 GET /status
   Returns "OK" if the API service is running.

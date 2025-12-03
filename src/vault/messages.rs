@@ -19,6 +19,7 @@ use std::sync::Arc;
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
+use crate::hashes::ShaDigest;
 use crate::netcli::NetResult;
 use super::db_interface::{AccountInfo, ApiToken, PlayerInfo, GameServer};
 use super::{VaultNode, NodeRef};
@@ -31,6 +32,12 @@ pub(super) enum VaultMessage {
     GetAccountForToken {
         api_token: String,
         response_send: oneshot::Sender<NetResult<Option<AccountInfo>>>,
+    },
+    CreateAccount {
+        account_name: String,
+        pass_hash: ShaDigest,
+        account_flags: u32,
+        response_send: oneshot::Sender<NetResult<AccountInfo>>,
     },
     GetApiTokens {
         account_id: Uuid,
