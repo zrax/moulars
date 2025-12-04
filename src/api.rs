@@ -32,16 +32,17 @@ use hyper_util::rt::TokioIo;
 use hyper_util::server::graceful::GracefulShutdown;
 use num_bigint::ToBigUint;
 use serde_derive::{Deserialize, Serialize};
+use serde_json::json;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
-use tracing::{warn, info, debug};
+use tracing::{warn, info};
 use uuid::Uuid;
 
 use crate::auth_srv::auth_hash::create_pass_hash;
 use crate::config::ServerConfig;
 use crate::net_crypt::{CRYPT_BASE_AUTH, CRYPT_BASE_GAME, CRYPT_BASE_GATE_KEEPER};
 use crate::netcli::{NetResult, NetResultCode};
-use crate::vault::{AccountInfo, ApiToken, VaultServer, VaultPlayerInfoNode};
+use crate::vault::{AccountInfo, VaultServer, VaultPlayerInfoNode};
 
 struct ApiInterface {
     server_config: Arc<ServerConfig>,
@@ -85,7 +86,8 @@ impl ApiInterface {
         let player_list = self.vault.find_nodes(template).await?;
         let mut players = Vec::with_capacity(player_list.len());
         for player_info in player_list {
-            let node = self.vault.fetch_node(player_info).await?.as_player_info_node().unwrap();
+            let node = self.vault.fetch_node(player_info).await?.as_player_info_node()
+                                 .expect("Returned node is not a player info node");
             players.push(OnlinePlayer {
                 name: node.player_name_ci().to_string(),
                 location: node.age_instance_name().to_string(),
@@ -102,13 +104,6 @@ impl ApiInterface {
             return Err(NetResultCode::NetAccountNotFound);
         };
         Ok(account)
-    }
-
-    async fn get_api_tokens(&self, account_id: Option<&str>, api_token: Option<&str>)
-        -> NetResult<Vec<ApiToken>>
-    {
-        let account_id = self.get_authorized_account(account_id, api_token).await?;
-        self.vault.get_api_tokens(&account_id).await
     }
 
     async fn create_account(&self, params: AccountParams, api_token: Option<&str>)
@@ -167,82 +162,54 @@ impl ApiInterface {
     }
 }
 
-fn gen_unauthorized() -> Response<Full<Bytes>> {
-    Response::builder()
-        .status(StatusCode::UNAUTHORIZED)
-        .header(CONTENT_TYPE, "application/json")
-        .body(Full::from(Bytes::from_static(br#"{"error":"Unauthorized"}"#)))
-        .unwrap()
-}
-
-fn gen_server_error() -> Response<Full<Bytes>> {
-    Response::builder()
-        .status(StatusCode::INTERNAL_SERVER_ERROR)
-        .header(CONTENT_TYPE, "application/json")
-        .body(Full::from(Bytes::from_static(br#"{"error":"Internal Server Error"}"#)))
-        .unwrap()
-}
-
-fn gen_bad_request() -> Response<Full<Bytes>> {
-    Response::builder()
-        .status(StatusCode::BAD_REQUEST)
-        .header(CONTENT_TYPE, "application/json")
-        .body(Full::from(Bytes::from_static(br#"{"error":"Bad Request"}"#)))
-        .unwrap()
-}
-
-fn gen_error_response(err: NetResultCode) -> Response<Full<Bytes>> {
-    match err {
-        NetResultCode::NetInternalError => gen_server_error(),
-        NetResultCode::NetInvalidParameter => gen_bad_request(),
-        NetResultCode::NetAccountAlreadyExists => {
-            Response::builder()
-                .status(StatusCode::CONFLICT)
-                .header(CONTENT_TYPE, "application/json")
-                .body(Full::from(Bytes::from_static(br#"{"error":"Account already exists"}"#)))
-                .unwrap()
-        }
-        NetResultCode::NetAccountNotFound => {
-            Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .header(CONTENT_TYPE, "application/json")
-                .body(Full::from(Bytes::from_static(br#"{"error":"Account not found"}"#)))
-                .unwrap()
-        }
-        NetResultCode::NetAuthenticationFailed => gen_unauthorized(),
-        err => {
-            debug!("Unhandled NetResultCode: {err:?}");
-            gen_server_error()
-        }
-    }
-}
-
-fn gen_json_response<T>(value: &T) -> Response<Full<Bytes>>
-    where T: ?Sized + serde::Serialize
+fn gen_plaintext_response<T>(text: T) -> NetResult<Response<Full<Bytes>>>
+    where T: Into<Full<Bytes>>
 {
-    match serde_json::to_string(value) {
-        Ok(json) => Response::builder()
-            .header(CONTENT_TYPE, "application/json")
-            .body(Full::from(json))
-            .unwrap(),
-        Err(err) => {
-            warn!("Failed to generate JSON: {err}");
-            gen_server_error()
-        }
-    }
+    Response::builder()
+        .body(text.into())
+        .map_err(|err| {
+            warn!("Failed to build plaintext response: {err}");
+            NetResultCode::NetInternalError
+        })
 }
 
-async fn parse_json_request<T>(request: Request<Incoming>) -> anyhow::Result<T>
+fn gen_json_response<T>(value: T) -> NetResult<Response<Full<Bytes>>>
+    where T: serde::Serialize
+{
+    let json = serde_json::to_string(&value)
+        .map_err(|err| {
+            warn!("Failed to generate JSON: {err}");
+            NetResultCode::NetInternalError
+        })?;
+    Response::builder()
+        .header(CONTENT_TYPE, "application/json")
+        .body(json.into())
+        .map_err(|err| {
+            warn!("Failed to build JSON response: {err}");
+            NetResultCode::NetInternalError
+        })
+}
+
+async fn parse_json_request<T>(request: Request<Incoming>) -> NetResult<T>
     where T: serde::de::DeserializeOwned
 {
-    let body = request.collect().await?.aggregate();
-    Ok(serde_json::from_reader(body.reader())?)
+    let body = request.collect().await
+        .map_err(|err| {
+            warn!("Failed to read request body: {err}");
+            NetResultCode::NetInvalidParameter
+        })?
+        .aggregate();
+    serde_json::from_reader(body.reader())
+        .map_err(|err| {
+            warn!("Failed to parse JSON request: {err}");
+            NetResultCode::NetInvalidParameter
+        })
 }
 
 const HELP_MSG: Bytes = Bytes::from_static(include_bytes!("api_help.txt"));
 
 async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
-        -> Result<Response<Full<Bytes>>, Infallible>
+        -> NetResult<Response<Full<Bytes>>>
 {
     let query_params = if let Some(query) = request.uri().query() {
         form_urlencoded::parse(query.as_bytes()).into_owned()
@@ -256,62 +223,34 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
                            .or_else(|| query_params.get("token").map(String::as_str))
                            .map(str::to_owned);
 
-    let response = match (request.method(), request.uri().path()) {
+    match (request.method(), request.uri().path()) {
         (&Method::GET, "/") => {
             // Show static API help text
-            Response::builder().body(Full::from(HELP_MSG)).unwrap()
+            gen_plaintext_response(HELP_MSG)
         }
         (&Method::GET, "/account") => {
             let account_id = query_params.get("account").map(String::as_str);
-            match api.get_account_info(account_id, api_token.as_deref()).await {
-                Ok(account) => gen_json_response(&AccountInfoJson::from(account)),
-                Err(err) => gen_error_response(err),
-            }
+            let account_info = api.get_account_info(account_id, api_token.as_deref()).await?;
+            gen_json_response(AccountInfoJson::from(account_info))
         }
         (&Method::GET, "/account/api_tokens") => {
-            let account_id = query_params.get("account").map(String::as_str);
-            match api.get_api_tokens(account_id, api_token.as_deref()).await {
-                Ok(tokens) => gen_json_response(&tokens),
-                Err(err) => gen_error_response(err),
-            }
+            let account_param = query_params.get("account").map(String::as_str);
+            let account_id = api.get_authorized_account(account_param, api_token.as_deref()).await?;
+            gen_json_response(api.vault.get_api_tokens(&account_id).await?)
         }
         (&Method::POST, "/account/new") => {
-            let params: AccountParams = match parse_json_request(request).await {
-                Ok(params) => params,
-                Err(err) => {
-                    warn!("Failed parsing JSON request: {err}");
-                    return Ok(gen_bad_request());
-                }
-            };
-            match api.create_account(params, api_token.as_deref()).await {
-                Ok(account) => {
-                    Response::builder()
-                        .header(CONTENT_TYPE, "application/json")
-                        .body(Full::from(Bytes::from(
-                            format!(r#"{{"status":"ok","account_id":"{}"}}"#, account.account_id))))
-                        .unwrap()
-                }
-                Err(err) => gen_error_response(err),
-            }
+            let params: AccountParams = parse_json_request(request).await?;
+            let account = api.create_account(params, api_token.as_deref()).await?;
+            gen_json_response(json!({
+                "status": "ok",
+                "account_id": account.account_id,
+            }))
         }
         (&Method::POST, "/account/update") => {
-            let params: AccountParams = match parse_json_request(request).await {
-                Ok(params) => params,
-                Err(err) => {
-                    warn!("Failed parsing JSON request: {err}");
-                    return Ok(gen_bad_request());
-                }
-            };
+            let params: AccountParams = parse_json_request(request).await?;
             let account_id = query_params.get("account").map(String::as_str);
-            match api.update_account(account_id, params, api_token.as_deref()).await {
-                Ok(()) => {
-                    Response::builder()
-                        .header(CONTENT_TYPE, "application/json")
-                        .body(Full::from(Bytes::from_static(br#"{"status":"ok"}"#)))
-                        .unwrap()
-                }
-                Err(err) => gen_error_response(err),
-            }
+            api.update_account(account_id, params, api_token.as_deref()).await?;
+            gen_json_response(json!({"status": "ok"}))
         }
         (&Method::GET, "/client_keys") => {
             let mut lines = Vec::with_capacity(6 * 105);
@@ -326,43 +265,76 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
                 let _ = writeln!(lines, "Server.{stype}.N \"{}\"", BASE64.encode(&bytes_n));
                 let _ = writeln!(lines, "Server.{stype}.X \"{}\"", BASE64.encode(&bytes_x));
             }
-            Response::builder().body(Full::from(lines)).unwrap()
+            gen_plaintext_response(lines)
         }
         (&Method::GET, "/online") => {
             // Return JSON object containing the names and locations of online players
-            match api.query_online_players().await {
-                Ok(players) => gen_json_response(&players),
-                Err(err) => {
-                    warn!("Failed to query online players: {err:?}");
-                    gen_server_error()
-                }
-            }
+            let players = api.query_online_players().await?;
+            gen_json_response(&players)
         }
         (&Method::POST, "/shutdown") => {
             let Some(admin) = api.check_api_token(api_token.as_deref(), true).await else {
-                return Ok(gen_unauthorized());
+                return Err(NetResultCode::NetAuthenticationFailed);
             };
             info!("Shutdown requested by {}", admin.account_name);
             let _ = api.shutdown_send.send(());
-            Response::builder()
-                .header(CONTENT_TYPE, "application/json")
-                .body(Full::from(Bytes::from_static(br#"{"status":"ok"}"#)))
-                .unwrap()
+            gen_json_response(json!({"status": "ok"}))
         }
         (&Method::GET, "/status") => {
             // Basic status check
             // TODO: Check health of other services and report them here...
-            Response::builder().body(Full::from(Bytes::from_static(b"OK"))).unwrap()
+            gen_plaintext_response("OK")
         }
-        _ => {
-            Response::builder()
-                .status(StatusCode::NOT_FOUND)
+        _ => Err(NetResultCode::NetFileNotFound),
+    }
+}
+
+fn gen_server_error() -> Response<Full<Bytes>> {
+    // Pre-cache the error response body for 500 errors in case something's broken
+    // even with the error response handler.
+    const RESPONSE_JSON: Bytes = Bytes::from_static(br#"{"error":"Internal Server Error"}"#);
+    Response::builder()
+        .status(StatusCode::INTERNAL_SERVER_ERROR)
+        .header(CONTENT_TYPE, "application/json")
+        .body(Full::from(RESPONSE_JSON))
+        .expect("Failed to build 500 response")
+}
+
+async fn api_wrapper(request: Request<Incoming>, api: Arc<ApiInterface>)
+        -> Result<Response<Full<Bytes>>, Infallible>
+{
+    match api_router(request, api).await {
+        Ok(response) => Ok(response),
+        Err(code) => {
+            let (status, message) = match code {
+                NetResultCode::NetInternalError => return Ok(gen_server_error()),
+                NetResultCode::NetInvalidParameter => (StatusCode::BAD_REQUEST, "Bad request"),
+                NetResultCode::NetAccountAlreadyExists => (StatusCode::CONFLICT, "Account already exists"),
+                NetResultCode::NetAccountNotFound => (StatusCode::NOT_FOUND, "Account not found"),
+                NetResultCode::NetAuthenticationFailed => (StatusCode::UNAUTHORIZED, "Unauthorized"),
+                NetResultCode::NetFileNotFound => (StatusCode::NOT_FOUND, "Invalid API request"),
+                _ => {
+                    warn!("Unhandled NetResultCode: {code:?}");
+                    return Ok(gen_server_error());
+                }
+            };
+            let json_body = match serde_json::to_string(&json!({"error": message})) {
+                Ok(json) => json,
+                Err(err) => {
+                    warn!("Failed to generate JSON: {err}");
+                    return Ok(gen_server_error());
+                }
+            };
+            Ok(Response::builder()
+                .status(status)
                 .header(CONTENT_TYPE, "application/json")
-                .body(Full::from(Bytes::from_static(br#"{"error":"Invalid API Request"}"#)))
-                .unwrap()
+                .body(Full::from(json_body))
+                .unwrap_or_else(|err| {
+                    warn!("Failed to build error response: {err}");
+                    gen_server_error()
+                }))
         }
-    };
-    Ok(response)
+    }
 }
 
 pub fn start_api(shutdown_send: broadcast::Sender<()>, vault: Arc<VaultServer>,
@@ -403,7 +375,7 @@ pub fn start_api(shutdown_send: broadcast::Sender<()>, vault: Arc<VaultServer>,
                     let conn = {
                         let api = api.clone();
                         server.serve_connection(io, service_fn(move |request| {
-                            api_router(request, api.clone())
+                            api_wrapper(request, api.clone())
                         }))
                     };
 
