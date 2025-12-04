@@ -29,6 +29,10 @@ pub(super) enum VaultMessage {
         account_name: String,
         response_send: oneshot::Sender<NetResult<Option<AccountInfo>>>,
     },
+    GetAccountById {
+        account_id: Uuid,
+        response_send: oneshot::Sender<NetResult<Option<AccountInfo>>>,
+    },
     GetAccountForToken {
         api_token: String,
         response_send: oneshot::Sender<NetResult<Option<AccountInfo>>>,
@@ -38,6 +42,12 @@ pub(super) enum VaultMessage {
         pass_hash: ShaDigest,
         account_flags: u32,
         response_send: oneshot::Sender<NetResult<AccountInfo>>,
+    },
+    UpdateAccount {
+        account_id: Uuid,
+        pass_hash: Option<ShaDigest>,
+        account_flags: Option<u32>,
+        response_send: oneshot::Sender<NetResult<()>>,
     },
     GetApiTokens {
         account_id: Uuid,

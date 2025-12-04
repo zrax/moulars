@@ -15,7 +15,7 @@
  */
 
 mod db_interface;
-pub use db_interface::{AccountInfo, PlayerInfo, GameServer};
+pub use db_interface::{AccountInfo, ApiToken, PlayerInfo, GameServer};
 
 mod db_sqlite;
 

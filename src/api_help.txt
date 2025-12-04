@@ -2,8 +2,10 @@ MOULArs Internal API Help
 
 The following endpoints are available:
   /
+  /account [a]
   /account/api_tokens [a]
   /account/new
+  /account/update [a]
   /client_keys
   /online
   /shutdown [a,!]
@@ -26,6 +28,16 @@ API Endpoints:
 
 GET /
   Returns this help message.
+
+GET /account[?account=<UUID>]
+  Returns a JSON object containing the account details for the specified
+  account.  If account is not specified, the account associated with the
+  authorization API token is used.  Only ADMIN accounts can view details for
+  other accounts.
+
+  Example:
+    curl -H "Authorization: Bearer <API_TOKEN>" http://localhost:14615/account
+    {"username":"Test Account","account_id":"XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX","account_flags":["admin","beta"]}
 
 GET /account/api_tokens[?account=<UUID>]
   Returns a JSON object containing the API tokens associated with the account.
@@ -57,6 +69,27 @@ POST /account/new
          -d '{"username":"Test Account","password":"TestPa55word"}' \
          http://localhost:14615/account/new
     {"status":"ok","account_id":"XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"}
+
+POST /account/update[?account=<UUID>]
+  Body: JSON object containing fields to update for the account.  See
+  /account/new for a description of valid fields.  Note that account usernames
+  and UUIDs cannot be changed via this API.
+
+  Only ADMIN accounts can modify other accounts or set account flags.
+  To remove an account flag, prefix it with "!" (e.g. {"account_flags":["!admin"]})
+
+  Examples:
+    curl -X POST -H "Authorization: Bearer <API_TOKEN>" \
+         -H "Content-Type: application/json" \
+         -d '{"password":"NewPa55word"}' \
+         http://localhost:14615/account/update
+    {"status":"ok"}
+
+    curl -X POST -H "Authorization: Bearer <ADMIN_API_TOKEN>" \
+         -H "Content-Type: application/json" \
+         -d '{"account_flags":["admin","!beta"]}' \
+         http://localhost:14615/account/update?account=<ACCOUNT_UUID>
+    {"status":"ok"}
 
 GET /client_keys
   Returns the public encryption keys for use by clients, in server.ini format.

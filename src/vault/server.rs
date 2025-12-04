@@ -61,13 +61,19 @@ async fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender
         VaultMessage::GetAccount { account_name, response_send } => {
             check_send(response_send, db.get_account(&account_name).await);
         }
+        VaultMessage::GetAccountById { account_id, response_send } => {
+            check_send(response_send, db.get_account_by_id(&account_id).await);
+        }
         VaultMessage::GetAccountForToken { api_token, response_send } => {
             check_send(response_send, db.get_account_for_token(&api_token).await);
         }
-        VaultMessage::CreateAccount { account_name, pass_hash, account_flags,
-                                      response_send } => {
+        VaultMessage::CreateAccount { account_name, pass_hash, account_flags, response_send } => {
             check_send(response_send,
                        db.create_account(&account_name, pass_hash, account_flags).await);
+        }
+        VaultMessage::UpdateAccount { account_id, pass_hash, account_flags, response_send } => {
+            check_send(response_send,
+                       db.update_account(&account_id, pass_hash, account_flags).await);
         }
         VaultMessage::GetApiTokens { account_id, response_send } => {
             check_send(response_send, db.get_api_tokens(&account_id).await);
@@ -225,6 +231,15 @@ impl VaultServer {
         self.request(request, response_recv).await
     }
 
+    pub async fn get_account_by_id(&self, account_id: &Uuid) -> NetResult<Option<AccountInfo>> {
+        let (response_send, response_recv) = oneshot::channel();
+        let request = VaultMessage::GetAccountById {
+            account_id: *account_id,
+            response_send
+        };
+        self.request(request, response_recv).await
+    }
+
     pub async fn get_account_for_token(&self, api_token: &str)
             -> NetResult<Option<AccountInfo>>
     {
@@ -243,6 +258,18 @@ impl VaultServer {
         let request = VaultMessage::CreateAccount {
             account_name: account_name.to_string(),
             pass_hash: *pass_hash,
+            account_flags,
+            response_send
+        };
+        self.request(request, response_recv).await
+    }
+
+    pub async fn update_account(&self, account_id: &Uuid, pass_hash: Option<&ShaDigest>,
+                                account_flags: Option<u32>) -> NetResult<()> {
+        let (response_send, response_recv) = oneshot::channel();
+        let request = VaultMessage::UpdateAccount {
+            account_id: *account_id,
+            pass_hash: pass_hash.copied(),
             account_flags,
             response_send
         };

@@ -34,14 +34,14 @@ use num_bigint::ToBigUint;
 use serde_derive::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
-use tracing::{warn, info};
+use tracing::{warn, info, debug};
 use uuid::Uuid;
 
 use crate::auth_srv::auth_hash::create_pass_hash;
 use crate::config::ServerConfig;
 use crate::net_crypt::{CRYPT_BASE_AUTH, CRYPT_BASE_GAME, CRYPT_BASE_GATE_KEEPER};
 use crate::netcli::{NetResult, NetResultCode};
-use crate::vault::{AccountInfo, VaultServer, VaultPlayerInfoNode};
+use crate::vault::{AccountInfo, ApiToken, VaultServer, VaultPlayerInfoNode};
 
 struct ApiInterface {
     server_config: Arc<ServerConfig>,
@@ -56,11 +56,28 @@ impl ApiInterface {
     {
         if let Some(token) = api_token
             && let Ok(Some(account)) = self.vault.get_account_for_token(token).await
+            && !account.is_banned()
             && (!admin_required || account.is_admin())
         {
             return Some(account);
         }
         None
+    }
+
+    async fn get_authorized_account(&self, account_id: Option<&str>, api_token: Option<&str>)
+        -> NetResult<Uuid>
+    {
+        let Some(account) = self.check_api_token(api_token, false).await else {
+            return Err(NetResultCode::NetAuthenticationFailed);
+        };
+        let Ok(account_id) = account_id.map_or(Ok(account.account_id), Uuid::from_str) else {
+            return Err(NetResultCode::NetInvalidParameter);
+        };
+        if !account.is_admin() && account_id != account.account_id {
+            Err(NetResultCode::NetAuthenticationFailed)
+        } else {
+            Ok(account_id)
+        }
     }
 
     async fn query_online_players(&self) -> NetResult<Vec<OnlinePlayer>> {
@@ -75,6 +92,23 @@ impl ApiInterface {
             });
         }
         Ok(players)
+    }
+
+    async fn get_account_info(&self, account_id: Option<&str>, api_token: Option<&str>)
+        -> NetResult<AccountInfo>
+    {
+        let account_id = self.get_authorized_account(account_id, api_token).await?;
+        let Some(account) = self.vault.get_account_by_id(&account_id).await? else {
+            return Err(NetResultCode::NetAccountNotFound);
+        };
+        Ok(account)
+    }
+
+    async fn get_api_tokens(&self, account_id: Option<&str>, api_token: Option<&str>)
+        -> NetResult<Vec<ApiToken>>
+    {
+        let account_id = self.get_authorized_account(account_id, api_token).await?;
+        self.vault.get_api_tokens(&account_id).await
     }
 
     async fn create_account(&self, params: AccountParams, api_token: Option<&str>)
@@ -100,6 +134,37 @@ impl ApiInterface {
         };
         self.vault.create_account(username, &pass_hash, account_flags).await
     }
+
+    async fn update_account(&self, account_id: Option<&str>, params: AccountParams,
+                            api_token: Option<&str>) -> NetResult<()>
+    {
+        let account = self.get_account_info(account_id, api_token).await?;
+        if params.username.is_some() {
+            // Disallow updating usernames
+            return Err(NetResultCode::NetInvalidParameter);
+        }
+        let account_flags = if params.account_flags.is_none() {
+            None
+        } else if self.check_api_token(api_token, true).await.is_some() {
+            let update_flags = params.parse_account_flags()?;
+            Some((account.account_flags | update_flags.0) & !update_flags.1)
+        } else {
+            return Err(NetResultCode::NetAuthenticationFailed);
+        };
+        let pass_hash = if let Some(password) = params.password {
+            match create_pass_hash(&account.account_name, &password) {
+                Ok(hash) => Some(hash),
+                Err(err) => {
+                    warn!("Failed to create password hash: {err}");
+                    return Err(NetResultCode::NetInternalError);
+                }
+            }
+        } else {
+            None
+        };
+
+        self.vault.update_account(&account.account_id, pass_hash.as_ref(), account_flags).await
+    }
 }
 
 fn gen_unauthorized() -> Response<Full<Bytes>> {
@@ -124,6 +189,32 @@ fn gen_bad_request() -> Response<Full<Bytes>> {
         .header(CONTENT_TYPE, "application/json")
         .body(Full::from(Bytes::from_static(br#"{"error":"Bad Request"}"#)))
         .unwrap()
+}
+
+fn gen_error_response(err: NetResultCode) -> Response<Full<Bytes>> {
+    match err {
+        NetResultCode::NetInternalError => gen_server_error(),
+        NetResultCode::NetInvalidParameter => gen_bad_request(),
+        NetResultCode::NetAccountAlreadyExists => {
+            Response::builder()
+                .status(StatusCode::CONFLICT)
+                .header(CONTENT_TYPE, "application/json")
+                .body(Full::from(Bytes::from_static(br#"{"error":"Account already exists"}"#)))
+                .unwrap()
+        }
+        NetResultCode::NetAccountNotFound => {
+            Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .header(CONTENT_TYPE, "application/json")
+                .body(Full::from(Bytes::from_static(br#"{"error":"Account not found"}"#)))
+                .unwrap()
+        }
+        NetResultCode::NetAuthenticationFailed => gen_unauthorized(),
+        err => {
+            debug!("Unhandled NetResultCode: {err:?}");
+            gen_server_error()
+        }
+    }
 }
 
 fn gen_json_response<T>(value: &T) -> Response<Full<Bytes>>
@@ -170,27 +261,18 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
             // Show static API help text
             Response::builder().body(Full::from(HELP_MSG)).unwrap()
         }
+        (&Method::GET, "/account") => {
+            let account_id = query_params.get("account").map(String::as_str);
+            match api.get_account_info(account_id, api_token.as_deref()).await {
+                Ok(account) => gen_json_response(&AccountInfoJson::from(account)),
+                Err(err) => gen_error_response(err),
+            }
+        }
         (&Method::GET, "/account/api_tokens") => {
-            if let Some(account) = api.check_api_token(api_token.as_deref(), false).await {
-                let Ok(account_id) =
-                    query_params.get("account")
-                                .map_or(Ok(account.account_id), |param| Uuid::from_str(param))
-                else {
-                    return Ok(gen_bad_request());
-                };
-                if !account.is_admin() && account_id != account.account_id {
-                    gen_unauthorized()
-                } else {
-                    match api.vault.get_api_tokens(&account_id).await {
-                        Ok(tokens) => gen_json_response(&tokens),
-                        Err(err) => {
-                            warn!("Failed to query API tokens: {err:?}");
-                            gen_server_error()
-                        }
-                    }
-                }
-            } else {
-                gen_unauthorized()
+            let account_id = query_params.get("account").map(String::as_str);
+            match api.get_api_tokens(account_id, api_token.as_deref()).await {
+                Ok(tokens) => gen_json_response(&tokens),
+                Err(err) => gen_error_response(err),
             }
         }
         (&Method::POST, "/account/new") => {
@@ -209,16 +291,26 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
                             format!(r#"{{"status":"ok","account_id":"{}"}}"#, account.account_id))))
                         .unwrap()
                 }
-                Err(NetResultCode::NetAccountAlreadyExists) => {
+                Err(err) => gen_error_response(err),
+            }
+        }
+        (&Method::POST, "/account/update") => {
+            let params: AccountParams = match parse_json_request(request).await {
+                Ok(params) => params,
+                Err(err) => {
+                    warn!("Failed parsing JSON request: {err}");
+                    return Ok(gen_bad_request());
+                }
+            };
+            let account_id = query_params.get("account").map(String::as_str);
+            match api.update_account(account_id, params, api_token.as_deref()).await {
+                Ok(()) => {
                     Response::builder()
-                        .status(StatusCode::CONFLICT)
                         .header(CONTENT_TYPE, "application/json")
-                        .body(Full::from(Bytes::from_static(br#"{"error":"Account already exists"}"#)))
+                        .body(Full::from(Bytes::from_static(br#"{"status":"ok"}"#)))
                         .unwrap()
                 }
-                Err(NetResultCode::NetInvalidParameter) => gen_bad_request(),
-                Err(NetResultCode::NetAuthenticationFailed) => gen_unauthorized(),
-                Err(_) => gen_server_error(),
+                Err(err) => gen_error_response(err),
             }
         }
         (&Method::GET, "/client_keys") => {
@@ -247,16 +339,15 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
             }
         }
         (&Method::POST, "/shutdown") => {
-            if let Some(admin) = api.check_api_token(api_token.as_deref(), true).await {
-                info!("Shutdown requested by {}", admin.account_name);
-                let _ = api.shutdown_send.send(());
-                Response::builder()
-                    .header(CONTENT_TYPE, "application/json")
-                    .body(Full::from(Bytes::from_static(br#"{"status":"ok"}"#)))
-                    .unwrap()
-            } else {
-                gen_unauthorized()
-            }
+            let Some(admin) = api.check_api_token(api_token.as_deref(), true).await else {
+                return Ok(gen_unauthorized());
+            };
+            info!("Shutdown requested by {}", admin.account_name);
+            let _ = api.shutdown_send.send(());
+            Response::builder()
+                .header(CONTENT_TYPE, "application/json")
+                .body(Full::from(Bytes::from_static(br#"{"status":"ok"}"#)))
+                .unwrap()
         }
         (&Method::GET, "/status") => {
             // Basic status check
@@ -371,5 +462,27 @@ impl AccountParams {
             }
         }
         Ok((add_flags, remove_flags))
+    }
+}
+
+#[derive(Serialize)]
+struct AccountInfoJson {
+    username: String,
+    account_id: Uuid,
+    account_flags: Vec<String>,
+}
+
+impl From<AccountInfo> for AccountInfoJson {
+    fn from(account: AccountInfo) -> Self {
+        let mut account_flags = Vec::new();
+        if account.is_admin() { account_flags.push("admin".to_string()); }
+        if account.is_banned() { account_flags.push("banned".to_string()); }
+        if account.is_beta_tester() { account_flags.push("beta".to_string()); }
+
+        Self {
+            username: account.account_name,
+            account_id: account.account_id,
+            account_flags,
+        }
     }
 }

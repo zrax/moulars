@@ -228,6 +228,17 @@ impl DbInterface for DbSqlite {
         }
     }
 
+    async fn get_account_by_id(&self, account_id: &Uuid) -> NetResult<Option<AccountInfo>> {
+        sqlx::query_as("SELECT account_name, pass_hash, account_id, account_flags, billing_type \
+                            FROM accounts WHERE account_id = $1")
+            .bind(account_id)
+            .fetch_optional(&self.pool).await
+            .map_err(|err| {
+                warn!("Failed to fetch account: {err}");
+                NetResultCode::NetAccountNotFound
+            })
+    }
+
     async fn get_account_for_token(&self, api_token: &str) -> NetResult<Option<AccountInfo>> {
         let account: Option<AccountInfo> =
             sqlx::query_as("SELECT account_name, pass_hash, account_id, account_flags, billing_type \
@@ -291,6 +302,34 @@ impl DbInterface for DbSqlite {
         })
     }
 
+    async fn update_account(&self, account_id: &Uuid, pass_hash: Option<ShaDigest>,
+                            account_flags: Option<u32>) -> NetResult<()> {
+        if pass_hash.is_none() && account_flags.is_none() {
+            return Ok(());
+        }
+
+        let mut query = QueryBuilder::new("UPDATE accounts SET ");
+        let mut fields = query.separated(", ");
+        if let Some(pass_hash) = pass_hash {
+            fields.push("pass_hash = ");
+            fields.push_bind_unseparated(pass_hash.as_hex());
+        }
+        if let Some(account_flags) = account_flags {
+            fields.push("account_flags = ");
+            fields.push_bind_unseparated(account_flags);
+        }
+        query.push(" WHERE account_id = ");
+        query.push_bind(account_id);
+
+        let _ = query.build()
+            .execute(&self.pool).await
+            .map_err(|err| {
+                warn!("Failed to update account: {err}");
+                NetResultCode::NetInternalError
+            })?;
+        Ok(())
+    }
+
     async fn create_api_token(&self, account_id: &Uuid, comment: &str) -> NetResult<String> {
         let api_token = format!("{}{}", Uuid::now_v7(), Uuid::new_v4());
         let _ = sqlx::query("INSERT INTO api_tokens (account_id, token, comment) \
@@ -307,13 +346,13 @@ impl DbInterface for DbSqlite {
     }
 
     async fn get_api_tokens(&self, account_id: &Uuid) -> NetResult<Vec<ApiToken>> {
-        Ok(sqlx::query_as("SELECT token, comment FROM api_tokens WHERE account_id = $1")
+        sqlx::query_as("SELECT token, comment FROM api_tokens WHERE account_id = $1")
             .bind(account_id)
             .fetch_all(&self.pool).await
             .map_err(|err| {
                 warn!("Failed to fetch API tokens for '{account_id}': {err}");
                 NetResultCode::NetInternalError
-            })?)
+            })
     }
 
     async fn set_all_players_offline(&self) -> NetResult<()> {
@@ -390,13 +429,13 @@ impl DbInterface for DbSqlite {
     }
 
     async fn find_game_server(&self, age_instance_id: &Uuid) -> NetResult<Option<GameServer>> {
-        Ok(sqlx::query_as("SELECT * FROM servers WHERE instance_uuid = $1")
+        sqlx::query_as("SELECT * FROM servers WHERE instance_uuid = $1")
             .bind(age_instance_id)
             .fetch_optional(&self.pool).await
             .map_err(|err| {
                 warn!("Failed to look up game server: {err}");
                 NetResultCode::NetInternalError
-            })?)
+            })
     }
 
     async fn create_node(&self, mut node: VaultNode) -> NetResult<u32> {

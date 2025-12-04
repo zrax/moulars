@@ -27,9 +27,12 @@ use super::{VaultNode, NodeRef};
 #[async_trait]
 pub trait DbInterface: Send + Sync {
     async fn get_account(&self, account_name: &str) -> NetResult<Option<AccountInfo>>;
+    async fn get_account_by_id(&self, account_id: &Uuid) -> NetResult<Option<AccountInfo>>;
     async fn get_account_for_token(&self, api_token: &str) -> NetResult<Option<AccountInfo>>;
     async fn create_account(&self, account_name: &str, pass_hash: ShaDigest,
                             account_flags: u32) -> NetResult<AccountInfo>;
+    async fn update_account(&self, account_id: &Uuid, pass_hash: Option<ShaDigest>,
+                            account_flags: Option<u32>) -> NetResult<()>;
     async fn create_api_token(&self, account_id: &Uuid, comment: &str) -> NetResult<String>;
     async fn get_api_tokens(&self, account_id: &Uuid) -> NetResult<Vec<ApiToken>>;
 
@@ -69,6 +72,7 @@ impl AccountInfo {
     pub const BANNED: u32       = 1 << 16;
 
     pub fn is_admin(&self) -> bool { (self.account_flags & Self::ADMIN) != 0 }
+    pub fn is_beta_tester(&self) -> bool { (self.account_flags & Self::BETA_TESTER) != 0 }
     pub fn is_banned(&self) -> bool { (self.account_flags & Self::BANNED) != 0 }
 
     pub fn can_login_restricted(&self) -> bool {
