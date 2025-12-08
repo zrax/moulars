@@ -52,32 +52,26 @@ struct ApiInterface {
 
 impl ApiInterface {
     // Returns the account info of the account associated with an API token
-    async fn check_api_token(&self, api_token: Option<&str>, admin_required: bool)
-        -> Option<AccountInfo>
-    {
+    async fn check_api_token(&self, api_token: Option<&str>) -> Option<AccountInfo> {
         if let Some(token) = api_token
             && let Ok(Some(account)) = self.vault.get_account_for_token(token).await
             && !account.is_banned()
-            && (!admin_required || account.is_admin())
         {
             return Some(account);
         }
         None
     }
 
-    async fn get_authorized_account(&self, account_id: Option<&str>, api_token: Option<&str>)
+    async fn get_authorized_account(&self, account_id: Option<&str>, requestor: &AccountInfo)
         -> NetResult<Uuid>
     {
-        let Some(account) = self.check_api_token(api_token, false).await else {
-            return Err(NetResultCode::NetAuthenticationFailed);
-        };
-        let Ok(account_id) = account_id.map_or(Ok(account.account_id), Uuid::from_str) else {
+        let Ok(account_id) = account_id.map_or(Ok(requestor.account_id), Uuid::from_str) else {
             return Err(NetResultCode::NetInvalidParameter);
         };
-        if !account.is_admin() && account_id != account.account_id {
-            Err(NetResultCode::NetAuthenticationFailed)
-        } else {
+        if requestor.is_admin() || account_id == requestor.account_id {
             Ok(account_id)
+        } else {
+            Err(NetResultCode::NetAuthenticationFailed)
         }
     }
 
@@ -96,10 +90,10 @@ impl ApiInterface {
         Ok(players)
     }
 
-    async fn get_account_info(&self, account_id: Option<&str>, api_token: Option<&str>)
+    async fn get_account_info(&self, account_id: Option<&str>, requestor: &AccountInfo)
         -> NetResult<AccountInfo>
     {
-        let account_id = self.get_authorized_account(account_id, api_token).await?;
+        let account_id = self.get_authorized_account(account_id, requestor).await?;
         let Some(account) = self.vault.get_account_by_id(&account_id).await? else {
             return Err(NetResultCode::NetAccountNotFound);
         };
@@ -109,13 +103,16 @@ impl ApiInterface {
     async fn create_account(&self, params: AccountParams, api_token: Option<&str>)
         -> NetResult<AccountInfo>
     {
+        let Some(requestor) = self.check_api_token(api_token).await else {
+            return Err(NetResultCode::NetAuthenticationFailed);
+        };
         let (Some(username), Some(password)) = (&params.username, &params.password) else {
             warn!("Missing required parameter(s)");
             return Err(NetResultCode::NetInvalidParameter);
         };
         let account_flags = if params.account_flags.is_none() {
             0
-        } else if self.check_api_token(api_token, true).await.is_some() {
+        } else if requestor.is_admin() {
             params.parse_account_flags()?.0
         } else {
             return Err(NetResultCode::NetAuthenticationFailed);
@@ -127,20 +124,25 @@ impl ApiInterface {
                 return Err(NetResultCode::NetInternalError);
             }
         };
+        info!("{} requested new account '{username}' with flags: {:?}",
+              requestor.account_name, params.account_flags);
         self.vault.create_account(username, &pass_hash, account_flags).await
     }
 
     async fn update_account(&self, account_id: Option<&str>, params: AccountParams,
                             api_token: Option<&str>) -> NetResult<()>
     {
-        let account = self.get_account_info(account_id, api_token).await?;
+        let Some(requestor) = self.check_api_token(api_token).await else {
+            return Err(NetResultCode::NetAuthenticationFailed);
+        };
+        let account = self.get_account_info(account_id, &requestor).await?;
         if params.username.is_some() {
             // Disallow updating usernames
             return Err(NetResultCode::NetInvalidParameter);
         }
         let account_flags = if params.account_flags.is_none() {
             None
-        } else if self.check_api_token(api_token, true).await.is_some() {
+        } else if requestor.is_admin() {
             let update_flags = params.parse_account_flags()?;
             Some((account.account_flags | update_flags.0) & !update_flags.1)
         } else {
@@ -158,6 +160,10 @@ impl ApiInterface {
             None
         };
 
+        info!("{} requested account '{}' update {}flags: {:?}",
+              requestor.account_name, account.account_name,
+              if pass_hash.is_some() { "password and " } else { "" },
+              params.account_flags);
         self.vault.update_account(&account.account_id, pass_hash.as_ref(), account_flags).await
     }
 }
@@ -229,14 +235,20 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
             gen_plaintext_response(HELP_MSG)
         }
         (&Method::GET, "/account") => {
+            let Some(requestor) = api.check_api_token(api_token.as_deref()).await else {
+                return Err(NetResultCode::NetAuthenticationFailed);
+            };
             let account_id = query_params.get("account").map(String::as_str);
-            let account_info = api.get_account_info(account_id, api_token.as_deref()).await?;
+            let account_info = api.get_account_info(account_id, &requestor).await?;
             gen_json_response(AccountInfoJson::from(account_info))
         }
         (&Method::GET, "/account/api_tokens") => {
-            let account_param = query_params.get("account").map(String::as_str);
-            let account_id = api.get_authorized_account(account_param, api_token.as_deref()).await?;
-            gen_json_response(api.vault.get_api_tokens(&account_id).await?)
+            let Some(requestor) = api.check_api_token(api_token.as_deref()).await else {
+                return Err(NetResultCode::NetAuthenticationFailed);
+            };
+            let account_id = query_params.get("account").map(String::as_str);
+            let auth_id = api.get_authorized_account(account_id, &requestor).await?;
+            gen_json_response(api.vault.get_api_tokens(&auth_id).await?)
         }
         (&Method::POST, "/account/new") => {
             let params: AccountParams = parse_json_request(request).await?;
@@ -273,12 +285,15 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
             gen_json_response(&players)
         }
         (&Method::POST, "/shutdown") => {
-            let Some(admin) = api.check_api_token(api_token.as_deref(), true).await else {
-                return Err(NetResultCode::NetAuthenticationFailed);
-            };
-            info!("Shutdown requested by {}", admin.account_name);
-            let _ = api.shutdown_send.send(());
-            gen_json_response(json!({"status": "ok"}))
+            if let Some(requestor) = api.check_api_token(api_token.as_deref()).await
+                && requestor.is_admin()
+            {
+                info!("Shutdown requested by {}", requestor.account_name);
+                let _ = api.shutdown_send.send(());
+                gen_json_response(json!({"status": "ok"}))
+            } else {
+                Err(NetResultCode::NetAuthenticationFailed)
+            }
         }
         (&Method::GET, "/status") => {
             // Basic status check
