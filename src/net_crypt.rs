@@ -16,12 +16,13 @@
 
 use std::io::{self, BufRead, Write, Cursor};
 use std::net::SocketAddr;
-use std::task::{Context, Poll};
+use std::task::{self, Poll};
 use std::pin::Pin;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use byteorder::{ReadBytesExt, WriteBytesExt};
-use num_bigint::{BigUint, RandBigInt};
+use crypto_bigint::U512;
+use rand::TryRngCore;
 use tokio::net::TcpStream;
 use tokio::io::{AsyncRead, BufReader, ReadBuf};
 
@@ -68,7 +69,7 @@ impl CryptTcpStream {
 }
 
 impl AsyncRead for CryptTcpStream {
-    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context, buf: &mut ReadBuf)
+    fn poll_read(mut self: Pin<&mut Self>, cx: &mut task::Context, buf: &mut ReadBuf)
         -> Poll<io::Result<()>>
     {
         use rc4::StreamCipher;
@@ -90,7 +91,7 @@ const SRV_TO_CLI_ERROR: u8 = 2;
 struct CryptConnectHeader {
     msg_id: u8,
     msg_size: u8,
-    key_seed: [u8; 64],
+    key_seed: [u8; U512::BYTES],
 }
 
 const SERVER_SEED_SIZE: u8 = 7;
@@ -109,7 +110,7 @@ impl StreamRead for CryptConnectHeader {
         // Only reads the fixed parts of the message
         let msg_id = stream.read_u8()?;
         let msg_size = stream.read_u8()?;
-        Ok(Self { msg_id, msg_size, key_seed: [0u8; 64] })
+        Ok(Self { msg_id, msg_size, key_seed: [0u8; U512::BYTES] })
     }
 }
 
@@ -128,35 +129,39 @@ fn create_crypt_reply(server_seed: &[u8]) -> Result<Vec<u8>> {
     Ok(stream.into_inner())
 }
 
-const SERVER_SEED_BIT_SIZE: u64 = (SERVER_SEED_SIZE as u64) * 8;
-const CLIENT_KEY_BIT_SIZE: u64 = (CLIENT_KEY_SIZE as u64) * 8;
+const SERVER_SEED_BIT_SIZE: u32 = (SERVER_SEED_SIZE as u32) * 8;
+const CLIENT_KEY_BIT_SIZE: u32 = (CLIENT_KEY_SIZE as u32) * 8;
+
+pub fn u512_pow_mod(base: &U512, exponent: &U512, modulus: &U512) -> U512 {
+    use crypto_bigint::Odd;
+    use crypto_bigint::modular::{MontyForm, MontyParams};
+
+    let modulus = Odd::new(*modulus).expect("Modulus must be odd");
+    MontyForm::new(base, MontyParams::new(modulus)).pow(exponent).retrieve()
+}
 
 // Returns the server seed and the local rc4 key data
 // NOTE: Returned seed and key are little-endian
-fn crypt_key_create(key_n: &BigUint, key_k: &BigUint, key_y: &BigUint)
-    -> (Vec<u8>, Vec<u8>)
+fn crypt_key_create(key_n: &U512, key_k: &U512, key_y: &U512)
+    -> Result<(Vec<u8>, Vec<u8>)>
 {
-    let mut rng = rand::thread_rng();
-    let server_seed = loop {
-        let server_seed = rng.gen_biguint(SERVER_SEED_BIT_SIZE).to_bytes_le();
-        if server_seed.len() == usize::from(SERVER_SEED_SIZE) {
-            break server_seed;
-        }
-    };
+    let mut server_seed = vec![0u8; SERVER_SEED_SIZE as usize];
+    rand::rngs::OsRng.try_fill_bytes(&mut server_seed)
+        .context("Failed to generate server seed")?;
 
-    let client_seed = key_y.modpow(key_k, key_n);
+    let client_seed: U512 = u512_pow_mod(key_y, key_k, key_n);
     assert!(client_seed.bits() >= SERVER_SEED_BIT_SIZE
             && client_seed.bits() <= CLIENT_KEY_BIT_SIZE);
 
-    let key_buffer = client_seed.to_bytes_le();
+    let key_buffer = client_seed.to_le_bytes();
     let key: Vec<u8> = key_buffer.iter().take(usize::from(SERVER_SEED_SIZE)).enumerate()
                                  .map(|(i, v)| v ^ server_seed[i]).collect();
     assert_eq!(key.len(), usize::from(SERVER_SEED_SIZE));
 
-    (server_seed, key)
+    Ok((server_seed, key))
 }
 
-pub async fn init_crypt(mut sock: TcpStream, key_n: &BigUint, key_k: &BigUint)
+pub async fn init_crypt(mut sock: TcpStream, key_n: &U512, key_k: &U512)
     -> Result<BufReader<CryptTcpStream>>
 {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -183,8 +188,8 @@ pub async fn init_crypt(mut sock: TcpStream, key_n: &BigUint, key_k: &BigUint)
         return Err(anyhow!("Invalid encrypt message type {}", crypt_header.msg_id));
     }
 
-    let key_y = BigUint::from_bytes_le(&crypt_header.key_seed);
-    let (server_seed, crypt_key) = crypt_key_create(key_n, key_k, &key_y);
+    let key_y = U512::from_le_slice(&crypt_header.key_seed);
+    let (server_seed, crypt_key) = crypt_key_create(key_n, key_k, &key_y)?;
     let reply = create_crypt_reply(&server_seed)?;
     sock.write_all(&reply).await?;
 

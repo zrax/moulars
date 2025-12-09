@@ -22,8 +22,8 @@ use std::sync::OnceLock;
 use anyhow::{anyhow, Context, Result};
 use data_encoding::BASE64;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use num_bigint::BigUint;
-use rand::Rng;
+use crypto_bigint::U512;
+use rand::TryRngCore;
 use serde_derive::Deserialize;
 
 pub struct ServerConfig {
@@ -37,12 +37,12 @@ pub struct ServerConfig {
     pub build_id: u32,
 
     /* Rc4 Encryption keys */
-    pub auth_n_key: BigUint,
-    pub auth_k_key: BigUint,
-    pub game_n_key: BigUint,
-    pub game_k_key: BigUint,
-    pub gate_n_key: BigUint,
-    pub gate_k_key: BigUint,
+    pub auth_n_key: U512,
+    pub auth_k_key: U512,
+    pub game_n_key: U512,
+    pub game_k_key: U512,
+    pub gate_n_key: U512,
+    pub gate_k_key: U512,
 
     /* GateKeeper server addresses */
     pub file_serv_ip: String,
@@ -59,11 +59,11 @@ pub struct ServerConfig {
     pub restrict_logins: bool,
 }
 
-fn decode_crypt_key(value: &str) -> Result<BigUint> {
+fn decode_crypt_key(value: &str) -> Result<U512> {
     let bytes = BASE64.decode(value.as_bytes())
             .with_context(|| format!("Could not parse Base64 key '{value}'"))?;
-    if bytes.len() == 64 {
-        Ok(BigUint::from_bytes_be(&bytes))
+    if bytes.len() == U512::BYTES {
+        Ok(U512::from_be_slice(&bytes))
     } else {
         Err(anyhow!("Invalid key length for key '{value}'"))
     }
@@ -140,7 +140,7 @@ impl ServerConfig {
         })
     }
 
-    pub fn get_ntd_key(&self) -> io::Result<[u32; 4]> {
+    pub fn get_ntd_key(&self) -> Result<[u32; 4]> {
         load_or_create_ntd_key(&self.data_root)
     }
 }
@@ -186,7 +186,7 @@ struct VaultDbConfig {
 
 // NOTE: This file stores the keys in Big Endian format for easier debugging
 // with tools like PlasmaShop
-pub fn load_or_create_ntd_key(data_root: &Path) -> io::Result<[u32; 4]> {
+pub fn load_or_create_ntd_key(data_root: &Path) -> Result<[u32; 4]> {
     static NTD_KEY: OnceLock<[u32; 4]> = OnceLock::new();
     if let Some(key) = NTD_KEY.get() {
         return Ok(*key);
@@ -202,15 +202,14 @@ pub fn load_or_create_ntd_key(data_root: &Path) -> io::Result<[u32; 4]> {
         }
         Err(err) => {
             if err.kind() == io::ErrorKind::NotFound {
-                let mut rng = rand::thread_rng();
                 let mut stream = BufWriter::new(File::create(&key_path)?);
                 for v in &mut key_buffer {
-                    *v = rng.r#gen::<u32>();
+                    *v = rand::rngs::OsRng.try_next_u32()?;
                     stream.write_u32::<BigEndian>(*v)?;
                 }
                 key_buffer
             } else {
-                return Err(err)
+                return Err(err.into())
             }
         }
     };

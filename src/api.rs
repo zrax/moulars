@@ -21,6 +21,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crypto_bigint::U512;
 use data_encoding::BASE64;
 use http_body_util::{BodyExt, Full};
 use hyper::body::{Buf, Bytes, Incoming};
@@ -30,7 +31,6 @@ use hyper::service::service_fn;
 use hyper::{Request, Response, Method, StatusCode};
 use hyper_util::rt::TokioIo;
 use hyper_util::server::graceful::GracefulShutdown;
-use num_bigint::ToBigUint;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::net::TcpListener;
@@ -40,7 +40,9 @@ use uuid::Uuid;
 
 use crate::auth_srv::auth_hash::create_pass_hash;
 use crate::config::ServerConfig;
-use crate::net_crypt::{CRYPT_BASE_AUTH, CRYPT_BASE_GAME, CRYPT_BASE_GATE_KEEPER};
+use crate::net_crypt::{
+    CRYPT_BASE_AUTH, CRYPT_BASE_GAME, CRYPT_BASE_GATE_KEEPER, u512_pow_mod
+};
 use crate::netcli::{NetResult, NetResultCode};
 use crate::vault::{AccountInfo, VaultServer, VaultPlayerInfoNode};
 
@@ -269,9 +271,9 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
                 ("Game", CRYPT_BASE_GAME, &api.server_config.game_k_key, &api.server_config.game_n_key),
                 ("Gate", CRYPT_BASE_GATE_KEEPER, &api.server_config.gate_k_key, &api.server_config.gate_n_key)]
             {
-                let key_x = key_g.to_biguint().unwrap().modpow(key_k, key_n);
-                let bytes_n = key_n.to_bytes_be();
-                let bytes_x = key_x.to_bytes_be();
+                let key_x = u512_pow_mod(&U512::from(key_g), key_k, key_n);
+                let bytes_n = key_n.to_be_bytes();
+                let bytes_x = key_x.to_be_bytes();
                 let _ = writeln!(lines, "Server.{stype}.N \"{}\"", BASE64.encode(&bytes_n));
                 let _ = writeln!(lines, "Server.{stype}.X \"{}\"", BASE64.encode(&bytes_x));
             }

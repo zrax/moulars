@@ -23,15 +23,16 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::Parser;
+use crypto_bigint::U512;
 use data_encoding::BASE64;
-use num_bigint::{BigUint, ToBigUint};
-use num_prime::RandPrime;
 use tracing::error;
 use tracing_subscriber::{EnvFilter, filter::LevelFilter, prelude::*};
 
 use moulars::config::ServerConfig;
 use moulars::lobby::LobbyServer;
-use moulars::net_crypt::{CRYPT_BASE_AUTH, CRYPT_BASE_GAME, CRYPT_BASE_GATE_KEEPER};
+use moulars::net_crypt::{
+    CRYPT_BASE_AUTH, CRYPT_BASE_GAME, CRYPT_BASE_GATE_KEEPER, u512_pow_mod
+};
 
 #[cfg(debug_assertions)]
 const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::DEBUG;
@@ -90,9 +91,9 @@ fn main() -> ExitCode {
             ("Game", CRYPT_BASE_GAME, &config.game_k_key, &config.game_n_key),
             ("Gate", CRYPT_BASE_GATE_KEEPER, &config.gate_k_key, &config.gate_n_key)]
         {
-            let key_x = key_g.to_biguint().unwrap().modpow(key_k, key_n);
-            let bytes_n = key_n.to_bytes_be();
-            let bytes_x = key_x.to_bytes_be();
+            let key_x = u512_pow_mod(&U512::from(key_g), key_k, key_n);
+            let bytes_n = key_n.to_be_bytes();
+            let bytes_x = key_x.to_be_bytes();
             println!("Server.{stype}.N \"{}\"", BASE64.encode(&bytes_n));
             println!("Server.{stype}.X \"{}\"", BASE64.encode(&bytes_x));
         }
@@ -171,7 +172,7 @@ fn write_progress_pip(out: &mut io::Stdout) {
 
 fn generate_keys() {
     // Progress pips are written on this line.  Deal with it.
-    print!("Generating new keys. This will take a while");
+    print!("Generating new keys. This may take a while");
     write_progress_pip(&mut io::stdout());
 
     let mut keygen_threads = Vec::with_capacity(3);
@@ -181,23 +182,24 @@ fn generate_keys() {
         ("Gate", CRYPT_BASE_GATE_KEEPER)]
     {
         keygen_threads.push(std::thread::spawn(move || {
-            let mut rng = rand::thread_rng();
             let mut stdout = io::stdout();
             loop {
-                let key_n: BigUint = rng.gen_safe_prime(512);
+                let key_n: U512 = crypto_primes::generate_safe_prime(512);
                 write_progress_pip(&mut stdout);
-                let key_k: BigUint = rng.gen_safe_prime(512);
+                let key_k: U512 = crypto_primes::generate_safe_prime(512);
                 write_progress_pip(&mut stdout);
-                let key_x = key_g.to_biguint().unwrap().modpow(&key_k, &key_n);
+                let key_x = u512_pow_mod(&U512::from(key_g), &key_k, &key_n);
                 write_progress_pip(&mut stdout);
 
                 // For best compatibility with H-uru/Plasma and DirtSand, the keys
                 // are stored in Big Endian byte order
-                let bytes_n = key_n.to_bytes_be();
-                let bytes_k = key_k.to_bytes_be();
-                let bytes_x = key_x.to_bytes_be();
+                let bytes_n = key_n.to_be_bytes();
+                let bytes_k = key_k.to_be_bytes();
+                let bytes_x = key_x.to_be_bytes();
 
-                if bytes_n.len() != 64 || bytes_k.len() != 64 || bytes_x.len() != 64 {
+                if bytes_n.len() != U512::BYTES || bytes_k.len() != U512::BYTES
+                    || bytes_x.len() != U512::BYTES
+                {
                     // We generated a bad length key, so now we need to
                     // start over :(
                     continue;
