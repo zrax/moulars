@@ -7,6 +7,7 @@ The following endpoints are available:
   /account/new [a]
   /account/update [a]
   /client_keys
+  /initialize
   /online
   /shutdown [a]
   /status
@@ -92,6 +93,21 @@ POST /account/update[?account=<UUID>]
 
 GET /client_keys
   Returns the public encryption keys for use by clients, in server.ini format.
+
+GET /initialize
+  Creates an administrative account for managing the server.  Returns a JSON
+  object containing the default username, account ID, and API key for the
+  new account.  The password for the account will be randomly generated but
+  will not be printed or returned.  If you wish to use a password with the
+  account, you will need to set a new one explicitly with the /account/update
+  endpoint.
+
+  NOTE: This can only be called if there are no accounts present in the
+  database (even disabled/banned).  Be sure to save the API key somewhere safe!
+
+  Example:
+     curl http://localhost:14615/initialize
+     {"username":"MoularsAdmin","account_id":"XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX","api_token":"TOKEN_STRING"}
 
 GET /online
   Returns a JSON object containing the names and locations of online players.

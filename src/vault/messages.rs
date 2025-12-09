@@ -25,6 +25,9 @@ use super::db_interface::{AccountInfo, ApiToken, PlayerInfo, GameServer};
 use super::{VaultNode, NodeRef};
 
 pub(super) enum VaultMessage {
+    Initialize {
+        response_send: oneshot::Sender<NetResult<(AccountInfo, ApiToken)>>,
+    },
     GetAccount {
         account_name: String,
         response_send: oneshot::Sender<NetResult<Option<AccountInfo>>>,

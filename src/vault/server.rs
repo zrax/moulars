@@ -57,7 +57,41 @@ fn check_bcast(sender: &broadcast::Sender<VaultBroadcast>, msg: VaultBroadcast) 
 async fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender<VaultBroadcast>,
                                db: &dyn DbInterface)
 {
+    const ADMIN_USER: &str = "MoularsAdmin";
+    const ADMIN_TOKEN_COMMENT: &str = "Default Administrative API Token";
+
     match msg {
+        VaultMessage::Initialize { response_send } => {
+            match db.accounts_populated().await {
+                Ok(true) => {
+                    // Don't do anything if there are already accounts in the database.
+                    return check_send(response_send, Err(NetResultCode::NetServiceForbidden));
+                }
+                Ok(false) => (),
+                Err(err) => return check_send(response_send, Err(err)),
+            }
+
+            // Bootstrap the empty account DB with an administrative account so
+            // the API can be used to create other accounts and manage the server.
+            let admin_pass = ShaDigest::sha1(Uuid::new_v4().as_bytes()).as_hex();
+            let pass_hash = match create_pass_hash(ADMIN_USER, &admin_pass) {
+                Ok(pass_hash) => pass_hash,
+                Err(err) => {
+                    warn!("Failed to create password hash for {ADMIN_USER}: {err}");
+                    return check_send(response_send, Err(NetResultCode::NetInternalError));
+                }
+            };
+
+            let admin_account = match db.create_account(ADMIN_USER, pass_hash, AccountInfo::ADMIN).await {
+                Ok(account) => account,
+                Err(err) => return check_send(response_send, Err(err)),
+            };
+            let admin_api_token = match db.create_api_token(&admin_account.account_id, ADMIN_TOKEN_COMMENT).await {
+                Ok(token) => token,
+                Err(err) => return check_send(response_send, Err(err)),
+            };
+            check_send(response_send, Ok((admin_account, admin_api_token)));
+        }
         VaultMessage::GetAccount { account_name, response_send } => {
             check_send(response_send, db.get_account(&account_name).await);
         }
@@ -220,6 +254,12 @@ impl VaultServer {
             warn!("Failed to recieve response from Vault: {err}");
             Err(NetResultCode::NetInternalError)
         })
+    }
+
+    pub async fn initialize(&self) -> NetResult<(AccountInfo, ApiToken)> {
+        let (response_send, response_recv) = oneshot::channel();
+        let request = VaultMessage::Initialize { response_send };
+        self.request(request, response_recv).await
     }
 
     pub async fn get_account(&self, account_name: &str) -> NetResult<Option<AccountInfo>> {
@@ -389,9 +429,6 @@ impl VaultServer {
 }
 
 async fn init_vault(db: &dyn DbInterface) -> NetResult<()> {
-    const ADMIN_USER: &str = "MoularsAdmin";
-    const ADMIN_TOKEN_COMMENT: &str = "Default Administrative API Token";
-
     if let Err(err) = db.get_system_node().await {
         if err != NetResultCode::NetVaultNodeNotFound {
             warn!("Failed to fetch system node");
@@ -410,18 +447,6 @@ async fn init_vault(db: &dyn DbInterface) -> NetResult<()> {
         let node = VaultPlayerInfoListNode::new(&Uuid::nil(), 0,
                                                 StandardNode::AllPlayersFolder);
         let _ = db.create_node(node).await?;
-
-        // Bootstrap the empty vault with an administrative account so the API
-        // can be used to create other accounts and manage the server.
-        let admin_pass = ShaDigest::sha1(Uuid::new_v4().as_bytes()).as_hex();
-        let pass_hash = create_pass_hash(ADMIN_USER, &admin_pass).map_err(|err| {
-            warn!("Failed to create password hash for {ADMIN_USER}: {err}");
-            NetResultCode::NetInternalError
-        })?;
-
-        let admin_account = db.create_account(ADMIN_USER, pass_hash, AccountInfo::ADMIN).await?;
-        let admin_api_token = db.create_api_token(&admin_account.account_id, ADMIN_TOKEN_COMMENT).await?;
-        info!("{ADMIN_USER} account created with password '{admin_pass}' and API token {admin_api_token}");
     }
 
     Ok(())

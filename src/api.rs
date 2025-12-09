@@ -62,19 +62,6 @@ impl ApiInterface {
         None
     }
 
-    async fn get_authorized_account(&self, account_id: Option<&str>, requestor: &AccountInfo)
-        -> NetResult<Uuid>
-    {
-        let Ok(account_id) = account_id.map_or(Ok(requestor.account_id), Uuid::from_str) else {
-            return Err(NetResultCode::NetInvalidParameter);
-        };
-        if requestor.is_admin() || account_id == requestor.account_id {
-            Ok(account_id)
-        } else {
-            Err(NetResultCode::NetAuthenticationFailed)
-        }
-    }
-
     async fn query_online_players(&self) -> NetResult<Vec<OnlinePlayer>> {
         let template = VaultPlayerInfoNode::new_lookup(Some(1));
         let player_list = self.vault.find_nodes(template).await?;
@@ -93,7 +80,7 @@ impl ApiInterface {
     async fn get_account_info(&self, account_id: Option<&str>, requestor: &AccountInfo)
         -> NetResult<AccountInfo>
     {
-        let account_id = self.get_authorized_account(account_id, requestor).await?;
+        let account_id = get_authorized_account(account_id, requestor)?;
         let Some(account) = self.vault.get_account_by_id(&account_id).await? else {
             return Err(NetResultCode::NetAccountNotFound);
         };
@@ -165,6 +152,17 @@ impl ApiInterface {
               if pass_hash.is_some() { "password and " } else { "" },
               params.account_flags);
         self.vault.update_account(&account.account_id, pass_hash.as_ref(), account_flags).await
+    }
+}
+
+fn get_authorized_account(account_id: Option<&str>, requestor: &AccountInfo) -> NetResult<Uuid> {
+    let Ok(account_id) = account_id.map_or(Ok(requestor.account_id), Uuid::from_str) else {
+        return Err(NetResultCode::NetInvalidParameter);
+    };
+    if requestor.is_admin() || account_id == requestor.account_id {
+        Ok(account_id)
+    } else {
+        Err(NetResultCode::NetAuthenticationFailed)
     }
 }
 
@@ -247,7 +245,7 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
                 return Err(NetResultCode::NetAuthenticationFailed);
             };
             let account_id = query_params.get("account").map(String::as_str);
-            let auth_id = api.get_authorized_account(account_id, &requestor).await?;
+            let auth_id = get_authorized_account(account_id, &requestor)?;
             gen_json_response(api.vault.get_api_tokens(&auth_id).await?)
         }
         (&Method::POST, "/account/new") => {
@@ -278,6 +276,14 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
                 let _ = writeln!(lines, "Server.{stype}.X \"{}\"", BASE64.encode(&bytes_x));
             }
             gen_plaintext_response(lines)
+        }
+        (&Method::GET, "/initialize") => {
+            let (account_info, api_token) = api.vault.initialize().await?;
+            gen_json_response(json!({
+                "username": account_info.account_name,
+                "account_id": account_info.account_id,
+                "api_token": api_token.token,
+            }))
         }
         (&Method::GET, "/online") => {
             // Return JSON object containing the names and locations of online players
@@ -327,6 +333,7 @@ async fn api_wrapper(request: Request<Incoming>, api: Arc<ApiInterface>)
                 NetResultCode::NetAccountAlreadyExists => (StatusCode::CONFLICT, "Account already exists"),
                 NetResultCode::NetAccountNotFound => (StatusCode::NOT_FOUND, "Account not found"),
                 NetResultCode::NetAuthenticationFailed => (StatusCode::UNAUTHORIZED, "Unauthorized"),
+                NetResultCode::NetServiceForbidden => (StatusCode::FORBIDDEN, "Forbidden"),
                 NetResultCode::NetFileNotFound => (StatusCode::NOT_FOUND, "Invalid API request"),
                 _ => {
                     warn!("Unhandled NetResultCode: {code:?}");

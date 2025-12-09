@@ -26,6 +26,7 @@ use super::{VaultNode, NodeRef};
 
 #[async_trait]
 pub trait DbInterface: Send + Sync {
+    async fn accounts_populated(&self) -> NetResult<bool>;
     async fn get_account(&self, account_name: &str) -> NetResult<Option<AccountInfo>>;
     async fn get_account_by_id(&self, account_id: &Uuid) -> NetResult<Option<AccountInfo>>;
     async fn get_account_for_token(&self, api_token: &str) -> NetResult<Option<AccountInfo>>;
@@ -33,7 +34,7 @@ pub trait DbInterface: Send + Sync {
                             account_flags: u32) -> NetResult<AccountInfo>;
     async fn update_account(&self, account_id: &Uuid, pass_hash: Option<ShaDigest>,
                             account_flags: Option<u32>) -> NetResult<()>;
-    async fn create_api_token(&self, account_id: &Uuid, comment: &str) -> NetResult<String>;
+    async fn create_api_token(&self, account_id: &Uuid, comment: &str) -> NetResult<ApiToken>;
     async fn get_api_tokens(&self, account_id: &Uuid) -> NetResult<Vec<ApiToken>>;
 
     async fn set_all_players_offline(&self) -> NetResult<()>;
