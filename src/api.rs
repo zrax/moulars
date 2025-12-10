@@ -217,6 +217,19 @@ const HELP_MSG: Bytes = Bytes::from_static(include_bytes!("api_help.txt"));
 async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
         -> NetResult<Response<Full<Bytes>>>
 {
+    let request_uri = if api.server_config.api_prefix.is_empty() {
+        request.uri().path()
+    } else {
+        let full_uri = request.uri().path();
+        if full_uri == api.server_config.api_prefix {
+            "/"
+        } else if let Some(uri_suffix) = full_uri.strip_prefix(&api.server_config.api_prefix) {
+            uri_suffix
+        } else {
+            return Err(NetResultCode::NetFileNotFound);
+        }
+    };
+
     let query_params = if let Some(query) = request.uri().query() {
         form_urlencoded::parse(query.as_bytes()).into_owned()
                 .collect::<HashMap<String, String>>()
@@ -229,7 +242,7 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
                            .or_else(|| query_params.get("token").map(String::as_str))
                            .map(str::to_owned);
 
-    match (request.method(), request.uri().path()) {
+    match (request.method(), request_uri) {
         (&Method::GET, "/") => {
             // Show static API help text
             gen_plaintext_response(HELP_MSG)

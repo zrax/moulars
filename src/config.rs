@@ -33,6 +33,9 @@ pub struct ServerConfig {
     /* Listen address for the API service */
     pub api_address: String,
 
+    /* URI prefix for API endpoints */
+    pub api_prefix: String,
+
     /* Product configuration */
     pub build_id: u32,
 
@@ -113,9 +116,21 @@ impl ServerConfig {
         let game_serv_ip = server_section.game_server_ip.as_deref()
                                 .unwrap_or("127.0.0.1").to_string();
 
+        let api_section = config.api.unwrap_or_default();
+
         let api_address = format!("{}:{}",
-                server_section.api_address.as_deref().unwrap_or("127.0.0.1"),
-                server_section.api_port.unwrap_or(14615));
+                api_section.address.as_deref().unwrap_or("127.0.0.1"),
+                api_section.port.unwrap_or(14615));
+
+        let mut api_prefix = api_section.uri_prefix.unwrap_or_default();
+
+        // Normalize the prefix to the form "/prefix", or empty for no prefix.
+        if !api_prefix.is_empty() && !api_prefix.starts_with('/') {
+            api_prefix.insert(0, '/');
+        }
+        if api_prefix.ends_with('/') {
+            api_prefix.pop();
+        }
 
         let db_url = config.vault_db.db_url;
 
@@ -124,6 +139,7 @@ impl ServerConfig {
         Ok(ServerConfig {
             listen_address,
             api_address,
+            api_prefix,
             build_id,
             auth_n_key,
             auth_k_key,
@@ -151,6 +167,7 @@ struct StructuredConfig {
     build_id: Option<u32>,
     restrict_logins: Option<bool>,
     server: Option<ServerAddrConfig>,
+    api: Option<ApiConfig>,
     crypt_keys: ConfigKeys,
     vault_db: VaultDbConfig,
 }
@@ -162,8 +179,13 @@ struct ServerAddrConfig {
     file_server_ip: Option<String>,
     auth_server_ip: Option<String>,
     game_server_ip: Option<String>,
-    api_address: Option<String>,
-    api_port: Option<u16>,
+}
+
+#[derive(Deserialize, Default)]
+struct ApiConfig {
+    address: Option<String>,
+    port: Option<u16>,
+    uri_prefix: Option<String>,
 }
 
 #[derive(Deserialize)]

@@ -28,12 +28,18 @@
 #auth_server_ip = "127.0.0.1"
 #game_server_ip = "127.0.0.1"
 
+[api]
 ## OPTIONAL: The local address to listen on for API access.  By default,
 ## this is only open to localhost.  MOULArs doesn't support any TLS/SSL on
 ## the API, so you probably want to proxy this behind a real web server if
 ## you want the API to be available externally.
-#api_address = "127.0.0.1"
-#api_port = 14615
+#address = "127.0.0.1"
+#port = 14615
+
+## OPTIONAL: URI prefix for API endpoints.  By default, the API is presented
+## at the root URI for the address specified above.  However, it may be useful
+## to add a prefix when proxying the API through another web server.
+#uri_prefix = ""
 
 [crypt_keys]
 ## REQUIRED: The private and shared keys to use for encrypted server channels.
