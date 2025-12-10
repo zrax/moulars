@@ -1001,7 +1001,8 @@ impl AuthServerWorker {
         let ipv4_address: u32 = if ext_reply {
             0
         } else {
-            let first_ipv4 = match tokio::net::lookup_host((self.server_config.game_serv_ip.as_str(), 0)).await {
+            let lookup = (self.server_config.game_serv_addr.as_str(), 0);
+            let first_ipv4 = match tokio::net::lookup_host(lookup).await {
                 Ok(mut addrs) => {
                     addrs.find_map(|addr| {
                         if let IpAddr::V4(addr) = addr.ip() {
@@ -1020,7 +1021,7 @@ impl AuthServerWorker {
                 addr
             } else {
                 warn!("No IPv4 address found for address '{}'",
-                      self.server_config.game_serv_ip);
+                      self.server_config.game_serv_addr);
                 // Needs to be outside the lookup_host match block to avoid reborrowing self
                 return self.send_message(AuthToCli::AgeReply {
                     trans_id,
@@ -1053,7 +1054,7 @@ impl AuthServerWorker {
             age_vault_id: server.age_id,
             game_server_node: ipv4_address,
             ext_reply,
-            game_server_address: self.server_config.auth_serv_ip.clone(),
+            game_server_address: self.server_config.auth_serv_addr.clone(),
         }).await
     }
 

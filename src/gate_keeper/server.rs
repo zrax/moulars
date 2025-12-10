@@ -140,13 +140,13 @@ impl GateKeeperWorker {
 
                 self.send_message(GateKeeperToCli::FileServIpAddressReply {
                     trans_id,
-                    ip_addr: self.server_config.file_serv_ip.clone(),
+                    ip_addr: self.server_config.file_serv_addr.clone(),
                 }).await
             }
             CliToGateKeeper::AuthServIpAddressRequest { trans_id } => {
                 self.send_message(GateKeeperToCli::AuthServIpAddressReply {
                     trans_id,
-                    ip_addr: self.server_config.auth_serv_ip.clone(),
+                    ip_addr: self.server_config.auth_serv_addr.clone(),
                 }).await
             }
         }

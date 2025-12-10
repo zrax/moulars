@@ -47,10 +47,10 @@ pub struct ServerConfig {
     pub gate_n_key: U512,
     pub gate_k_key: U512,
 
-    /* GateKeeper server addresses */
-    pub file_serv_ip: String,
-    pub auth_serv_ip: String,
-    pub game_serv_ip: String,
+    /* Server addresses for sending to the client */
+    pub file_serv_addr: String,
+    pub auth_serv_addr: String,
+    pub game_serv_addr: String,
 
     /* File server data path */
     pub data_root: PathBuf,
@@ -109,11 +109,11 @@ impl ServerConfig {
         // These should be configured to an EXTERNAL IP address, since they
         // are the addresses sent to the client for establishing additional
         // connections to this (or another) server.
-        let file_serv_ip = server_section.file_server_ip.as_deref()
+        let file_serv_addr = server_section.file_server.as_deref()
                                 .unwrap_or("127.0.0.1").to_string();
-        let auth_serv_ip = server_section.auth_server_ip.as_deref()
+        let auth_serv_addr = server_section.auth_server.as_deref()
                                 .unwrap_or("127.0.0.1").to_string();
-        let game_serv_ip = server_section.game_server_ip.as_deref()
+        let game_serv_addr = server_section.game_server.as_deref()
                                 .unwrap_or("127.0.0.1").to_string();
 
         let api_section = config.api.unwrap_or_default();
@@ -147,9 +147,9 @@ impl ServerConfig {
             game_k_key,
             gate_n_key,
             gate_k_key,
-            file_serv_ip,
-            auth_serv_ip,
-            game_serv_ip,
+            file_serv_addr,
+            auth_serv_addr,
+            game_serv_addr,
             data_root,
             db_url,
             restrict_logins,
@@ -176,9 +176,9 @@ struct StructuredConfig {
 struct ServerAddrConfig {
     listen_address: Option<String>,
     listen_port: Option<u16>,
-    file_server_ip: Option<String>,
-    auth_server_ip: Option<String>,
-    game_server_ip: Option<String>,
+    file_server: Option<String>,
+    auth_server: Option<String>,
+    game_server: Option<String>,
 }
 
 #[derive(Deserialize, Default)]

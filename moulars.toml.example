@@ -24,9 +24,9 @@
 ## These will be sent to the client, so they need to be resolvable outside
 ## the server's network.  Using the default localhost address is only useful
 ## for testing with the client and server running on the same machine.
-#file_server_ip = "127.0.0.1"
-#auth_server_ip = "127.0.0.1"
-#game_server_ip = "127.0.0.1"
+#file_server = "127.0.0.1"
+#auth_server = "127.0.0.1"
+#game_server = "127.0.0.1"
 
 [api]
 ## OPTIONAL: The local address to listen on for API access.  By default,
