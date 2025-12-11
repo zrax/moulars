@@ -310,7 +310,7 @@ fn tea_encipher(block: &mut [u32; 2], key: &[u32; 4]) {
 
 macro_rules! mx {
     ($y:ident, $z:ident, $sum:ident, $p:expr, $e:ident, $key:expr) => ({
-        (($z >> 5) ^ ($y << 2)).wrapping_add((($y >> 3) ^ ($z << 4)))
+        (($z >> 5) ^ ($y << 2)).wrapping_add(($y >> 3) ^ ($z << 4))
             ^ (($sum ^ $y).wrapping_add($key[($p & 3) ^ $e as usize] ^ $z))
     })
 }
