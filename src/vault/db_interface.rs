@@ -17,7 +17,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use serde_derive::Serialize;
+use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::hashes::ShaDigest;
@@ -81,7 +81,7 @@ impl AccountInfo {
     }
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct ApiToken {
     pub token: String,
     pub comment: String,

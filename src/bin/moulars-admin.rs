@@ -26,6 +26,8 @@ use ureq::Body;
 use ureq::tls::{TlsConfig, TlsProvider};
 use uuid::Uuid;
 
+use moulars::api::{AccountInfoJson, ApiToken, OnlinePlayer};
+
 // This tool is a client of the MOULArs API, so be sure to keep it in sync with
 // additions and changes to src/api.rs
 
@@ -45,9 +47,21 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Command {
+    #[command(about = "Show the public encryption keys for use by clients, in server.ini format")]
+    ClientKeys,
+
     #[command(about = "Initialize an empty MOULArs database with an administrative \
                        account and associated API token")]
     Initialize,
+
+    #[command(about = "Show account details and API keys for an account")]
+    ShowAccount {
+        #[arg(help = "Account UUID (default: use the account associated with the supplied API token)")]
+        account: Option<Uuid>,
+    },
+
+    #[command(about = "Show online players")]
+    ShowOnline,
 
     #[command(about = "Shut down the MOULArs server")]
     Shutdown,
@@ -96,19 +110,17 @@ fn main() {
         }
     };
 
-    match args.command {
-        Command::Initialize => {
-            if let Err(err) = api_initialize(&api_client) {
-                eprintln!("Failed to initialize admin account: {err}");
-                std::process::exit(1);
-            }
-        }
-        Command::Shutdown => {
-            if let Err(err) = api_shutdown(&api_client) {
-                eprintln!("Failed to request server shutdown: {err}");
-                std::process::exit(1);
-            }
-        }
+    let (result, action) = match args.command {
+        Command::ClientKeys => (api_show_client_keys(&api_client), "show client keys"),
+        Command::Initialize => (api_initialize(&api_client), "initialize admin account"),
+        Command::ShowAccount { account } =>
+            (api_show_account(&api_client, account), "fetch account details"),
+        Command::ShowOnline => (api_show_online(&api_client), "show online players"),
+        Command::Shutdown => (api_shutdown(&api_client), "request server shutdown"),
+    };
+    if let Err(err) = result {
+        eprintln!("Failed to {action}: {err}");
+        std::process::exit(1);
     }
 }
 
@@ -130,6 +142,13 @@ fn check_error(response: Response<Body>) -> anyhow::Result<Response<Body>> {
     }
 }
 
+fn api_show_client_keys(api: &ApiClient) -> anyhow::Result<()> {
+    let response = api.agent.get(&format!("{}/client_keys", api.api_url)).call()?;
+    let body = check_error(response)?.into_body().read_to_string()?;
+    println!("{body}");
+    Ok(())
+}
+
 fn api_initialize(api: &ApiClient) -> anyhow::Result<()> {
     let response = api.agent.get(&format!("{}/initialize", api.api_url)).call()?;
     let body = check_error(response)?.into_body().read_to_string()?;
@@ -146,6 +165,66 @@ fn api_initialize(api: &ApiClient) -> anyhow::Result<()> {
     println!("       it now.  It can be passed to the moulars-admin tool for authenticated");
     println!("       requests via the -T/--api-token option, or in the MOULARS_API_TOKEN");
     println!("       environment variable.");
+    Ok(())
+}
+
+fn api_show_account(api: &ApiClient, account: Option<Uuid>) -> anyhow::Result<()> {
+    let Some(api_token) = &api.api_token else {
+        return Err(anyhow::anyhow!("API token is required for show-account command"));
+    };
+    let request_uri = if let Some(uuid) = account {
+        format!("{}/account?account={}", api.api_url, uuid)
+    } else {
+        format!("{}/account", api.api_url)
+    };
+
+    let response = api.agent.get(&request_uri)
+                            .header("Authorization", format!("Bearer {api_token}"))
+                            .call()?;
+    let body = check_error(response)?.into_body().read_to_string()?;
+    let account_details: AccountInfoJson = serde_json::from_str(&body)
+                            .with_context(|| "Failed to parse API response")?;
+
+    println!("Account ID: {}", account_details.account_id);
+    println!("Username:   {}", account_details.username);
+    if !account_details.account_flags.is_empty() {
+        println!("Flags:      {}", account_details.account_flags.join(", "));
+    }
+
+    let request_uri = if let Some(uuid) = account {
+        format!("{}/account/api_tokens?account={}", api.api_url, uuid)
+    } else {
+        format!("{}/account/api_tokens", api.api_url)
+    };
+
+    let response = api.agent.get(&request_uri)
+                            .header("Authorization", format!("Bearer {api_token}"))
+                            .call()?;
+    let body = check_error(response)?.into_body().read_to_string()?;
+    let api_tokens: Vec<ApiToken> = serde_json::from_str(&body)
+                            .with_context(|| "Failed to parse API response")?;
+
+    if !api_tokens.is_empty() {
+        println!();
+        println!("API tokens:");
+        for token in api_tokens {
+            println!("    {} : {}", token.token, token.comment);
+        }
+    }
+
+    Ok(())
+}
+
+fn api_show_online(api: &ApiClient) -> anyhow::Result<()> {
+    let response = api.agent.get(&format!("{}/online", api.api_url)).call()?;
+    let body = check_error(response)?.into_body().read_to_string()?;
+    let players: Vec<OnlinePlayer> = serde_json::from_str(&body)
+                            .with_context(|| "Failed to parse API response")?;
+
+    println!("{} players currently online:", players.len());
+    for player in players {
+        println!("    {} ({})", player.name, player.location);
+    }
     Ok(())
 }
 

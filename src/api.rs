@@ -46,6 +46,8 @@ use crate::net_crypt::{
 use crate::netcli::{NetResult, NetResultCode};
 use crate::vault::{AccountInfo, VaultServer, VaultPlayerInfoNode};
 
+pub use crate::vault::ApiToken;
+
 struct ApiInterface {
     server_config: Arc<ServerConfig>,
     shutdown_send: broadcast::Sender<()>,
@@ -441,10 +443,10 @@ pub fn start_api(shutdown_send: broadcast::Sender<()>, vault: Arc<VaultServer>,
     });
 }
 
-#[derive(Serialize)]
-struct OnlinePlayer {
-    name: String,
-    location: String,
+#[derive(Deserialize, Serialize)]
+pub struct OnlinePlayer {
+    pub name: String,
+    pub location: String,
 }
 
 #[derive(Deserialize)]
@@ -474,11 +476,11 @@ impl AccountParams {
     }
 }
 
-#[derive(Serialize)]
-struct AccountInfoJson {
-    username: String,
-    account_id: Uuid,
-    account_flags: Vec<String>,
+#[derive(Deserialize, Serialize)]
+pub struct AccountInfoJson {
+    pub username: String,
+    pub account_id: Uuid,
+    pub account_flags: Vec<String>,
 }
 
 impl From<AccountInfo> for AccountInfoJson {
