@@ -14,10 +14,6 @@
  * along with moulars.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-// This program converts a moulars .mfs_cache file into a DirtSand .mfs on
-// stdout.  It can be useful for debugging, as well as porting data back to
-// DirtSand for compatibility/comparison.
-
 #![deny(clippy::all)]
 #![deny(clippy::pedantic)]
 
@@ -39,7 +35,7 @@ use moulars::plasma::{StreamRead, PakFile};
 use moulars::plasma::file_crypt::EncryptedReader;
 
 #[derive(Parser)]
-#[command(name = "mfs_tool", version = "1.0", arg_required_else_help = true,
+#[command(name = "mfs-tool", version = "1.0", arg_required_else_help = true,
           about = "Tool for updating and debugging manifests for MOULArs")]
 struct Args {
     #[command(subcommand)]
