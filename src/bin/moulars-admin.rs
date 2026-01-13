@@ -26,7 +26,7 @@ use ureq::Body;
 use ureq::tls::{TlsConfig, TlsProvider};
 use uuid::Uuid;
 
-use moulars::api::{AccountInfoJson, ApiToken, OnlinePlayer};
+use moulars::api::{AccountInfoJson, AccountParams, ApiToken, OnlinePlayer};
 
 // This tool is a client of the MOULArs API, so be sure to keep it in sync with
 // additions and changes to src/api.rs
@@ -54,10 +54,22 @@ enum Command {
                        account and associated API token")]
     Initialize,
 
-    #[command(about = "Show account details and API keys for an account")]
+    #[command(about = "Show account details and API tokens for an account")]
     ShowAccount {
         #[arg(help = "Account UUID (default: use the account associated with the supplied API token)")]
         account: Option<Uuid>,
+    },
+
+    #[command(about = "Create a new account")]
+    AddAccount {
+        #[arg(help = "Account username")]
+        username: String,
+
+        #[arg(short, long, help = "Account password.  If not specified, will prompt interactively")]
+        password: Option<String>,
+
+        #[arg(short, long, value_delimiter = ',', help = "Set account flags (admin, banned, beta)")]
+        flags: Vec<String>,
     },
 
     #[command(about = "Show online players")]
@@ -115,6 +127,8 @@ fn main() {
         Command::Initialize => (api_initialize(&api_client), "initialize admin account"),
         Command::ShowAccount { account } =>
             (api_show_account(&api_client, account), "fetch account details"),
+        Command::AddAccount { username, password, flags } =>
+            (api_add_account(&api_client, username, password, flags), "add account"),
         Command::ShowOnline => (api_show_online(&api_client), "show online players"),
         Command::Shutdown => (api_shutdown(&api_client), "request server shutdown"),
     };
@@ -215,6 +229,50 @@ fn api_show_account(api: &ApiClient, account: Option<Uuid>) -> anyhow::Result<()
     Ok(())
 }
 
+fn validate_flags(flags: &[String]) -> anyhow::Result<()> {
+    const VALID_FLAGS: &[&str] = &["admin", "banned", "beta"];
+    for flag in flags {
+        if !VALID_FLAGS.contains(&flag.as_str()) {
+            return Err(anyhow::anyhow!("Invalid account flag: {flag}"));
+        }
+    }
+    Ok(())
+}
+
+fn api_add_account(api: &ApiClient, username: String, password: Option<String>,
+                   flags: Vec<String>) -> anyhow::Result<()>
+{
+    let Some(api_token) = &api.api_token else {
+        return Err(anyhow::anyhow!("API token is required for add-account command"));
+    };
+
+    validate_flags(&flags)?;
+    let password = if let Some(password) = password { password } else {
+        let first = rpassword::prompt_password("Account password: ")?;
+        let second = rpassword::prompt_password("Confirm password: ")?;
+        if first != second {
+            return Err(anyhow::anyhow!("Passwords do not match"));
+        }
+        first
+    };
+    let params = AccountParams {
+        username: Some(username),
+        password: Some(password),
+        account_flags: if flags.is_empty() { None } else { Some(flags) },
+    };
+
+    let response = api.agent.post(&format!("{}/account/new", api.api_url))
+                            .header("Content-Type", "application/json")
+                            .header("Authorization", format!("Bearer {api_token}"))
+                            .send_json(&params)?;
+    let body = check_error(response)?.into_body().read_to_string()?;
+    let response: CreateAccountResponse = serde_json::from_str(&body)
+                            .with_context(|| "Failed to parse API response")?;
+
+    println!("Account created successfully. Account ID: {}", response.account_id);
+    Ok(())
+}
+
 fn api_show_online(api: &ApiClient) -> anyhow::Result<()> {
     let response = api.agent.get(&format!("{}/online", api.api_url)).call()?;
     let body = check_error(response)?.into_body().read_to_string()?;
@@ -251,4 +309,10 @@ struct InitializeResponse {
     username: String,
     account_id: Uuid,
     api_token: String,
+}
+
+#[derive(Deserialize)]
+struct CreateAccountResponse {
+    //status: String,   // Ignored
+    account_id: Uuid,
 }

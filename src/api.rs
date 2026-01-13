@@ -449,12 +449,12 @@ pub struct OnlinePlayer {
     pub location: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct AccountParams {
-    username: Option<String>,
-    password: Option<String>,
-    account_flags: Option<Vec<String>>,
+pub struct AccountParams {
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub account_flags: Option<Vec<String>>,
 }
 
 impl AccountParams {

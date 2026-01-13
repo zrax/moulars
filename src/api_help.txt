@@ -42,7 +42,7 @@ GET /account[?account=<UUID>]
 GET /account/api_tokens[?account=<UUID>]
   Returns a JSON object containing the API tokens associated with the account.
   If account is not specified, the account associated with the authorization
-  API token is used.  Only ADMIN accounts can view API keys for other accounts.
+  API token is used.  Only ADMIN accounts can view API tokens for other accounts.
 
   Example:
     curl -H "Authorization: Bearer <API_TOKEN>" http://localhost:14615/api_tokens
@@ -65,7 +65,8 @@ POST /account/new
              even when login restrictions are in enabled.
 
   Example:
-    curl -X POST -H "Content-Type: application/json" \
+    curl -X POST -H "Authorization: Bearer <API_TOKEN>" \
+         -H "Content-Type: application/json" \
          -d '{"username":"Test Account","password":"TestPa55word"}' \
          http://localhost:14615/account/new
     {"status":"ok","account_id":"XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"}
@@ -96,14 +97,14 @@ GET /client_keys
 
 GET /initialize
   Creates an administrative account for managing the server.  Returns a JSON
-  object containing the default username, account ID, and API key for the
+  object containing the default username, account ID, and API token for the
   new account.  The password for the account will be randomly generated but
   will not be printed or returned.  If you wish to use a password with the
   account, you will need to set a new one explicitly with the /account/update
   endpoint.
 
   NOTE: This can only be called if there are no accounts present in the
-  database (even disabled/banned).  Be sure to save the API key somewhere safe!
+  database (even disabled/banned).  Be sure to save the API token somewhere safe!
 
   Example:
      curl http://localhost:14615/initialize
