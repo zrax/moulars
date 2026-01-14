@@ -142,13 +142,16 @@ fn check_error(response: Response<Body>) -> anyhow::Result<Response<Body>> {
     let status_code = response.status();
     if status_code.is_success() {
         Ok(response)
-    } else  if status_code == 401 {
-        Err(anyhow::anyhow!("Unauthorized.  Check the API token and try again."))
     } else if status_code.is_client_error() {
         let body = response.into_body().read_to_string()?;
         let error: ApiError = serde_json::from_str(&body)
                         .with_context(|| "Failed to parse API error response")?;
-        Err(anyhow::anyhow!("{}", error.error))
+        if status_code == 401 {
+            Err(anyhow::anyhow!("{}.\nCheck that the provided API token is correct \
+                                 and has sufficient privileges.", error.error))
+        } else {
+            Err(anyhow::anyhow!("{}", error.error))
+        }
     } else if status_code.is_server_error() {
         Err(anyhow::anyhow!("Server error {status_code}.  Check the server logs for details."))
     } else {
