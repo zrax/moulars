@@ -54,6 +54,9 @@ enum Command {
                        account and associated API token")]
     Initialize,
 
+    #[command(about = "List all accounts in the server")]
+    LsAccounts,
+
     #[command(about = "Show account details and API tokens for an account")]
     ShowAccount {
         #[arg(help = "Account UUID (default: use the account associated with the supplied API token)")]
@@ -125,6 +128,7 @@ fn main() {
     let (result, action) = match args.command {
         Command::ClientKeys => (api_show_client_keys(&api_client), "show client keys"),
         Command::Initialize => (api_initialize(&api_client), "initialize admin account"),
+        Command::LsAccounts => (api_ls_accounts(&api_client), "list accounts"),
         Command::ShowAccount { account } =>
             (api_show_account(&api_client, account), "fetch account details"),
         Command::AddAccount { username, password, flags } =>
@@ -185,6 +189,28 @@ fn api_initialize(api: &ApiClient) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn api_ls_accounts(api: &ApiClient) -> anyhow::Result<()> {
+    let Some(api_token) = &api.api_token else {
+        return Err(anyhow::anyhow!("API token is required for ls-accounts command"));
+    };
+    let response = api.agent.get(&format!("{}/accounts", api.api_url))
+                            .header("Authorization", format!("Bearer {api_token}"))
+                            .call()?;
+    let body = check_error(response)?.into_body().read_to_string()?;
+    let accounts: Vec<AccountInfoJson> = serde_json::from_str(&body)
+                            .with_context(|| "Failed to parse API response")?;
+
+    let max_username_len =
+        usize::max(8, accounts.iter().map(|account| account.username.len()).max().unwrap_or(0));
+    println!("{:<max_username_len$}  {:<36}  Flags", "Username", "Account ID");
+    println!("{:<max_username_len$}  {:<36}  -----", "--------", "----------");
+    for account in accounts {
+        println!("{:<max_username_len$}  {:<36}  {}", account.username, account.account_id,
+                 account.account_flags.join(", "));
+    }
+    Ok(())
+}
+
 fn api_show_account(api: &ApiClient, account: Option<Uuid>) -> anyhow::Result<()> {
     let Some(api_token) = &api.api_token else {
         return Err(anyhow::anyhow!("API token is required for show-account command"));
@@ -202,8 +228,8 @@ fn api_show_account(api: &ApiClient, account: Option<Uuid>) -> anyhow::Result<()
     let account_details: AccountInfoJson = serde_json::from_str(&body)
                             .with_context(|| "Failed to parse API response")?;
 
-    println!("Account ID: {}", account_details.account_id);
     println!("Username:   {}", account_details.username);
+    println!("Account ID: {}", account_details.account_id);
     if !account_details.account_flags.is_empty() {
         println!("Flags:      {}", account_details.account_flags.join(", "));
     }
@@ -272,7 +298,8 @@ fn api_add_account(api: &ApiClient, username: String, password: Option<String>,
     let response: CreateAccountResponse = serde_json::from_str(&body)
                             .with_context(|| "Failed to parse API response")?;
 
-    println!("Account created successfully. Account ID: {}", response.account_id);
+    println!("Account created successfully.");
+    println!("Account ID: {}", response.account_id);
     Ok(())
 }
 

@@ -271,6 +271,16 @@ impl DbInterface for DbSqlite {
         Ok(account)
     }
 
+    async fn get_all_accounts(&self) -> NetResult<Vec<AccountInfo>> {
+        sqlx::query_as("SELECT account_name, pass_hash, account_id, account_flags, billing_type \
+                            FROM accounts")
+            .fetch_all(&self.pool).await
+            .map_err(|err| {
+                warn!("Failed to fetch accounts: {err}");
+                NetResultCode::NetInternalError
+            })
+    }
+
     async fn create_account(&self, account_name: &str, pass_hash: ShaDigest,
                             account_flags: u32) -> NetResult<AccountInfo> {
         let account: Option<Uuid> =

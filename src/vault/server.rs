@@ -101,6 +101,9 @@ async fn process_vault_message(msg: VaultMessage, bcast_send: &broadcast::Sender
         VaultMessage::GetAccountForToken { api_token, response_send } => {
             check_send(response_send, db.get_account_for_token(&api_token).await);
         }
+        VaultMessage::GetAllAccounts { response_send } => {
+            check_send(response_send, db.get_all_accounts().await);
+        }
         VaultMessage::CreateAccount { account_name, pass_hash, account_flags, response_send } => {
             check_send(response_send,
                        db.create_account(&account_name, pass_hash, account_flags).await);
@@ -288,6 +291,12 @@ impl VaultServer {
             api_token: api_token.to_string(),
             response_send
         };
+        self.request(request, response_recv).await
+    }
+
+    pub async fn get_all_accounts(&self) -> NetResult<Vec<AccountInfo>> {
+        let (response_send, response_recv) = oneshot::channel();
+        let request = VaultMessage::GetAllAccounts { response_send };
         self.request(request, response_recv).await
     }
 

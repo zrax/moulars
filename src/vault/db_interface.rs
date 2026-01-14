@@ -30,6 +30,7 @@ pub trait DbInterface: Send + Sync {
     async fn get_account(&self, account_name: &str) -> NetResult<Option<AccountInfo>>;
     async fn get_account_by_id(&self, account_id: &Uuid) -> NetResult<Option<AccountInfo>>;
     async fn get_account_for_token(&self, api_token: &str) -> NetResult<Option<AccountInfo>>;
+    async fn get_all_accounts(&self) -> NetResult<Vec<AccountInfo>>;
     async fn create_account(&self, account_name: &str, pass_hash: ShaDigest,
                             account_flags: u32) -> NetResult<AccountInfo>;
     async fn update_account(&self, account_id: &Uuid, pass_hash: Option<ShaDigest>,

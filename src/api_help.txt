@@ -3,6 +3,7 @@ MOULArs Internal API Help
 The following endpoints are available:
   /
   /account [a]
+  /accounts [a]
   /account/api_tokens [a]
   /account/new [a]
   /account/update [a]
@@ -38,6 +39,14 @@ GET /account[?account=<UUID>]
   Example:
     curl -H "Authorization: Bearer <API_TOKEN>" http://localhost:14615/account
     {"username":"Test Account","account_id":"XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX","account_flags":["admin","beta"]}
+
+GET /accounts
+  Returns a JSON array containing a list of all accounts in the database.
+  Only ADMIN accounts can view this list.
+
+  Example:
+    curl -H "Authorization: Bearer <ADMIN_API_TOKEN>" http://localhost:14615/accounts
+    [{"username":"Test Account","account_id":"XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX","account_flags":["admin","beta"]}]
 
 GET /account/api_tokens[?account=<UUID>]
   Returns a JSON object containing the API tokens associated with the account.

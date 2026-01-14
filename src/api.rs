@@ -257,6 +257,17 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
             let account_info = api.get_account_info(account_id, &requestor).await?;
             gen_json_response(AccountInfoJson::from(account_info))
         }
+        (&Method::GET, "/accounts") => {
+            if let Some(requestor) = api.check_api_token(api_token.as_deref()).await
+                && requestor.is_admin()
+            {
+                let accounts = api.vault.get_all_accounts().await?;
+                let accounts = accounts.into_iter().map(AccountInfoJson::from).collect::<Vec<_>>();
+                gen_json_response(accounts)
+            } else {
+                Err(NetResultCode::NetAuthenticationFailed)
+            }
+        }
         (&Method::GET, "/account/api_tokens") => {
             let Some(requestor) = api.check_api_token(api_token.as_deref()).await else {
                 return Err(NetResultCode::NetAuthenticationFailed);

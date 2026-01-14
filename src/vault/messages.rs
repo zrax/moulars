@@ -40,6 +40,9 @@ pub(super) enum VaultMessage {
         api_token: String,
         response_send: oneshot::Sender<NetResult<Option<AccountInfo>>>,
     },
+    GetAllAccounts {
+        response_send: oneshot::Sender<NetResult<Vec<AccountInfo>>>,
+    },
     CreateAccount {
         account_name: String,
         pass_hash: ShaDigest,
