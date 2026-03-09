@@ -38,7 +38,7 @@ struct Args {
     #[command(subcommand)]
     command: Command,
 
-    #[arg(short = 'U', long, help = "MOULArs API URL (default: http://localhost:14615/")]
+    #[arg(short = 'U', long, help = "MOULArs API URL (default: http://localhost:14615/)")]
     api_url: Option<String>,
 
     #[arg(short = 'T', long, help = "API token for authorized operations")]
