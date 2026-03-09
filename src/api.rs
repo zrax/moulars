@@ -332,7 +332,7 @@ async fn api_router(request: Request<Incoming>, api: Arc<ApiInterface>)
         (&Method::GET, "/status") => {
             // Basic status check
             // TODO: Check health of other services and report them here...
-            gen_plaintext_response("OK")
+            gen_json_response(json!({"status": "ok"}))
         }
         _ => Err(NetResultCode::NetFileNotFound),
     }

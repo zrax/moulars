@@ -134,4 +134,8 @@ POST /shutdown
     {"status":"ok"}
 
 GET /status
-  Returns "OK" if the API service is running.
+  Returns the status of the API service.
+
+  Example:
+    curl http://localhost:14615/status
+    {"status":"ok"}
