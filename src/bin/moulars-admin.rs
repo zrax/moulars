@@ -75,6 +75,15 @@ enum Command {
         flags: Vec<String>,
     },
 
+    #[command(about = "Change account password")]
+    SetPassword {
+        #[arg(help = "Account UUID (default: use the account associated with the supplied API token)")]
+        account: Option<Uuid>,
+
+        #[arg(short, long, help = "New password.  If not specified, will prompt interactively")]
+        password: Option<String>,
+    },
+
     #[command(about = "Show online players")]
     ShowOnline,
 
@@ -133,6 +142,8 @@ fn main() {
             (api_show_account(&api_client, account), "fetch account details"),
         Command::AddAccount { username, password, flags } =>
             (api_add_account(&api_client, username, password, flags), "add account"),
+        Command::SetPassword { account, password } =>
+            (api_set_password(&api_client, account, password), "change account password"),
         Command::ShowOnline => (api_show_online(&api_client), "show online players"),
         Command::Shutdown => (api_shutdown(&api_client), "request server shutdown"),
     };
@@ -268,6 +279,18 @@ fn validate_flags(flags: &[String]) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn get_password(password_arg: Option<String>) -> anyhow::Result<String> {
+    if let Some(password) = password_arg { Ok(password) } else {
+        let first = rpassword::prompt_password("Account password: ")?;
+        let second = rpassword::prompt_password("Confirm password: ")?;
+        if first == second {
+            Ok(first)
+        } else {
+            Err(anyhow::anyhow!("Passwords do not match"))
+        }
+    }
+}
+
 fn api_add_account(api: &ApiClient, username: String, password: Option<String>,
                    flags: Vec<String>) -> anyhow::Result<()>
 {
@@ -276,14 +299,7 @@ fn api_add_account(api: &ApiClient, username: String, password: Option<String>,
     };
 
     validate_flags(&flags)?;
-    let password = if let Some(password) = password { password } else {
-        let first = rpassword::prompt_password("Account password: ")?;
-        let second = rpassword::prompt_password("Confirm password: ")?;
-        if first != second {
-            return Err(anyhow::anyhow!("Passwords do not match"));
-        }
-        first
-    };
+    let password = get_password(password)?;
     let params = AccountParams {
         username: Some(username),
         password: Some(password),
@@ -300,6 +316,34 @@ fn api_add_account(api: &ApiClient, username: String, password: Option<String>,
 
     println!("Account created successfully.");
     println!("Account ID: {}", response.account_id);
+    Ok(())
+}
+
+fn api_set_password(api: &ApiClient, account: Option<Uuid>, password: Option<String>)
+    -> anyhow::Result<()>
+{
+    let Some(api_token) = &api.api_token else {
+        return Err(anyhow::anyhow!("API token is required for set-password command"));
+    };
+    let request_uri = if let Some(uuid) = account {
+        format!("{}/account/update?account={}", api.api_url, uuid)
+    } else {
+        format!("{}/account/update", api.api_url)
+    };
+
+    let password = get_password(password)?;
+    let params = AccountParams {
+        password: Some(password),
+        ..Default::default()
+    };
+
+    let response = api.agent.post(&request_uri)
+                            .header("Content-Type", "application/json")
+                            .header("Authorization", format!("Bearer {api_token}"))
+                            .send_json(&params)?;
+    let _ = check_error(response)?;
+
+    println!("Account password updated successfully.");
     Ok(())
 }
 

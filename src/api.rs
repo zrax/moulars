@@ -460,7 +460,7 @@ pub struct OnlinePlayer {
     pub location: String,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AccountParams {
     pub username: Option<String>,
