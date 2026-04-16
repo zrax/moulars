@@ -63,7 +63,7 @@ fn scan_python_dir(python_root: &Path, subdir_limit: Option<&[&OsStr]>)
         } else if metadata.is_dir() {
             let name_match = entry.file_name();
             if subdir_limit.is_none_or(|subdirs| subdirs.contains(&name_match.as_ref())) {
-                file_set.extend(scan_python_dir(&entry.path(), None)?.into_iter());
+                file_set.extend(scan_python_dir(&entry.path(), None)?);
             }
         }
     }
