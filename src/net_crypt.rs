@@ -22,7 +22,7 @@ use std::pin::Pin;
 use anyhow::{anyhow, Context, Result};
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use crypto_bigint::U512;
-use rand::TryRngCore;
+use rc4::Rc4;
 use tokio::net::TcpStream;
 use tokio::io::{AsyncRead, BufReader, ReadBuf};
 
@@ -32,23 +32,20 @@ pub const CRYPT_BASE_AUTH: u32 = 41;
 pub const CRYPT_BASE_GAME: u32 = 73;
 pub const CRYPT_BASE_GATE_KEEPER: u32 = 4;
 
-type CryptCipher = rc4::Rc4<rc4::consts::U7>;
-
 pub struct CryptTcpStream {
     stream: TcpStream,
-    cipher_read: CryptCipher,
-    cipher_write: CryptCipher,
+    cipher_read: Rc4,
+    cipher_write: Rc4,
 }
 
 impl CryptTcpStream {
     pub fn new(stream: TcpStream, key_data: &[u8]) -> Self {
-        use rc4::{Key, KeyInit};
+        use rc4::KeyInit;
 
-        let key = Key::from_slice(key_data);
         CryptTcpStream {
             stream,
-            cipher_read: CryptCipher::new(key),
-            cipher_write: CryptCipher::new(key),
+            cipher_read: Rc4::new_from_slice(key_data).expect("Invalid key length"),
+            cipher_write: Rc4::new_from_slice(key_data).expect("Invalid key length"),
         }
     }
 
@@ -134,10 +131,10 @@ const CLIENT_KEY_BIT_SIZE: u32 = (CLIENT_KEY_SIZE as u32) * 8;
 
 pub fn u512_pow_mod(base: &U512, exponent: &U512, modulus: &U512) -> U512 {
     use crypto_bigint::Odd;
-    use crypto_bigint::modular::{MontyForm, MontyParams};
+    use crypto_bigint::modular::{FixedMontyForm, FixedMontyParams};
 
     let modulus = Odd::new(*modulus).expect("Modulus must be odd");
-    MontyForm::new(base, MontyParams::new(modulus)).pow(exponent).retrieve()
+    FixedMontyForm::new(base, &FixedMontyParams::new(modulus)).pow(exponent).retrieve()
 }
 
 // Returns the server seed and the local rc4 key data
@@ -145,8 +142,11 @@ pub fn u512_pow_mod(base: &U512, exponent: &U512, modulus: &U512) -> U512 {
 fn crypt_key_create(key_n: &U512, key_k: &U512, key_y: &U512)
     -> Result<(Vec<u8>, Vec<u8>)>
 {
+    use rand::rand_core::TryRng;
+    use rand::rngs::SysRng;
+
     let mut server_seed = vec![0u8; SERVER_SEED_SIZE as usize];
-    rand::rngs::OsRng.try_fill_bytes(&mut server_seed)
+    SysRng.try_fill_bytes(&mut server_seed)
         .context("Failed to generate server seed")?;
 
     let client_seed: U512 = u512_pow_mod(key_y, key_k, key_n);

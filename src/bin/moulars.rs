@@ -171,6 +171,8 @@ fn write_progress_pip(out: &mut io::Stdout) {
 }
 
 fn generate_keys() {
+    use crypto_primes::Flavor;
+
     // Progress pips are written on this line.  Deal with it.
     print!("Generating new keys. This may take a while");
     write_progress_pip(&mut io::stdout());
@@ -183,10 +185,11 @@ fn generate_keys() {
     {
         keygen_threads.push(std::thread::spawn(move || {
             let mut stdout = io::stdout();
+            let mut rng = rand::rng();
             loop {
-                let key_n: U512 = crypto_primes::generate_safe_prime(512);
+                let key_n: U512 = crypto_primes::random_prime(&mut rng, Flavor::Safe, 512);
                 write_progress_pip(&mut stdout);
-                let key_k: U512 = crypto_primes::generate_safe_prime(512);
+                let key_k: U512 = crypto_primes::random_prime(&mut rng, Flavor::Safe, 512);
                 write_progress_pip(&mut stdout);
                 let key_x = u512_pow_mod(&U512::from(key_g), &key_k, &key_n);
                 write_progress_pip(&mut stdout);

@@ -23,7 +23,6 @@ use anyhow::{anyhow, Context, Result};
 use data_encoding::BASE64;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use crypto_bigint::U512;
-use rand::TryRngCore;
 use serde_derive::Deserialize;
 
 pub struct ServerConfig {
@@ -209,6 +208,9 @@ struct VaultDbConfig {
 // NOTE: This file stores the keys in Big Endian format for easier debugging
 // with tools like PlasmaShop
 pub fn load_or_create_ntd_key(data_root: &Path) -> Result<[u32; 4]> {
+    use rand::rand_core::TryRng;
+    use rand::rngs::SysRng;
+
     static NTD_KEY: OnceLock<[u32; 4]> = OnceLock::new();
     if let Some(key) = NTD_KEY.get() {
         return Ok(*key);
@@ -226,7 +228,7 @@ pub fn load_or_create_ntd_key(data_root: &Path) -> Result<[u32; 4]> {
             if err.kind() == io::ErrorKind::NotFound {
                 let mut stream = BufWriter::new(File::create(&key_path)?);
                 for v in &mut key_buffer {
-                    *v = rand::rngs::OsRng.try_next_u32()?;
+                    *v = SysRng.try_next_u32()?;
                     stream.write_u32::<BigEndian>(*v)?;
                 }
                 key_buffer

@@ -23,6 +23,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use data_encoding::{HEXLOWER, HEXLOWER_PERMISSIVE};
+use digest_io::IoWrapper;
 use flate2::write::GzEncoder;
 use md5::{Md5, Digest};
 use tracing::debug;
@@ -51,9 +52,9 @@ pub struct Manifest {
 
 fn md5_hash_file(path: &Path) -> Result<[u8; 16]> {
     let mut file = File::open(path)?;
-    let mut hash = Md5::new();
+    let mut hash = IoWrapper(Md5::new());
     std::io::copy(&mut file, &mut hash)?;
-    Ok(hash.finalize().into())
+    Ok(hash.0.finalize().into())
 }
 
 impl FileInfo {
