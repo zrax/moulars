@@ -121,7 +121,9 @@ impl<S: BufRead> EncryptedReader<S> {
             EncryptionType::TEA => tea_decipher(&mut block, &self.key),
             EncryptionType::XXTEA => xxtea_decipher(&mut block, &self.key),
         }
-        for (dest, src) in self.buffer.chunks_exact_mut(size_of::<u32>()).zip(block.iter()) {
+        for (dest, src) in self.buffer.as_chunks_mut::<{size_of::<u32>()}>().0.iter_mut()
+                               .zip(block.iter())
+        {
             dest.copy_from_slice(&src.to_le_bytes());
         }
         Ok(())
@@ -194,8 +196,8 @@ impl<S: Write + Seek> EncryptedWriter<S> {
 
     fn write_block(&mut self) -> io::Result<()> {
         let mut block = [0; TEA_BLOCK_SIZE];
-        for (src, dest) in self.buffer.chunks_exact(size_of::<u32>()).zip(block.iter_mut()) {
-            *dest = u32::from_le_bytes(src.try_into().unwrap());
+        for (src, dest) in self.buffer.as_chunks().0.iter().zip(block.iter_mut()) {
+            *dest = u32::from_le_bytes(*src);
         }
         match self.encryption_type {
             EncryptionType::Unencrypted => unreachable!(),

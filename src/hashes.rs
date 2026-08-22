@@ -92,9 +92,9 @@ impl ShaDigest {
         }
 
         let mut work = [0u32; 80];
-        for chunk in buffer.chunks_exact(BLOCK_SIZE) {
-            for (src, dest) in chunk.chunks_exact(size_of::<u32>()).zip(work[0..16].iter_mut()) {
-                *dest = u32::from_be_bytes(src.try_into().unwrap());
+        for chunk in buffer.as_chunks::<BLOCK_SIZE>().0 {
+            for (src, dest) in chunk.as_chunks().0.iter().zip(work[0..16].iter_mut()) {
+                *dest = u32::from_be_bytes(*src);
             }
             for i in 16..80 {
                 // SHA-1 difference: no work[i].rotate_left(1)
@@ -133,7 +133,9 @@ impl ShaDigest {
         }
 
         let mut data = [0; 20];
-        for (dest, src) in data.chunks_exact_mut(size_of::<u32>()).zip(hash.iter()) {
+        for (dest, src) in data.as_chunks_mut::<{size_of::<u32>()}>().0.iter_mut()
+                               .zip(hash.iter())
+        {
             dest.copy_from_slice(&src.to_be_bytes());
         }
         Self { data }
@@ -151,8 +153,9 @@ impl ShaDigest {
     #[must_use]
     pub fn endian_swap(&self) -> Self {
         let mut swapped = [0; 20];
-        for (src, dest) in self.data.chunks_exact(size_of::<u32>())
-                            .zip(swapped.chunks_exact_mut(size_of::<u32>())) {
+        for (src, dest) in self.data.as_chunks::<{size_of::<u32>()}>().0.iter()
+                               .zip(swapped.as_chunks_mut::<{size_of::<u32>()}>().0)
+        {
             dest[0] = src[3];
             dest[1] = src[2];
             dest[2] = src[1];

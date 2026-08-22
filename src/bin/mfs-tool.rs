@@ -19,7 +19,6 @@
 
 use std::fs::File;
 use std::io::{Cursor, BufReader, BufWriter};
-use std::mem::size_of;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -145,8 +144,8 @@ fn get_key(key_opt: Option<&str>) -> Result<[u32; 4]> {
                 .map_err(|err| anyhow!("Invalid hex literal: {err}"))?
                 .try_into().map_err(|_| anyhow!("Invalid key length"))?;
         let mut key = [0; 4];
-        for (src, dest) in buffer.chunks_exact(size_of::<u32>()).zip(key.iter_mut()) {
-            *dest = u32::from_be_bytes(src.try_into().expect("Wrong chunk size"));
+        for (src, dest) in buffer.as_chunks().0.iter().zip(key.iter_mut()) {
+            *dest = u32::from_be_bytes(*src);
         }
         Ok(key)
     } else {
